@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     @Published var workspaces: [Workspace] = []
     @Published var currentWorkspaceID: String?
     @Published var surfaces: [Surface] = []
+    @Published var panes: [Pane] = []
     @Published var isPairingPresented = false
 
     private let pairingStore = PairingStore()
@@ -45,6 +46,7 @@ final class AppState: ObservableObject {
         notifications = []
         workspaces = []
         surfaces = []
+        panes = []
     }
 
     // MARK: - Connection
@@ -74,11 +76,37 @@ final class AppState: ObservableObject {
     // MARK: - Commands
 
     func selectWorkspace(_ id: String) {
-        send(method: "workspace.select", params: ["workspace_id": id])
+        send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
+            self?.currentWorkspaceID = id
+            self?.refreshPanes()
+        }
     }
 
     func focusSurface(_ id: String) {
-        send(method: "surface.focus", params: ["surface_id": id])
+        send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
+            self?.refreshPanes()
+        }
+    }
+
+    func focusPane(_ id: String) {
+        send(method: "pane.focus", params: ["pane_id": id]) { [weak self] _ in
+            self?.refreshPanes()
+        }
+    }
+
+    func cyclePane() {
+        guard !panes.isEmpty else { return }
+        let focusedIndex = panes.firstIndex(where: { $0.isFocused }) ?? -1
+        let nextIndex = (focusedIndex + 1) % panes.count
+        focusPane(panes[nextIndex].id)
+    }
+
+    func cycleTabInFocusedPane() {
+        guard let focused = panes.first(where: { $0.isFocused }),
+              focused.surfaceIDs.count > 1 else { return }
+        let currentIndex = focused.surfaceIDs.firstIndex(of: focused.focusedSurfaceID ?? "") ?? -1
+        let nextIndex = (currentIndex + 1) % focused.surfaceIDs.count
+        focusSurface(focused.surfaceIDs[nextIndex])
     }
 
     func sendText(_ text: String, to surfaceID: String) {
@@ -118,6 +146,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    func refreshPanes() {
+        var params: [String: Any] = [:]
+        if let id = currentWorkspaceID {
+            params["workspace_id"] = id
+        }
+        send(method: "pane.list", params: params) { [weak self] result in
+            if let list = result["panes"] as? [[String: Any]] {
+                self?.panes = list.compactMap(Pane.init)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    var focusedSurfaceID: String? {
+        panes.first(where: { $0.isFocused })?.focusedSurfaceID
+    }
+
+    func surfaceTitle(for id: String) -> String {
+        surfaces.first(where: { $0.id == id })?.title ?? ""
+    }
+
+    func hasNotification(for pane: Pane) -> Bool {
+        notifications.contains { n in
+            guard let panelID = n.panelID else { return false }
+            return pane.surfaceIDs.contains(panelID)
+        }
+    }
+
     // MARK: - Private helpers
 
     private func send(
@@ -136,6 +193,7 @@ extension AppState: BridgeClientDelegate {
         connectionStatus = .connected
         refreshWorkspaces()
         refreshSurfaces()
+        refreshPanes()
     }
 
     func clientDidDisconnect(_ client: BridgeClient, error: Error?) {
@@ -152,10 +210,14 @@ extension AppState: BridgeClientDelegate {
             notifications = []
         case .cmuxConnected:
             connectionStatus = .connected(cmuxConnected: true)
+            refreshWorkspaces()
+            refreshSurfaces()
+            refreshPanes()
         case .cmuxDisconnected:
             connectionStatus = .connected(cmuxConnected: false)
+            panes = []
         case .commandResponse:
-            break // handled via completion callbacks in BridgeClient
+            break
         }
     }
 }
@@ -164,8 +226,6 @@ extension AppState: BridgeClientDelegate {
 
 extension AppState: BridgeDiscoveryDelegate {
     func discovery(_ discovery: BridgeDiscovery, didFind candidates: [PairingCredentials]) {
-        // Auto-connect if we have a stored token that matches one of the discovered bridges,
-        // or surface the picker if multiple are found and we're not already connected.
         guard connectionStatus == .disconnected,
               let stored = try? pairingStore.load() else { return }
         if let match = candidates.first(where: { $0.host == stored.host && $0.port == stored.port }) {
@@ -214,6 +274,54 @@ struct Surface: Identifiable {
         self.id = id
         self.title = (dict["title"] as? String) ?? (dict["type"] as? String) ?? id
         self.workspaceID = dict["workspace_id"] as? String
+    }
+}
+
+struct Pane: Identifiable {
+    let id: String
+    let pixelFrame: CGRect
+    let containerFrame: CGSize
+    let surfaceIDs: [String]
+    let focusedSurfaceID: String?
+    let isFocused: Bool
+
+    var normalizedFrame: CGRect {
+        guard containerFrame.width > 0, containerFrame.height > 0 else {
+            return CGRect(x: 0, y: 0, width: 1, height: 1)
+        }
+        return CGRect(
+            x: pixelFrame.origin.x / containerFrame.width,
+            y: pixelFrame.origin.y / containerFrame.height,
+            width: pixelFrame.size.width / containerFrame.width,
+            height: pixelFrame.size.height / containerFrame.height
+        )
+    }
+
+    init?(_ dict: [String: Any]) {
+        guard let id = dict["id"] as? String else { return nil }
+        self.id = id
+
+        if let pf = dict["pixel_frame"] as? [String: Any] {
+            let x = (pf["x"] as? Double).map(CGFloat.init) ?? 0
+            let y = (pf["y"] as? Double).map(CGFloat.init) ?? 0
+            let w = (pf["width"] as? Double).map(CGFloat.init) ?? 100
+            let h = (pf["height"] as? Double).map(CGFloat.init) ?? 100
+            pixelFrame = CGRect(x: x, y: y, width: w, height: h)
+        } else {
+            pixelFrame = CGRect(x: 0, y: 0, width: 100, height: 100)
+        }
+
+        if let cf = dict["container_frame"] as? [String: Any] {
+            let w = (cf["width"] as? Double).map(CGFloat.init) ?? 100
+            let h = (cf["height"] as? Double).map(CGFloat.init) ?? 100
+            containerFrame = CGSize(width: w, height: h)
+        } else {
+            containerFrame = CGSize(width: 100, height: 100)
+        }
+
+        surfaceIDs = dict["surface_ids"] as? [String] ?? []
+        focusedSurfaceID = dict["focused_surface_id"] as? String
+        isFocused = dict["is_focused"] as? Bool ?? false
     }
 }
 

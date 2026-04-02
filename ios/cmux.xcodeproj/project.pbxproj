@@ -7,22 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00520BCAA684B5CA9E1FFA53 /* NotificationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B7FEA82A8008C86FC4BE2B1 /* NotificationRow.swift */; };
 		072E607E82AF370967841959 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF2E0EAB18F6B76EF180235 /* QRScannerView.swift */; };
 		0B57002A5DC6E4752107EA83 /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B31A1E5DC665A71EAEC8C1 /* BridgeClient.swift */; };
 		0DE7EAD9D5B47A60FA75A83C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9143B92AA62E9EC62A403DC9 /* SettingsView.swift */; };
 		29D357A92492EA0F206C6A29 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8E7CCF69E19E60215537234 /* ContentView.swift */; };
-		308DD75F2834761F2B75C96D /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31258BB494FDCC0F968F7BEE /* MainTabView.swift */; };
-		5098B2B8ABCBF69F51D4BCDD /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA7133528C8E041E7A29706 /* NotificationsView.swift */; };
 		59F8BC48FEA3798A11AF25C3 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FCD190109E1BB2DF408C67 /* PairingStore.swift */; };
-		5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */; };
-		80AE92760C00B2E71E97A2EC /* ControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6CEFBCA99422E02BB0230AD /* ControlView.swift */; };
+		5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */; };
 		874536F786A2CBCEB8BF95B8 /* cmuxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */; };
 		A66072EAEC497AD9D4AF1EEC /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E72205F10DF0F064030B1C /* BridgeDiscovery.swift */; };
-		BBE5F6FFB4637EE4F980DA45 /* ConnectionStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB2FCA6F59B6691541CE21E /* ConnectionStatusBar.swift */; };
-		C9EF3BB55242E1F2E1E6A135 /* WorkspaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B7A4CAA64894DF972AEDAE /* WorkspaceListView.swift */; };
+		A9413E362FC865CE9530E30F /* VolumeButtonHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */; };
+		CAE4DE2E046E33C1D633FB2E /* SpeechInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */; };
 		CBF87F9FAD9B0CCED7B3E9D0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B351B6ABD7CDE8B988761F /* AppState.swift */; };
-		D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */; };
+		D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */; };
 		F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF14434A29B8ED1DF0919103 /* PairingView.swift */; };
 /* End PBXBuildFile section */
 
@@ -30,22 +26,18 @@
 		03FCD190109E1BB2DF408C67 /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
 		19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = cmuxApp.swift; sourceTree = "<group>"; };
 		25B31A1E5DC665A71EAEC8C1 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
-		2B7FEA82A8008C86FC4BE2B1 /* NotificationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRow.swift; sourceTree = "<group>"; };
-		31258BB494FDCC0F968F7BEE /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
-		35B7A4CAA64894DF972AEDAE /* WorkspaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceListView.swift; sourceTree = "<group>"; };
+		27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceLayoutView.swift; sourceTree = "<group>"; };
 		46410B90D2F45E6882E585AD /* cmux.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = cmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputManager.swift; sourceTree = "<group>"; };
 		64B351B6ABD7CDE8B988761F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
-		7EB2FCA6F59B6691541CE21E /* ConnectionStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusBar.swift; sourceTree = "<group>"; };
+		6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCardView.swift; sourceTree = "<group>"; };
 		9143B92AA62E9EC62A403DC9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1E72205F10DF0F064030B1C /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
 		A8E7CCF69E19E60215537234 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		ACF2E0EAB18F6B76EF180235 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
-		AEA7133528C8E041E7A29706 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		AF14434A29B8ED1DF0919103 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		B2C723204E87E163A8AE865F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		D6CEFBCA99422E02BB0230AD /* ControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlView.swift; sourceTree = "<group>"; };
-		F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendTextView.swift; sourceTree = "<group>"; };
-		F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceListView.swift; sourceTree = "<group>"; };
+		BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeButtonHandler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -63,12 +55,21 @@
 				B2C723204E87E163A8AE865F /* Info.plist */,
 				F09CF7A4DE5059AD10688349 /* App */,
 				54C761D6258345CD9D8F544B /* Connection */,
-				A5180A5AD87681933D3E3A2A /* Control */,
-				F2ADF9623946322872FDBD6F /* Notifications */,
+				E873BB80B6E37B095232A742 /* Input */,
+				4183338A1FE89998152BC1C7 /* Layout */,
 				EE047ADCF216D7F1576FCA9A /* Pairing */,
 				E22BFD3D6D0F77E004720F06 /* Settings */,
 			);
 			path = cmux;
+			sourceTree = "<group>";
+		};
+		4183338A1FE89998152BC1C7 /* Layout */ = {
+			isa = PBXGroup;
+			children = (
+				6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */,
+				27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */,
+			);
+			path = Layout;
 			sourceTree = "<group>";
 		};
 		54C761D6258345CD9D8F544B /* Connection */ = {
@@ -89,23 +90,21 @@
 			);
 			sourceTree = "<group>";
 		};
-		A5180A5AD87681933D3E3A2A /* Control */ = {
-			isa = PBXGroup;
-			children = (
-				D6CEFBCA99422E02BB0230AD /* ControlView.swift */,
-				F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */,
-				F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */,
-				35B7A4CAA64894DF972AEDAE /* WorkspaceListView.swift */,
-			);
-			path = Control;
-			sourceTree = "<group>";
-		};
 		E22BFD3D6D0F77E004720F06 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
 				9143B92AA62E9EC62A403DC9 /* SettingsView.swift */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		E873BB80B6E37B095232A742 /* Input */ = {
+			isa = PBXGroup;
+			children = (
+				596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */,
+				BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */,
+			);
+			path = Input;
 			sourceTree = "<group>";
 		};
 		EE047ADCF216D7F1576FCA9A /* Pairing */ = {
@@ -122,20 +121,9 @@
 			children = (
 				64B351B6ABD7CDE8B988761F /* AppState.swift */,
 				19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */,
-				7EB2FCA6F59B6691541CE21E /* ConnectionStatusBar.swift */,
 				A8E7CCF69E19E60215537234 /* ContentView.swift */,
-				31258BB494FDCC0F968F7BEE /* MainTabView.swift */,
 			);
 			path = App;
-			sourceTree = "<group>";
-		};
-		F2ADF9623946322872FDBD6F /* Notifications */ = {
-			isa = PBXGroup;
-			children = (
-				2B7FEA82A8008C86FC4BE2B1 /* NotificationRow.swift */,
-				AEA7133528C8E041E7A29706 /* NotificationsView.swift */,
-			);
-			path = Notifications;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -200,19 +188,15 @@
 				CBF87F9FAD9B0CCED7B3E9D0 /* AppState.swift in Sources */,
 				0B57002A5DC6E4752107EA83 /* BridgeClient.swift in Sources */,
 				A66072EAEC497AD9D4AF1EEC /* BridgeDiscovery.swift in Sources */,
-				BBE5F6FFB4637EE4F980DA45 /* ConnectionStatusBar.swift in Sources */,
 				29D357A92492EA0F206C6A29 /* ContentView.swift in Sources */,
-				80AE92760C00B2E71E97A2EC /* ControlView.swift in Sources */,
-				308DD75F2834761F2B75C96D /* MainTabView.swift in Sources */,
-				00520BCAA684B5CA9E1FFA53 /* NotificationRow.swift in Sources */,
-				5098B2B8ABCBF69F51D4BCDD /* NotificationsView.swift in Sources */,
 				59F8BC48FEA3798A11AF25C3 /* PairingStore.swift in Sources */,
 				F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */,
+				5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */,
 				072E607E82AF370967841959 /* QRScannerView.swift in Sources */,
-				D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */,
 				0DE7EAD9D5B47A60FA75A83C /* SettingsView.swift in Sources */,
-				5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */,
-				C9EF3BB55242E1F2E1E6A135 /* WorkspaceListView.swift in Sources */,
+				CAE4DE2E046E33C1D633FB2E /* SpeechInputManager.swift in Sources */,
+				A9413E362FC865CE9530E30F /* VolumeButtonHandler.swift in Sources */,
+				D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */,
 				874536F786A2CBCEB8BF95B8 /* cmuxApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

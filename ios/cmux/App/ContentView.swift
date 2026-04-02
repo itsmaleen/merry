@@ -8,10 +8,7 @@ struct ContentView: View {
            (try? PairingStore().load()) == nil {
             PairingView()
         } else {
-            MainTabView()
-                .sheet(isPresented: $appState.isPairingPresented) {
-                    PairingView()
-                }
+            WorkspaceLayoutView()
         }
     }
 }

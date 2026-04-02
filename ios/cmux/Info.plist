@@ -33,6 +33,10 @@
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan the QR code displayed by cmux-bridge for pairing.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used for voice input to send text to cmux surfaces.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Used to transcribe your voice and send it as text to cmux.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 </dict>
