@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @State private var showUnpairConfirm = false
     @State private var credentials: PairingCredentials? = try? PairingStore().load()
 
@@ -15,6 +16,13 @@ struct SettingsView: View {
                         LabeledContent("Host", value: creds.host)
                         LabeledContent("Port", value: "\(creds.port)")
                     }
+                }
+
+                Section("Speech Input") {
+                    Toggle("Auto-submit speech", isOn: $autoSubmitSpeech)
+                    Text("When enabled, automatically presses Enter after sending speech text.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {

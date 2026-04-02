@@ -3,6 +3,7 @@ import AudioToolbox
 
 struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
+    @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
     @State private var lastNotificationCount = 0
@@ -192,10 +193,12 @@ struct WorkspaceLayoutView: View {
                 let pending = speech.transcript
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 let text = speech.stop()
-                let final_text = text.isEmpty ? pending : text
-                print("[Speech] sending: \(final_text)")
-                if !final_text.isEmpty, let surfaceID = appState.focusedSurfaceID {
-                    appState.sendText(final_text, to: surfaceID)
+                let finalText = text.isEmpty ? pending : text
+                print("[Speech] sending: \(finalText)")
+                if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                    let autoSubmit = UserDefaults.standard.bool(forKey: "autoSubmitSpeech")
+                    let toSend = autoSubmit ? finalText + "\n" : finalText
+                    appState.sendText(toSend, to: surfaceID)
                 }
             }
         }
