@@ -109,6 +109,14 @@ final class AppState: ObservableObject {
         focusSurface(list[nextIndex].id)
     }
 
+    func cycleSurfaceBackward() {
+        let list = surfaces
+        guard !list.isEmpty else { return }
+        let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? 0
+        let prevIndex = (currentIndex - 1 + list.count) % list.count
+        focusSurface(list[prevIndex].id)
+    }
+
     func cycleWorkspace() {
         guard !workspaces.isEmpty else { return }
         let currentIndex = workspaces.firstIndex(where: { $0.id == currentWorkspaceID }) ?? -1

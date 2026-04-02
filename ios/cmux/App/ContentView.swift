@@ -9,9 +9,6 @@ struct ContentView: View {
             PairingView()
         } else {
             MainTabView()
-                .sheet(isPresented: $appState.isPairingPresented) {
-                    PairingView()
-                }
         }
     }
 }
