@@ -66,3 +66,7 @@ can we updaet the TODO.md for what has already been done
 ---
 
 the vibrate is working but even when on the right workspace - not seeing any visual which surface notification was for (just document in the plan and we can come back to this)
+
+---
+
+great now let's commit and then we should work on the STT portion
