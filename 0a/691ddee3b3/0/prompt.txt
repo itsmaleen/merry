@@ -92,3 +92,7 @@ It's sometimes working, sometimes not
 1) the text that shows up isn't being added to the terminal 
 2) maybe we should change to instead of holding it's click once to start recording and then click again to end recording
 3) future change after the above 2 is probably finding and setting up some better STT model
+
+---
+
+Great that worked now let's commit the changes
