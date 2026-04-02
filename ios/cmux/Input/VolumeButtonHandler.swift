@@ -70,17 +70,22 @@ final class VolumeButtonHandler: ObservableObject {
                 guard let self, !self.isAdjustingVolume else { return }
                 if delta < 0 {
                     self.handleVolumeDown()
+                    // Delay volume reset so the second press of a double-click
+                    // isn't swallowed by the isAdjustingVolume guard
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                        self?.setVolume(0.5)
+                    }
                 } else {
                     self.handleVolumeUp()
+                    self.setVolume(0.5)
                 }
-                self.setVolume(0.5)
             }
         }
     }
 
     private func handleVolumeDown() {
         let now = Date()
-        if let last = lastDownTime, now.timeIntervalSince(last) < 0.3 {
+        if let last = lastDownTime, now.timeIntervalSince(last) < 0.5 {
             pendingSingleTimer?.invalidate()
             pendingSingleTimer = nil
             lastDownTime = nil
@@ -88,7 +93,7 @@ final class VolumeButtonHandler: ObservableObject {
         } else {
             lastDownTime = now
             pendingSingleTimer?.invalidate()
-            pendingSingleTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+            pendingSingleTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: false) { [weak self] _ in
                 self?.lastDownTime = nil
                 self?.onSingleDown?()
             }

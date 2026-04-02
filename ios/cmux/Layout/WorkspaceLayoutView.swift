@@ -7,7 +7,10 @@ struct WorkspaceLayoutView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
+                workspacePills
+                    .padding(.vertical, 8)
+
                 if appState.surfaces.isEmpty {
                     ContentUnavailableView(
                         "No surfaces",
@@ -19,13 +22,11 @@ struct WorkspaceLayoutView: View {
                 }
             }
             .navigationTitle("Layout")
+            .navigationBarTitleDisplayMode(.inline)
             .background(Color.black.ignoresSafeArea())
             .toolbarBackground(Color.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    workspacePills
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
                         statusDot
@@ -42,12 +43,15 @@ struct WorkspaceLayoutView: View {
         .onAppear {
             appState.refreshSurfaces()
             speechManager.requestPermissions()
+            wireVolumeCallbacks()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                setupVolumeHandler()
+                volumeHandler.start()
             }
         }
         .onDisappear {
-            volumeHandler.stop()
+            // Don't stop the handler on tab switch — TabView triggers
+            // onDisappear/onAppear on every tab change, which kills the
+            // AVAudioSession observer and the MPVolumeView attachment.
         }
         .sheet(isPresented: $appState.isPairingPresented) {
             PairingView()
@@ -82,26 +86,46 @@ struct WorkspaceLayoutView: View {
 
     // MARK: - Workspace pills
 
+    private func workspaceLabel(for ws: Workspace, at index: Int) -> String {
+        let name = ws.name
+        // If the name looks like a raw ID (e.g. hex hash), use a friendly label
+        if name == ws.id || name.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
+            return "Workspace \(index + 1)"
+        }
+        return name
+    }
+
     private var workspacePills: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(appState.workspaces) { ws in
-                    Button {
-                        appState.selectWorkspace(ws.id)
-                    } label: {
-                        Text(ws.name)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(ws.id == appState.currentWorkspaceID ? .black : .white.opacity(0.6))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(ws.id == appState.currentWorkspaceID
-                                          ? Color.white
-                                          : Color.white.opacity(0.1))
-                            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(appState.workspaces.enumerated()), id: \.element.id) { index, ws in
+                        Button {
+                            appState.selectWorkspace(ws.id)
+                        } label: {
+                            Text(workspaceLabel(for: ws, at: index))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(ws.id == appState.currentWorkspaceID ? .black : .white.opacity(0.6))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Capsule()
+                                        .fill(ws.id == appState.currentWorkspaceID
+                                              ? Color.white
+                                              : Color.white.opacity(0.1))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .id(ws.id)
                     }
-                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+            }
+            .onChange(of: appState.currentWorkspaceID) { _, newID in
+                if let id = newID {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
                 }
             }
         }
@@ -121,12 +145,17 @@ struct WorkspaceLayoutView: View {
 
     // MARK: - Actions
 
-    private func setupVolumeHandler() {
+    private func wireVolumeCallbacks() {
         let appState = appState
         let speech = speechManager
 
         volumeHandler.onSingleDown = {
+            print("[VolumeHandler] singleDown → cycleSurface")
             appState.cycleSurface()
+        }
+        volumeHandler.onDoubleDown = {
+            print("[VolumeHandler] doubleDown → cycleWorkspace")
+            appState.cycleWorkspace()
         }
         volumeHandler.onSpeechBegan = {
             Task { @MainActor in speech.start() }
@@ -139,6 +168,5 @@ struct WorkspaceLayoutView: View {
                 }
             }
         }
-        volumeHandler.start()
     }
 }
