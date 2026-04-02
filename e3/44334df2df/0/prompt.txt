@@ -122,3 +122,7 @@ remove the small little red yellow and green buttons because they don't do anyth
 ---
 
 instead of a bottom menu navigation bar, maybe we have almost like a sidebar menu where the toggle doesn't show unless screen is clicked (hides after a few seconds)
+
+---
+
+Great now let's commit these changes
