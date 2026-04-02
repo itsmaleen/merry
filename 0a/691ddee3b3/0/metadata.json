@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "0a691ddee3b3",
+  "session_id": "0483ba58-1635-415a-b418-41a2f7114f79",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-02T22:31:28.897095Z",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ios/cmux/Input/SpeechInputManager.swift",
+    "ios/cmux/Input/VolumeButtonHandler.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "7acfd60849f9",
+  "token_usage": {
+    "input_tokens": 152,
+    "cache_creation_tokens": 88690,
+    "cache_read_tokens": 6574127,
+    "output_tokens": 41411,
+    "api_call_count": 108
+  },
+  "session_metrics": {
+    "turn_count": 21
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-02T22:31:28.689261Z",
+    "agent_lines": 46,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 46,
+    "agent_percentage": 100
+  }
+}

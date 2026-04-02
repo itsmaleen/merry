@@ -1,0 +1,94 @@
+look at plans/ios-layout-view.md and then we can start building/fixing the implementation
+
+---
+
+great that is now showing the surfaces of 1 specific workspace, need to bring the other workspaces and go through the other steps
+
+---
+
+these changes have broken something and now can't see the surfaces in the layout tab as we had done in step 1
+
+---
+
+That still isn't showing any windows, just black screen with the pillings in a small circle in the left that's too small
+
+Can you come up with what changed between step 1 implementation and now and figure out why it would break what was previously showing? Maybe because a workspace isn't properly selected? (unlikely because when a pill is chosen, can see the change on cmux + in the surfaces tab but seeing nothing in the layouts tab which is where we should be seeing the windows)
+
+---
+
+great that fixed it, what was the issue?
+
+---
+
+let's commit these changes before we make more changes
+
+---
+
+now let's fix the showing of the different workspaces
+1) maybe center it and give enough space because right now it's a small circle where overflow is hidden
+2) instead of using the workspace IDs, is there a different thing we could do like show folder path? Need to have a more clear naming system (maybe even just "Workspace 1"
+3) need to allow for cycling through the workspaces, maybe through shaking the device
+
+---
+
+the current active workspace should always be showing so it needs to scroll always keeping active one in view
+
+Also the shaking is kinda annoying so let's make the volume up button cycle through workspace
+
+---
+
+both the double press volume down and single press to cycle through surfaces arent working (the single press wasn't working before either after the workspace title/pill changes)
+
+---
+
+ok now the single down is working but not double click for workspace cycling
+
+---
+
+not seeing doubleDown, when trying double click only seeing 1 [VolumeHandler] singleDown → cycleSurface
+
+---
+
+great that fixed it now commit the changes
+
+---
+
+great next we need to include notifications in the layout, maybe through some ring around workspace + sound on phone + ring around the surface where notification occured
+
+---
+
+how could we get cross-workspace visual indication working? Having the server include workspace and surface info seems like the right move (let's not make the change right away, just document the plans to make the change and update TODO.md)
+
+---
+
+can we updaet the TODO.md for what has already been done
+
+---
+
+the vibrate is working but even when on the right workspace - not seeing any visual which surface notification was for (just document in the plan and we can come back to this)
+
+---
+
+great now let's commit and then we should work on the STT portion
+
+---
+
+doesn't seem like the STT is working
+1) seeing indication but the mode isn't stopping when volume-up is let go
+2) maybe because of above, not seeing the speech become text
+
+---
+
+when holding the volume up button, it starts cycling through other surfaces + workspaces 
+Can you debug why this is happening
+
+---
+
+That fixed the weird cycling issue. Now seeing the visual indication of speech active but not seeing STT happening (no text)
+
+---
+
+It's sometimes working, sometimes not 
+1) the text that shows up isn't being added to the terminal 
+2) maybe we should change to instead of holding it's click once to start recording and then click again to end recording
+3) future change after the above 2 is probably finding and setting up some better STT model

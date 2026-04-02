@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "0a691ddee3b3",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ios/cmux/Input/SpeechInputManager.swift",
+    "ios/cmux/Input/VolumeButtonHandler.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0a/691ddee3b3/0/metadata.json",
+      "transcript": "/0a/691ddee3b3/0/full.jsonl",
+      "content_hash": "/0a/691ddee3b3/0/content_hash.txt",
+      "prompt": "/0a/691ddee3b3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 152,
+    "cache_creation_tokens": 88690,
+    "cache_read_tokens": 6574127,
+    "output_tokens": 41411,
+    "api_call_count": 108
+  }
+}
