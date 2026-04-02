@@ -171,10 +171,10 @@ struct WorkspaceLayoutView: View {
         let speech = speechManager
 
         volumeHandler.onSingleDown = {
-            appState.cyclePane()
+            appState.cycleWorkspace()
         }
         volumeHandler.onDoubleDown = {
-            appState.cycleTabInFocusedPane()
+            appState.cyclePane()
         }
         volumeHandler.onSpeechBegan = {
             Task { @MainActor in speech.start() }

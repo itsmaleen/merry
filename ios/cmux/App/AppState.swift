@@ -94,6 +94,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    func cycleWorkspace() {
+        guard !workspaces.isEmpty else { return }
+        let currentIndex = workspaces.firstIndex(where: { $0.id == currentWorkspaceID }) ?? -1
+        let nextIndex = (currentIndex + 1) % workspaces.count
+        selectWorkspace(workspaces[nextIndex].id)
+    }
+
     func cyclePane() {
         guard !panes.isEmpty else { return }
         let focusedIndex = panes.firstIndex(where: { $0.isFocused }) ?? -1
