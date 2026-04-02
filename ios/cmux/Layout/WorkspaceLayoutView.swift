@@ -15,8 +15,16 @@ struct WorkspaceLayoutView: View {
                 workspacePills
                     .frame(height: 52)
 
-                canvas
+                // Inline condition so SwiftUI tracks appState.surfaces directly in body
+                if !appState.panes.isEmpty {
+                    spatialLayout
+                } else if !appState.surfaces.isEmpty {
+                    surfaceGrid
+                } else {
+                    emptyState
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             if showGear {
                 Button {
@@ -47,20 +55,8 @@ struct WorkspaceLayoutView: View {
         }
     }
 
-    // MARK: - Canvas
+    // MARK: - Canvas views
 
-    @ViewBuilder
-    private var canvas: some View {
-        if !appState.panes.isEmpty {
-            spatialLayout
-        } else if !appState.surfaces.isEmpty {
-            surfaceGrid
-        } else {
-            emptyState
-        }
-    }
-
-    // Spatial layout using geometry from pane.list
     private var spatialLayout: some View {
         GeometryReader { geo in
             ZStack {
@@ -82,16 +78,14 @@ struct WorkspaceLayoutView: View {
         .padding(12)
     }
 
-    // Grid layout using surface.list (fallback when pane.list is unavailable)
     private var surfaceGrid: some View {
-        let surfaces = appState.surfaces
-        let columns: [GridItem] = surfaces.count == 1
+        let cols: [GridItem] = appState.surfaces.count == 1
             ? [GridItem(.flexible())]
             : [GridItem(.flexible()), GridItem(.flexible())]
 
         return ScrollView {
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(surfaces) { surface in
+            LazyVGrid(columns: cols, spacing: 12) {
+                ForEach(appState.surfaces) { surface in
                     PaneCardView(
                         title: surface.title,
                         isFocused: surface.id == appState.focusedSurfaceID,
@@ -112,7 +106,7 @@ struct WorkspaceLayoutView: View {
             switch appState.connectionStatus {
             case .disconnected, .connecting, .reconnecting: return "Not connected"
             case .connected(false): return "cmux not running"
-            case .connected(true): return "No surfaces"
+            case .connected(true): return "No surfaces · \(appState.surfaces.count) loaded"
             }
         }()
         return Text(msg)
@@ -189,7 +183,6 @@ struct WorkspaceLayoutView: View {
         let speech = speechManager
 
         volumeHandler.onSingleDown = {
-            // Cycle surfaces (works today); if spatial panes are available, cycle panes instead
             if !appState.panes.isEmpty {
                 appState.cyclePane()
             } else {
