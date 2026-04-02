@@ -15,7 +15,7 @@ struct WorkspaceLayoutView: View {
                 workspacePills
                     .frame(height: 52)
 
-                panesCanvas
+                canvas
             }
 
             if showGear {
@@ -46,7 +46,81 @@ struct WorkspaceLayoutView: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Canvas
+
+    @ViewBuilder
+    private var canvas: some View {
+        if !appState.panes.isEmpty {
+            spatialLayout
+        } else if !appState.currentWorkspaceSurfaces.isEmpty {
+            surfaceGrid
+        } else {
+            emptyState
+        }
+    }
+
+    // Spatial layout using geometry from pane.list
+    private var spatialLayout: some View {
+        GeometryReader { geo in
+            ZStack {
+                ForEach(appState.panes) { pane in
+                    let frame = scaledFrame(pane, in: geo.size)
+                    PaneCardView(
+                        title: appState.surfaceTitle(for: pane.focusedSurfaceID ?? ""),
+                        isFocused: pane.isFocused,
+                        hasNotification: appState.hasNotification(for: pane),
+                        isTranscribing: speechManager.isRecording && pane.isFocused,
+                        transcript: speechManager.transcript
+                    )
+                    .frame(width: frame.width, height: frame.height)
+                    .position(x: frame.midX, y: frame.midY)
+                    .onTapGesture { appState.focusPane(pane.id) }
+                }
+            }
+        }
+        .padding(12)
+    }
+
+    // Grid layout using surface.list (fallback when pane.list is unavailable)
+    private var surfaceGrid: some View {
+        let surfaces = appState.currentWorkspaceSurfaces
+        let columns: [GridItem] = surfaces.count == 1
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+
+        return ScrollView {
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(surfaces) { surface in
+                    PaneCardView(
+                        title: surface.title,
+                        isFocused: surface.id == appState.focusedSurfaceID,
+                        hasNotification: appState.hasNotification(for: surface),
+                        isTranscribing: speechManager.isRecording && surface.id == appState.focusedSurfaceID,
+                        transcript: speechManager.transcript
+                    )
+                    .aspectRatio(1.5, contentMode: .fit)
+                    .onTapGesture { appState.focusSurface(surface.id) }
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private var emptyState: some View {
+        let msg: String = {
+            switch appState.connectionStatus {
+            case .disconnected, .connecting, .reconnecting: return "Not connected"
+            case .connected(false): return "cmux not running"
+            case .connected(true): return "No surfaces"
+            }
+        }()
+        return Text(msg)
+            .font(.system(size: 14))
+            .foregroundStyle(.white.opacity(0.3))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Workspace pills
 
     private var workspacePills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -70,9 +144,7 @@ struct WorkspaceLayoutView: View {
                     .buttonStyle(.plain)
                 }
 
-                // Connection status dot
-                statusDot
-                    .padding(.leading, 4)
+                statusDot.padding(.leading, 4)
             }
             .padding(.horizontal, 16)
         }
@@ -88,71 +160,17 @@ struct WorkspaceLayoutView: View {
             case .disconnected: return .red
             }
         }()
-        return Circle()
-            .fill(color)
-            .frame(width: 7, height: 7)
-    }
-
-    private var panesCanvas: some View {
-        GeometryReader { geo in
-            ZStack {
-                if appState.panes.isEmpty {
-                    emptyState(geo: geo)
-                } else {
-                    ForEach(appState.panes) { pane in
-                        let frame = scaledFrame(pane, in: geo.size)
-                        PaneCardView(
-                            pane: pane,
-                            surfaceTitle: appState.surfaceTitle(
-                                for: pane.focusedSurfaceID ?? ""
-                            ),
-                            hasNotification: appState.hasNotification(for: pane),
-                            isTranscribing: speechManager.isRecording && pane.isFocused,
-                            transcript: speechManager.transcript
-                        )
-                        .frame(width: frame.width, height: frame.height)
-                        .position(x: frame.midX, y: frame.midY)
-                        .onTapGesture {
-                            appState.focusPane(pane.id)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(12)
-    }
-
-    @ViewBuilder
-    private func emptyState(geo: GeometryProxy) -> some View {
-        let msg: String = {
-            switch appState.connectionStatus {
-            case .disconnected, .connecting, .reconnecting:
-                return "Not connected"
-            case .connected(false):
-                return "cmux not running"
-            case .connected(true):
-                return "No panes"
-            }
-        }()
-        Text(msg)
-            .font(.system(size: 14))
-            .foregroundStyle(.white.opacity(0.3))
-            .frame(width: geo.size.width, height: geo.size.height)
+        return Circle().fill(color).frame(width: 7, height: 7)
     }
 
     // MARK: - Layout math
 
     private func scaledFrame(_ pane: Pane, in size: CGSize) -> CGRect {
         let n = pane.normalizedFrame
-        let padding: CGFloat = 4
-        let availW = size.width - padding * 2
-        let availH = size.height - padding * 2
-        return CGRect(
-            x: padding + n.minX * availW,
-            y: padding + n.minY * availH,
-            width: n.width * availW,
-            height: n.height * availH
-        )
+        let pad: CGFloat = 4
+        let w = size.width - pad * 2
+        let h = size.height - pad * 2
+        return CGRect(x: pad + n.minX * w, y: pad + n.minY * h, width: n.width * w, height: n.height * h)
     }
 
     // MARK: - Actions
@@ -166,15 +184,19 @@ struct WorkspaceLayoutView: View {
     }
 
     private func setupVolumeHandler() {
-        // WorkspaceLayoutView is a struct; capture class instances directly (no retain cycle)
         let appState = appState
         let speech = speechManager
 
         volumeHandler.onSingleDown = {
-            appState.cycleWorkspace()
+            // Cycle surfaces (works today); if spatial panes are available, cycle panes instead
+            if !appState.panes.isEmpty {
+                appState.cyclePane()
+            } else {
+                appState.cycleSurface()
+            }
         }
         volumeHandler.onDoubleDown = {
-            appState.cyclePane()
+            appState.cycleTabInFocusedPane()
         }
         volumeHandler.onSpeechBegan = {
             Task { @MainActor in speech.start() }
@@ -190,5 +212,3 @@ struct WorkspaceLayoutView: View {
         volumeHandler.start()
     }
 }
-
-

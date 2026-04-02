@@ -10,6 +10,9 @@ final class AppState: ObservableObject {
     @Published var surfaces: [Surface] = []
     @Published var panes: [Pane] = []
     @Published var isPairingPresented = false
+    // Tracks the last surface explicitly focused by the user; used when surface.list
+    // doesn't return is_focused and pane.list is unavailable.
+    @Published private(set) var localFocusedSurfaceID: String?
 
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
@@ -78,12 +81,16 @@ final class AppState: ObservableObject {
     func selectWorkspace(_ id: String) {
         send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
             self?.currentWorkspaceID = id
+            self?.localFocusedSurfaceID = nil
+            self?.refreshSurfaces()
             self?.refreshPanes()
         }
     }
 
     func focusSurface(_ id: String) {
+        localFocusedSurfaceID = id
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
+            self?.refreshSurfaces()
             self?.refreshPanes()
         }
     }
@@ -92,6 +99,14 @@ final class AppState: ObservableObject {
         send(method: "pane.focus", params: ["pane_id": id]) { [weak self] _ in
             self?.refreshPanes()
         }
+    }
+
+    func cycleSurface() {
+        let list = currentWorkspaceSurfaces
+        guard !list.isEmpty else { return }
+        let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
+        let nextIndex = (currentIndex + 1) % list.count
+        focusSurface(list[nextIndex].id)
     }
 
     func cycleWorkspace() {
@@ -168,7 +183,15 @@ final class AppState: ObservableObject {
     // MARK: - Helpers
 
     var focusedSurfaceID: String? {
+        // Prefer pane-derived focus, then surface.is_focused, then local tracking
         panes.first(where: { $0.isFocused })?.focusedSurfaceID
+            ?? surfaces.first(where: { $0.isFocused })?.id
+            ?? localFocusedSurfaceID
+    }
+
+    var currentWorkspaceSurfaces: [Surface] {
+        guard let wsID = currentWorkspaceID else { return surfaces }
+        return surfaces.filter { $0.workspaceID == wsID }
     }
 
     func surfaceTitle(for id: String) -> String {
@@ -180,6 +203,10 @@ final class AppState: ObservableObject {
             guard let panelID = n.panelID else { return false }
             return pane.surfaceIDs.contains(panelID)
         }
+    }
+
+    func hasNotification(for surface: Surface) -> Bool {
+        notifications.contains { $0.panelID == surface.id }
     }
 
     // MARK: - Private helpers
@@ -275,12 +302,14 @@ struct Surface: Identifiable {
     let id: String
     let title: String
     let workspaceID: String?
+    let isFocused: Bool
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
         self.id = id
         self.title = (dict["title"] as? String) ?? (dict["type"] as? String) ?? id
         self.workspaceID = dict["workspace_id"] as? String
+        self.isFocused = dict["is_focused"] as? Bool ?? false
     }
 }
 
