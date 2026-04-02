@@ -4,48 +4,47 @@ struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
-    @State private var showGear = false
-    @State private var gearTimer: Timer?
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                workspacePills
-                    .frame(height: 52)
-
-                // Inline condition so SwiftUI tracks appState.surfaces directly in body
-                if !appState.panes.isEmpty {
-                    spatialLayout
-                } else if !appState.surfaces.isEmpty {
-                    surfaceGrid
+        NavigationStack {
+            Group {
+                if appState.surfaces.isEmpty {
+                    ContentUnavailableView(
+                        "No surfaces",
+                        systemImage: "square.split.2x1",
+                        description: Text("Surfaces in the current workspace appear here.")
+                    )
                 } else {
-                    emptyState
+                    surfaceGrid
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            if showGear {
-                Button {
-                    appState.isPairingPresented = true
-                } label: {
-                    Image(systemName: "gear")
-                        .font(.title3)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .padding(16)
+            .navigationTitle("Layout")
+            .background(Color.black.ignoresSafeArea())
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    workspacePills
                 }
-                .transition(.opacity)
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 12) {
+                        statusDot
+                        Button {
+                            appState.refreshSurfaces()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                }
             }
+            .refreshable { appState.refreshSurfaces() }
         }
-        .animation(.easeInOut(duration: 0.2), value: showGear)
-        .contentShape(Rectangle())
-        .onTapGesture { revealGear() }
         .onAppear {
-            setupVolumeHandler()
-            speechManager.requestPermissions()
             appState.refreshSurfaces()
-            appState.refreshPanes()
+            speechManager.requestPermissions()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                setupVolumeHandler()
+            }
         }
         .onDisappear {
             volumeHandler.stop()
@@ -55,28 +54,7 @@ struct WorkspaceLayoutView: View {
         }
     }
 
-    // MARK: - Canvas views
-
-    private var spatialLayout: some View {
-        GeometryReader { geo in
-            ZStack {
-                ForEach(appState.panes) { pane in
-                    let frame = scaledFrame(pane, in: geo.size)
-                    PaneCardView(
-                        title: appState.surfaceTitle(for: pane.focusedSurfaceID ?? ""),
-                        isFocused: pane.isFocused,
-                        hasNotification: appState.hasNotification(for: pane),
-                        isTranscribing: speechManager.isRecording && pane.isFocused,
-                        transcript: speechManager.transcript
-                    )
-                    .frame(width: frame.width, height: frame.height)
-                    .position(x: frame.midX, y: frame.midY)
-                    .onTapGesture { appState.focusPane(pane.id) }
-                }
-            }
-        }
-        .padding(12)
-    }
+    // MARK: - Surface grid
 
     private var surfaceGrid: some View {
         let cols: [GridItem] = appState.surfaces.count == 1
@@ -99,20 +77,7 @@ struct WorkspaceLayoutView: View {
             }
             .padding(12)
         }
-    }
-
-    private var emptyState: some View {
-        let msg: String = {
-            switch appState.connectionStatus {
-            case .disconnected, .connecting, .reconnecting: return "Not connected"
-            case .connected(false): return "cmux not running"
-            case .connected(true): return "No surfaces · \(appState.surfaces.count) loaded"
-            }
-        }()
-        return Text(msg)
-            .font(.system(size: 14))
-            .foregroundStyle(.white.opacity(0.3))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 
     // MARK: - Workspace pills
@@ -138,12 +103,8 @@ struct WorkspaceLayoutView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                statusDot.padding(.leading, 4)
             }
-            .padding(.horizontal, 16)
         }
-        .frame(maxHeight: .infinity, alignment: .center)
     }
 
     private var statusDot: some View {
@@ -158,39 +119,14 @@ struct WorkspaceLayoutView: View {
         return Circle().fill(color).frame(width: 7, height: 7)
     }
 
-    // MARK: - Layout math
-
-    private func scaledFrame(_ pane: Pane, in size: CGSize) -> CGRect {
-        let n = pane.normalizedFrame
-        let pad: CGFloat = 4
-        let w = size.width - pad * 2
-        let h = size.height - pad * 2
-        return CGRect(x: pad + n.minX * w, y: pad + n.minY * h, width: n.width * w, height: n.height * h)
-    }
-
     // MARK: - Actions
-
-    private func revealGear() {
-        showGear = true
-        gearTimer?.invalidate()
-        gearTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-            withAnimation { showGear = false }
-        }
-    }
 
     private func setupVolumeHandler() {
         let appState = appState
         let speech = speechManager
 
         volumeHandler.onSingleDown = {
-            if !appState.panes.isEmpty {
-                appState.cyclePane()
-            } else {
-                appState.cycleSurface()
-            }
-        }
-        volumeHandler.onDoubleDown = {
-            appState.cycleTabInFocusedPane()
+            appState.cycleSurface()
         }
         volumeHandler.onSpeechBegan = {
             Task { @MainActor in speech.start() }
