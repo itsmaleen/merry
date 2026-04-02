@@ -102,3 +102,11 @@ Great that worked now let's commit the changes
 now missing part is we need to have a way to auth press enter or manually press enter
 
 What would you suggest? Maybe we have it as a toggle/option in the settings as well
+
+---
+
+let's commit this change and next, let's work on the UI/UX
+
+We should default to landscape mode and showing the main active surface maybe taking 2/3 of the screen and then the rest is tiles (if there are other services) and show some animation when cycling through
+
+Brainstorm the rest of the UI to make this look cool/futuristic and clean/easy to understand
