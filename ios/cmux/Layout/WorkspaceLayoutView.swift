@@ -1,9 +1,11 @@
 import SwiftUI
+import AudioToolbox
 
 struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
+    @State private var lastNotificationCount = 0
 
     var body: some View {
         NavigationStack {
@@ -39,6 +41,13 @@ struct WorkspaceLayoutView: View {
                 }
             }
             .refreshable { appState.refreshSurfaces() }
+            .onChange(of: appState.notifications.count) { oldCount, newCount in
+                if newCount > oldCount {
+                    AudioServicesPlaySystemSound(1007) // "Tink" alert tone
+                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                }
+                lastNotificationCount = newCount
+            }
         }
         .onAppear {
             appState.refreshSurfaces()
@@ -95,24 +104,41 @@ struct WorkspaceLayoutView: View {
         return name
     }
 
+    /// Whether notifications exist that relate to surfaces in the current workspace.
+    /// For the active workspace we can check panelIDs against loaded surfaces.
+    /// For other workspaces we can't know (surfaces aren't loaded), so we don't show an indicator.
+    private func workspaceHasNotification(_ ws: Workspace) -> Bool {
+        guard ws.id == appState.currentWorkspaceID else { return false }
+        let surfaceIDs = Set(appState.surfaces.map(\.id))
+        return appState.notifications.contains { n in
+            guard let panelID = n.panelID else { return false }
+            return surfaceIDs.contains(panelID)
+        }
+    }
+
     private var workspacePills: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(appState.workspaces.enumerated()), id: \.element.id) { index, ws in
+                        let isActive = ws.id == appState.currentWorkspaceID
+                        let hasNotif = workspaceHasNotification(ws)
+
                         Button {
                             appState.selectWorkspace(ws.id)
                         } label: {
                             Text(workspaceLabel(for: ws, at: index))
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(ws.id == appState.currentWorkspaceID ? .black : .white.opacity(0.6))
+                                .foregroundStyle(isActive ? .black : .white.opacity(0.6))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 6)
                                 .background(
                                     Capsule()
-                                        .fill(ws.id == appState.currentWorkspaceID
-                                              ? Color.white
-                                              : Color.white.opacity(0.1))
+                                        .fill(isActive ? Color.white : Color.white.opacity(0.1))
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.orange, lineWidth: hasNotif ? 2 : 0)
                                 )
                         }
                         .buttonStyle(.plain)
