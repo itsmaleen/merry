@@ -12,32 +12,52 @@ final class SpeechInputManager: ObservableObject {
     private let audioEngine = AVAudioEngine()
 
     func requestPermissions() {
-        SFSpeechRecognizer.requestAuthorization { _ in }
-        AVAudioSession.sharedInstance().requestRecordPermission { _ in }
+        SFSpeechRecognizer.requestAuthorization { status in
+            print("[Speech] authorization: \(status.rawValue)")
+        }
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            print("[Speech] microphone permission: \(granted)")
+        }
     }
 
     func start() {
         guard !isRecording else { return }
         transcript = ""
 
+        guard let speechRecognizer, speechRecognizer.isAvailable else {
+            print("[Speech] recognizer unavailable")
+            return
+        }
+
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
 
             recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
             guard let request = recognitionRequest else { return }
             request.shouldReportPartialResults = true
 
-            let inputNode = audioEngine.inputNode
-            let fmt = inputNode.outputFormat(forBus: 0)
-
-            recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, _ in
+            recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+                if let error {
+                    print("[Speech] recognition error: \(error.localizedDescription)")
+                }
                 if let result {
                     Task { @MainActor [weak self] in
                         self?.transcript = result.bestTranscription.formattedString
+                        print("[Speech] transcript: \(result.bestTranscription.formattedString)")
                     }
                 }
+            }
+
+            let inputNode = audioEngine.inputNode
+            let fmt = inputNode.outputFormat(forBus: 0)
+
+            // Guard against zero-sample-rate format which causes silent failure
+            guard fmt.sampleRate > 0 else {
+                print("[Speech] inputNode format has zero sample rate: \(fmt)")
+                cleanupAudio()
+                return
             }
 
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: fmt) { [weak self] buffer, _ in
@@ -47,12 +67,15 @@ final class SpeechInputManager: ObservableObject {
             audioEngine.prepare()
             try audioEngine.start()
             isRecording = true
+            print("[Speech] started recording")
         } catch {
+            print("[Speech] start failed: \(error.localizedDescription)")
             cleanupAudio()
         }
     }
 
     func stop() -> String {
+        print("[Speech] stopping, transcript: \(transcript)")
         let result = transcript
         cleanupAudio()
         return result

@@ -188,9 +188,14 @@ struct WorkspaceLayoutView: View {
         }
         volumeHandler.onSpeechEnded = {
             Task { @MainActor in
+                // Give the recognizer a moment to flush its final result
+                let pending = speech.transcript
+                try? await Task.sleep(nanoseconds: 300_000_000)
                 let text = speech.stop()
-                if !text.isEmpty, let surfaceID = appState.focusedSurfaceID {
-                    appState.sendText(text, to: surfaceID)
+                let final_text = text.isEmpty ? pending : text
+                print("[Speech] sending: \(final_text)")
+                if !final_text.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                    appState.sendText(final_text, to: surfaceID)
                 }
             }
         }

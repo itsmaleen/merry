@@ -17,8 +17,7 @@ final class VolumeButtonHandler: ObservableObject {
     private var lastDownTime: Date?
     private var pendingSingleTimer: Timer?
 
-    private var speechActive = false
-    private var speechReleaseTimer: Timer?
+    private(set) var speechActive = false
 
     private var volumeSlider: UISlider? {
         volumeView.subviews.compactMap { $0 as? UISlider }.first
@@ -50,7 +49,6 @@ final class VolumeButtonHandler: ObservableObject {
         observation?.invalidate()
         observation = nil
         pendingSingleTimer?.invalidate()
-        speechReleaseTimer?.invalidate()
         volumeView.removeFromSuperview()
     }
 
@@ -69,6 +67,9 @@ final class VolumeButtonHandler: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.isAdjustingVolume else { return }
                 if delta < 0 {
+                    // Ignore volume-down during speech — audio session route
+                    // changes cause spurious negative-delta KVO events
+                    guard !self.speechActive else { return }
                     self.handleVolumeDown()
                     // Delay volume reset so the second press of a double-click
                     // isn't swallowed by the isAdjustingVolume guard
@@ -77,7 +78,6 @@ final class VolumeButtonHandler: ObservableObject {
                     }
                 } else {
                     self.handleVolumeUp()
-                    self.setVolume(0.5)
                 }
             }
         }
@@ -101,18 +101,14 @@ final class VolumeButtonHandler: ObservableObject {
     }
 
     private func handleVolumeUp() {
-        speechReleaseTimer?.invalidate()
-
-        if !speechActive {
+        if speechActive {
+            speechActive = false
+            onSpeechEnded?()
+        } else {
             speechActive = true
             onSpeechBegan?()
         }
-
-        speechReleaseTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { [weak self] _ in
-            guard let self, self.speechActive else { return }
-            self.speechActive = false
-            self.onSpeechEnded?()
-        }
+        setVolume(0.5)
     }
 
     private func setVolume(_ value: Float) {
