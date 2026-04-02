@@ -17,3 +17,7 @@ Can you come up with what changed between step 1 implementation and now and figu
 ---
 
 great that fixed it, what was the issue?
+
+---
+
+let's commit these changes before we make more changes
