@@ -102,7 +102,7 @@ final class AppState: ObservableObject {
     }
 
     func cycleSurface() {
-        let list = currentWorkspaceSurfaces
+        let list = surfaces
         guard !list.isEmpty else { return }
         let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
         let nextIndex = (currentIndex + 1) % list.count

@@ -36,6 +36,7 @@ struct WorkspaceLayoutView: View {
         .onAppear {
             setupVolumeHandler()
             speechManager.requestPermissions()
+            appState.refreshSurfaces()
             appState.refreshPanes()
         }
         .onDisappear {
@@ -52,7 +53,7 @@ struct WorkspaceLayoutView: View {
     private var canvas: some View {
         if !appState.panes.isEmpty {
             spatialLayout
-        } else if !appState.currentWorkspaceSurfaces.isEmpty {
+        } else if !appState.surfaces.isEmpty {
             surfaceGrid
         } else {
             emptyState
@@ -83,7 +84,7 @@ struct WorkspaceLayoutView: View {
 
     // Grid layout using surface.list (fallback when pane.list is unavailable)
     private var surfaceGrid: some View {
-        let surfaces = appState.currentWorkspaceSurfaces
+        let surfaces = appState.surfaces
         let columns: [GridItem] = surfaces.count == 1
             ? [GridItem(.flexible())]
             : [GridItem(.flexible()), GridItem(.flexible())]
