@@ -302,18 +302,18 @@ struct Pane: Identifiable {
         self.id = id
 
         if let pf = dict["pixel_frame"] as? [String: Any] {
-            let x = (pf["x"] as? Double).map(CGFloat.init) ?? 0
-            let y = (pf["y"] as? Double).map(CGFloat.init) ?? 0
-            let w = (pf["width"] as? Double).map(CGFloat.init) ?? 100
-            let h = (pf["height"] as? Double).map(CGFloat.init) ?? 100
+            let x = (pf["x"] as? Double).map { CGFloat($0) } ?? 0
+            let y = (pf["y"] as? Double).map { CGFloat($0) } ?? 0
+            let w = (pf["width"] as? Double).map { CGFloat($0) } ?? 100
+            let h = (pf["height"] as? Double).map { CGFloat($0) } ?? 100
             pixelFrame = CGRect(x: x, y: y, width: w, height: h)
         } else {
             pixelFrame = CGRect(x: 0, y: 0, width: 100, height: 100)
         }
 
         if let cf = dict["container_frame"] as? [String: Any] {
-            let w = (cf["width"] as? Double).map(CGFloat.init) ?? 100
-            let h = (cf["height"] as? Double).map(CGFloat.init) ?? 100
+            let w = (cf["width"] as? Double).map { CGFloat($0) } ?? 100
+            let h = (cf["height"] as? Double).map { CGFloat($0) } ?? 100
             containerFrame = CGSize(width: w, height: h)
         } else {
             containerFrame = CGSize(width: 100, height: 100)

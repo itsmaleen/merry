@@ -175,21 +175,24 @@ struct WorkspaceLayoutView: View {
     }
 
     private func setupVolumeHandler() {
-        volumeHandler.onSingleDown = { [weak appState] in
-            appState?.cyclePane()
+        // WorkspaceLayoutView is a struct; capture class instances directly (no retain cycle)
+        let appState = appState
+        let speech = speechManager
+
+        volumeHandler.onSingleDown = {
+            appState.cyclePane()
         }
-        volumeHandler.onDoubleDown = { [weak appState] in
-            appState?.cycleTabInFocusedPane()
+        volumeHandler.onDoubleDown = {
+            appState.cycleTabInFocusedPane()
         }
-        volumeHandler.onSpeechBegan = { [weak speechManager] in
-            Task { @MainActor in speechManager?.start() }
+        volumeHandler.onSpeechBegan = {
+            Task { @MainActor in speech.start() }
         }
-        volumeHandler.onSpeechEnded = { [weak self] in
+        volumeHandler.onSpeechEnded = {
             Task { @MainActor in
-                guard let self else { return }
-                let text = self.speechManager.stop()
-                if !text.isEmpty, let surfaceID = self.appState.focusedSurfaceID {
-                    self.appState.sendText(text, to: surfaceID)
+                let text = speech.stop()
+                if !text.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                    appState.sendText(text, to: surfaceID)
                 }
             }
         }
