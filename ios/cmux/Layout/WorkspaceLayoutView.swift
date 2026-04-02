@@ -1,5 +1,4 @@
 import SwiftUI
-import MediaPlayer
 
 struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
@@ -34,14 +33,6 @@ struct WorkspaceLayoutView: View {
         .animation(.easeInOut(duration: 0.2), value: showGear)
         .contentShape(Rectangle())
         .onTapGesture { revealGear() }
-        .overlay(
-            // Off-screen MPVolumeView suppresses system volume HUD
-            VolumeHUDSuppressor(view: volumeHandler.volumeView)
-                .frame(width: 1, height: 1)
-                .opacity(0.001)
-                .allowsHitTesting(false),
-            alignment: .topLeading
-        )
         .onAppear {
             setupVolumeHandler()
             speechManager.requestPermissions()
@@ -200,10 +191,4 @@ struct WorkspaceLayoutView: View {
     }
 }
 
-// MARK: - MPVolumeView wrapper
 
-struct VolumeHUDSuppressor: UIViewRepresentable {
-    let view: MPVolumeView
-    func makeUIView(context: Context) -> MPVolumeView { view }
-    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
-}
