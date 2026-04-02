@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "da94278fe4dc",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/da/94278fe4dc/0/metadata.json",
+      "transcript": "/da/94278fe4dc/0/full.jsonl",
+      "content_hash": "/da/94278fe4dc/0/content_hash.txt",
+      "prompt": "/da/94278fe4dc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 31,
+    "cache_creation_tokens": 27726,
+    "cache_read_tokens": 529239,
+    "output_tokens": 11817,
+    "api_call_count": 19
+  }
+}

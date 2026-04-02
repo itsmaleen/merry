@@ -1,0 +1,19 @@
+look at plans/ios-layout-view.md and then we can start building/fixing the implementation
+
+---
+
+great that is now showing the surfaces of 1 specific workspace, need to bring the other workspaces and go through the other steps
+
+---
+
+these changes have broken something and now can't see the surfaces in the layout tab as we had done in step 1
+
+---
+
+That still isn't showing any windows, just black screen with the pillings in a small circle in the left that's too small
+
+Can you come up with what changed between step 1 implementation and now and figure out why it would break what was previously showing? Maybe because a workspace isn't properly selected? (unlikely because when a pill is chosen, can see the change on cmux + in the surfaces tab but seeing nothing in the layouts tab which is where we should be seeing the windows)
+
+---
+
+great that fixed it, what was the issue?
