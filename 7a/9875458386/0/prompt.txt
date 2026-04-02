@@ -1,0 +1,5 @@
+status
+
+---
+
+commit the staged files - write a proper commit message but DONT include claude as coauthor

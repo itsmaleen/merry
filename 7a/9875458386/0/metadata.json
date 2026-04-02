@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "7a9875458386",
+  "session_id": "388f949f-dd55-450d-869b-b9fe2b3a4cdd",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-02T17:52:33.70052Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "bridge/internal/pair/qr.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "625828e01d31",
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 5598,
+    "cache_read_tokens": 65737,
+    "output_tokens": 754,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-02T17:52:33.669343Z",
+    "agent_lines": 100,
+    "human_added": 1056,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1156,
+    "agent_percentage": 8.650519031141869
+  }
+}
