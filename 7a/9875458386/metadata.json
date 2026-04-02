@@ -5,8 +5,19 @@
   "branch": "main",
   "checkpoints_count": 2,
   "files_touched": [
+    "bridge/cmd/cmux-bridge/main.go",
     "bridge/go.mod",
-    "bridge/internal/pair/qr.go"
+    "bridge/go.sum",
+    "bridge/internal/mdns/advertise.go",
+    "bridge/internal/pair/qr.go",
+    "bridge/internal/poller/poller.go",
+    "bridge/internal/socket/client.go",
+    "bridge/internal/ws/auth.go",
+    "bridge/internal/ws/handler.go",
+    "bridge/internal/ws/server.go",
+    "bridge/internal/ws/version.go",
+    "scripts/build.sh",
+    "scripts/install-bridge.sh"
   ],
   "sessions": [
     {
@@ -20,6 +31,12 @@
       "transcript": "/7a/9875458386/1/full.jsonl",
       "content_hash": "/7a/9875458386/1/content_hash.txt",
       "prompt": "/7a/9875458386/1/prompt.txt"
+    },
+    {
+      "metadata": "/7a/9875458386/2/metadata.json",
+      "transcript": "/7a/9875458386/2/full.jsonl",
+      "content_hash": "/7a/9875458386/2/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
