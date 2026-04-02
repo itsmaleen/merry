@@ -1,0 +1,135 @@
+{
+  "info": {
+    "id": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+    "slug": "misty-river",
+    "projectID": "a9ea4091881f9143abf2e2025414c783405afba2",
+    "directory": "/Users/marlin/cmux-companion",
+    "title": "LSP showing empty in opencode",
+    "version": "1.3.13",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "time": {
+      "created": 1775147007327,
+      "updated": 1775147015015
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1775147007356
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "anthropic",
+          "modelID": "claude-sonnet-4-6"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_d4f01bd6d0015bz9CHeM5AEW55",
+        "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "why is LSP showing as empty on opencode? ",
+          "id": "prt_d4f01bd6e001jzLtdjSmkTChFZ",
+          "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+          "messageID": "msg_d4f01bd6d0015bz9CHeM5AEW55"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_d4f01bd6d0015bz9CHeM5AEW55",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/marlin/cmux-companion",
+          "root": "/Users/marlin/cmux-companion"
+        },
+        "cost": 0.00947385,
+        "tokens": {
+          "total": 10543,
+          "input": 1,
+          "output": 274,
+          "reasoning": 0,
+          "cache": {
+            "write": 661,
+            "read": 9607
+          }
+        },
+        "modelID": "claude-sonnet-4-6",
+        "providerID": "anthropic",
+        "time": {
+          "created": 1775147007380,
+          "completed": 1775147027489
+        },
+        "finish": "stop",
+        "id": "msg_d4f01bd940015wZc1Qd7S1RLS5",
+        "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76"
+      },
+      "parts": [
+        {
+          "snapshot": "d20918a849af35f0177705ac11c30a1e8dc10f09",
+          "type": "step-start",
+          "id": "prt_d4f01dcd6001AsoYmojkxslthd",
+          "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+          "messageID": "msg_d4f01bd940015wZc1Qd7S1RLS5"
+        },
+        {
+          "type": "reasoning",
+          "text": "The user is asking about why LSP (Language Server Protocol) is showing as empty in OpenCode. Let me check the project structure to understand what's going on.",
+          "time": {
+            "start": 1775147015388,
+            "end": 1775147016354
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "EtwCClsIDBgCKkAgwU3qzqLLl0ZzxX2nfYjRgxN7vXLgtHS1LwA9bQ2BVj9ChrpRGABuvZrCJ/dXrAEVsNFJCN0BOhFqg9cbqh7/MhFjbGF1ZGUtc29ubmV0LTQtNjgAEgzqPGMnqlAyY7DKinIaDGxZsoVr7FkQYA17NCIwau4OTvQhZ/7Loy3pJi5tTeb9KS7jQ0zuucRX2Qdwq3OP0zf8UNLsb0F+PtdR+yRLKq4BjmlBFjU2wEYOUGcCyVEXpvIhayk4ssKLuZaBG70f9ieQelprOOQHLs1NABKeFvdNMjUsIedxVb+kuF+R2jovFPncHHlzrcrsazGJyaJTaa0Us1VX2ftdTQf8S3hwjw0xJvnLlM9VX6nMI5dMuN8d8ME1j+HPh9ESgwjW+yRUw1oT8+OiNElsIsdgyDJHmYVFQ+AFrkX7gpYG+M7GTGNE6XmiYl18hqwiZIqXX40DGAE="
+            }
+          },
+          "id": "prt_d4f01dcdc001sFtlnUS6BXeu7S",
+          "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+          "messageID": "msg_d4f01bd940015wZc1Qd7S1RLS5"
+        },
+        {
+          "type": "text",
+          "text": "OpenCode's LSP feature requires a language server to be installed and configured for the language(s) in your project. The project here is Go-based, so it needs `gopls` to be available.\n\nA few common reasons LSP shows as empty:\n\n1. **No language server installed** — for Go, `gopls` needs to be on your `$PATH`. Check with:\n   ```sh\n   which gopls\n   ```\n   Install if missing:\n   ```sh\n   go install golang.org/x/tools/gopls@latest\n   ```\n\n2. **OpenCode config has no LSP entries** — OpenCode may need explicit LSP configuration. Check `~/.config/opencode/config.json` for an `lsp` section.\n\n3. **No `go.work` or the module path is unresolvable** — OpenCode might not detect the Go module if you're opening a subdirectory (`bridge/`) rather than the workspace root.\n\n4. **Binary not found at session start** — LSP servers are detected at launch; if `gopls` wasn't on `$PATH` when OpenCode started, it won't show up.\n\nWhich of these would you like me to investigate further?",
+          "time": {
+            "start": 1775147026505,
+            "end": 1775147026505
+          },
+          "id": "prt_d4f01f319001MrFLFysHsC2NUV",
+          "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+          "messageID": "msg_d4f01bd940015wZc1Qd7S1RLS5"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "d20918a849af35f0177705ac11c30a1e8dc10f09",
+          "type": "step-finish",
+          "tokens": {
+            "total": 10543,
+            "input": 1,
+            "output": 274,
+            "reasoning": 0,
+            "cache": {
+              "write": 661,
+              "read": 9607
+            }
+          },
+          "cost": 0.00947385,
+          "id": "prt_d4f020baa001x0ujsHkOQExQaM",
+          "sessionID": "ses_2b0fe42a1ffenyTMGl1imQqy76",
+          "messageID": "msg_d4f01bd940015wZc1Qd7S1RLS5"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+why is LSP showing as empty on opencode?
