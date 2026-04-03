@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import UserNotifications
 
 @MainActor
 final class AppState: ObservableObject {
@@ -21,6 +22,29 @@ final class AppState: ObservableObject {
     init() {
         startDiscovery()
         connectIfPaired()
+        requestNotificationPermission()
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+            print("[Notification] push permission: \(granted)")
+        }
+    }
+
+    private func scheduleLocalNotification(_ n: BridgeNotification) {
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = n.title
+        if let subtitle = n.subtitle { content.subtitle = subtitle }
+        if let body = n.body { content.body = body }
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: n.id,
+            content: content,
+            trigger: nil // deliver immediately
+        )
+        center.add(request)
     }
 
     // MARK: - Pairing
@@ -241,13 +265,13 @@ final class AppState: ObservableObject {
 
     func hasNotification(for pane: Pane) -> Bool {
         notifications.contains { n in
-            guard let panelID = n.panelID else { return false }
-            return pane.surfaceIDs.contains(panelID)
+            guard let sid = n.surfaceID else { return false }
+            return pane.surfaceIDs.contains(sid)
         }
     }
 
     func hasNotification(for surface: Surface) -> Bool {
-        notifications.contains { $0.panelID == surface.id }
+        notifications.contains { $0.surfaceID == surface.id }
     }
 
     // MARK: - Private helpers
@@ -281,6 +305,9 @@ extension AppState: BridgeClientDelegate {
             connectionStatus = .connected(cmuxConnected: payload.cmuxConnected)
         case .notificationCreated(let n):
             notifications.insert(n, at: 0)
+            print("[Notification] id=\(n.id) surfaceID=\(n.surfaceID ?? "nil") workspaceID=\(n.workspaceID ?? "nil") title=\(n.title)")
+            print("[Notification] surface IDs: \(surfaces.map(\.id))")
+            scheduleLocalNotification(n)
         case .notificationCleared:
             notifications = []
         case .cmuxConnected:
@@ -316,15 +343,15 @@ struct BridgeNotification: Identifiable, Decodable {
     let title: String
     let subtitle: String?
     let body: String?
-    let tabID: String?
-    let panelID: String?
-    let createdAt: String?
+    let workspaceID: String?
+    let surfaceID: String?
+    let isRead: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, title, subtitle, body
-        case tabID = "tab_id"
-        case panelID = "panel_id"
-        case createdAt = "created_at"
+        case workspaceID = "workspace_id"
+        case surfaceID = "surface_id"
+        case isRead = "is_read"
     }
 }
 

@@ -28,9 +28,9 @@ Sent when cmux receives a new notification.
     "title": "Claude Code",
     "subtitle": "Permission",
     "body": "Approval needed for file write",
-    "tab_id": "uuid-or-null",
-    "panel_id": "uuid-or-null",
-    "created_at": "2026-04-02T10:00:00Z"
+    "workspace_id": "uuid",
+    "surface_id": "uuid-or-null",
+    "is_read": false
   }
 }
 ```

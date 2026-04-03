@@ -11,13 +11,13 @@ import (
 
 // Notification mirrors the fields we care about from cmux's notification object.
 type Notification struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Subtitle  string `json:"subtitle"`
-	Body      string `json:"body"`
-	TabID     string `json:"tab_id"`
-	PanelID   string `json:"panel_id"`
-	CreatedAt string `json:"created_at"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle"`
+	Body        string `json:"body"`
+	WorkspaceID string `json:"workspace_id"`
+	SurfaceID   string `json:"surface_id"`
+	IsRead      bool   `json:"is_read"`
 }
 
 // Event is emitted by the poller to subscribers.

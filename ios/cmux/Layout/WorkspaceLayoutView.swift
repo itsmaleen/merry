@@ -478,12 +478,7 @@ struct WorkspaceLayoutView: View {
     }
 
     private func workspaceHasNotification(_ ws: Workspace) -> Bool {
-        guard ws.id == appState.currentWorkspaceID else { return false }
-        let surfaceIDs = Set(appState.surfaces.map(\.id))
-        return appState.notifications.contains { n in
-            guard let panelID = n.panelID else { return false }
-            return surfaceIDs.contains(panelID)
-        }
+        appState.notifications.contains { $0.workspaceID == ws.id }
     }
 
     private var workspacePills: some View {
