@@ -225,3 +225,7 @@ Cool now I think there's only one last thing we should do before we can think ab
 ---
 
 what's the command to build the bridge? We should all of the commands necessary to start/setup in the README.md
+
+---
+
+pretty sure the paths are incorrect - the bridge is something custom build on this repo, not officially from manaflow-ai so need to update the script (and probably the iOS identifier (instead of ai.manaflow -> com.itsmaleen)
