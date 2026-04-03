@@ -308,3 +308,7 @@ great the worked, let's commit these changes
 ---
 
 Cool now let's work on a minor bug that I noticed where on app launch it seems to either automatically go to record or volume down trigger as a record need to investigate what is causing that but it seems like after you exit the speech odd mode it seems to work OK
+
+---
+
+That didn't work let's remove that change it seems like on startup the first volume click even if it's the volume down starts recording
