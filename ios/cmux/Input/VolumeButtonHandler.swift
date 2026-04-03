@@ -31,14 +31,22 @@ final class VolumeButtonHandler: ObservableObject {
     func start() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+
+            // Clean up previous observer before re-attaching
+            self.observation?.invalidate()
+            self.observation = nil
+
             if let window = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .flatMap({ $0.windows })
                 .first(where: { $0.isKeyWindow }) {
+                // Re-add in case it was detached
+                self.volumeView.removeFromSuperview()
                 window.addSubview(self.volumeView)
             }
 
             let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.ambient)
             try? session.setActive(true)
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
