@@ -221,3 +221,7 @@ All right I think that might've fixed it so we can commit a change
 ---
 
 Cool now I think there's only one last thing we should do before we can think about launching this which is the notification stuff doesn't seem to work we need to one show on the surface windows when the specific surface has finished or there needs to be notification and we all should also show it on the workspace pill button specifically if not on that carnival space and then lastly when not on the app should show a notification like other apps usually do
+
+---
+
+what's the command to build the bridge? We should all of the commands necessary to start/setup in the README.md
