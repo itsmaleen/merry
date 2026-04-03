@@ -22,3 +22,7 @@ how can I test that tit's the right command being sent
 
 In the settings of cmux I see the shortcut for "toggle pane zoom" which is CMD+SHIFT+ENTER 
 That's what I want to shortcut for
+
+---
+
+great that worked, now commit these cahnges
