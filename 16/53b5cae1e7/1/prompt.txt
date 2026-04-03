@@ -1,0 +1,23 @@
+Looking at this tweet from famous VC https://x.com/andrewchen/status/2039571728922460611
+
+Help me come up with a launch strategy - should I record a video + share repo?
+
+---
+
+what should a tiktok and instagram video caption be for this? Give me a good caption + hashtags
+
+---
+
+what about tweet? should definitely give homage to ritual.industries who originally built it for himself and his terminals
+
+---
+
+maybe specify that mine is on top of cmux and tag the creator of cmux https://x.com/lawrencecchen
+
+---
+
+should I use the same video from instagram/tiktok for twitter or should I just post a picture? or maybe abreviated video
+
+---
+
+when replying to andrew chens tweet, should I link my tweet or the github repo or both?
