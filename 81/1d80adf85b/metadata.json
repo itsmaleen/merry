@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "811d80adf85b",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "ios/cmux/Input/VolumeButtonHandler.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/81/1d80adf85b/0/metadata.json",
+      "transcript": "/81/1d80adf85b/0/full.jsonl",
+      "content_hash": "/81/1d80adf85b/0/content_hash.txt",
+      "prompt": "/81/1d80adf85b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 574,
+    "cache_creation_tokens": 832229,
+    "cache_read_tokens": 73705127,
+    "output_tokens": 149208,
+    "api_call_count": 439
+  }
+}
