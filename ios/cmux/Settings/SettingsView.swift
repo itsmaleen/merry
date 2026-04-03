@@ -18,6 +18,12 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Quick Actions") {
+                    NavigationLink("Manage Quick Actions") {
+                        QuickActionSettingsView()
+                    }
+                }
+
                 Section("Speech Input") {
                     Toggle("Auto-submit speech", isOn: $autoSubmitSpeech)
                     Text("When enabled, automatically presses Enter after sending speech text.")

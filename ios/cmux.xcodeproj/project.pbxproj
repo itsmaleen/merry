@@ -28,6 +28,9 @@
 		D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */; };
 		D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */; };
 		F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF14434A29B8ED1DF0919103 /* PairingView.swift */; };
+		AA1B2C3D4E5F60718293A4B5 /* QuickActionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F60718293A4B5C6 /* QuickActionStore.swift */; };
+		CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F60718293A4B5C6D7E8 /* QuickActionSettingsView.swift */; };
+		EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF60718293A4B5C6D7E8F90A /* QuickActionEditView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,6 +57,9 @@
 		D6CEFBCA99422E02BB0230AD /* ControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlView.swift; sourceTree = "<group>"; };
 		F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendTextView.swift; sourceTree = "<group>"; };
 		F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceListView.swift; sourceTree = "<group>"; };
+		BB2C3D4E5F60718293A4B5C6 /* QuickActionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionStore.swift; sourceTree = "<group>"; };
+		DD4E5F60718293A4B5C6D7E8 /* QuickActionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionSettingsView.swift; sourceTree = "<group>"; };
+		FF60718293A4B5C6D7E8F90A /* QuickActionEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionEditView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -76,6 +82,7 @@
 				4183338A1FE89998152BC1C7 /* Layout */,
 				F2ADF9623946322872FDBD6F /* Notifications */,
 				EE047ADCF216D7F1576FCA9A /* Pairing */,
+				AB718293A4B5C6D7E8F90A1B /* QuickActions */,
 				E22BFD3D6D0F77E004720F06 /* Settings */,
 			);
 			path = cmux;
@@ -119,9 +126,19 @@
 			path = Control;
 			sourceTree = "<group>";
 		};
+		AB718293A4B5C6D7E8F90A1B /* QuickActions */ = {
+			isa = PBXGroup;
+			children = (
+				BB2C3D4E5F60718293A4B5C6 /* QuickActionStore.swift */,
+			);
+			path = QuickActions;
+			sourceTree = "<group>";
+		};
 		E22BFD3D6D0F77E004720F06 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				FF60718293A4B5C6D7E8F90A /* QuickActionEditView.swift */,
+				DD4E5F60718293A4B5C6D7E8 /* QuickActionSettingsView.swift */,
 				9143B92AA62E9EC62A403DC9 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -236,6 +253,9 @@
 				59F8BC48FEA3798A11AF25C3 /* PairingStore.swift in Sources */,
 				F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */,
 				5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */,
+				EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */,
+				CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */,
+				AA1B2C3D4E5F60718293A4B5 /* QuickActionStore.swift in Sources */,
 				072E607E82AF370967841959 /* QRScannerView.swift in Sources */,
 				D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */,
 				0DE7EAD9D5B47A60FA75A83C /* SettingsView.swift in Sources */,
