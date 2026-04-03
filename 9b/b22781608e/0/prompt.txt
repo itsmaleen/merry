@@ -45,3 +45,7 @@ Loading models...
 Model file not found at /var/mobile/Containers/Data/Application/202286EF-668F-4FB8-A1CA-86110B227D37/Library/Application Support/WhisperModels/MelSpectrogram.mlmodelc
 
 [Whisper] start failed: Model file not found at /var/mobile/Containers/Data/Application/202286EF-668F-4FB8-A1CA-86110B227D37/Library/Application Support/WhisperModels/MelSpectrogram.mlmodelc
+
+---
+
+this approach didn't work, can be checkout all these changes into a different branch and go back to before trying to add whisperkit
