@@ -274,6 +274,11 @@ final class AppState: ObservableObject {
         notifications.contains { $0.surfaceID == surface.id }
     }
 
+    func clearNotificationsForFocusedSurface() {
+        guard let focusedID = focusedSurfaceID else { return }
+        notifications.removeAll { $0.surfaceID == focusedID }
+    }
+
     // MARK: - Private helpers
 
     private func send(

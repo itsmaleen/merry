@@ -171,8 +171,18 @@ struct WorkspaceLayoutView: View {
             if newCount > oldCount {
                 AudioServicesPlaySystemSound(1007)
                 AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                // Auto-clear notifications on focused surface after 3s
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    appState.clearNotificationsForFocusedSurface()
+                }
             }
             lastNotificationCount = newCount
+        }
+        .onChange(of: appState.focusedSurfaceID) { _, _ in
+            // Clear notifications for newly focused surface after a moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                appState.clearNotificationsForFocusedSurface()
+            }
         }
         .onAppear {
             appState.refreshSurfaces()
