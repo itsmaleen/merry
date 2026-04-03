@@ -19,6 +19,12 @@
       "transcript": "/aa/48cd6cf729/1/full.jsonl",
       "content_hash": "/aa/48cd6cf729/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/aa/48cd6cf729/2/metadata.json",
+      "transcript": "/aa/48cd6cf729/2/full.jsonl",
+      "content_hash": "/aa/48cd6cf729/2/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
