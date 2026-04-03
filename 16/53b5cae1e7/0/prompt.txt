@@ -275,3 +275,7 @@ Cool what's left in our to do
 ---
 
 Can you start planning how we would do the tail skill implementation
+
+---
+
+Start building the tail scale integration
