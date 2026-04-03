@@ -24,37 +24,51 @@ iPhone companion app for [cmux](https://github.com/manaflow-ai/cmux) — mirror 
 
 ## Setup
 
-### 1. Build and install the bridge
-
-**Option A — LaunchAgent (recommended, auto-starts on login):**
-
-```bash
-./scripts/install-bridge.sh
-```
-
-This builds the binary to `/usr/local/bin/cmux-bridge`, installs a LaunchAgent, and starts it.
-
-**Option B — Manual build and run:**
+### 1. Build the bridge
 
 ```bash
 cd bridge
 go build -o cmux-bridge ./cmd/cmux-bridge
-./cmux-bridge
+sudo mv cmux-bridge /usr/local/bin/
 ```
 
-### 2. Pair with the iOS app
+Or use the install script (builds + sets up LaunchAgent for auto-start on login):
+
+```bash
+sudo ./scripts/install-bridge.sh
+```
+
+### 2. First-time pairing
+
+This only needs to be done once. It connects to cmux's socket, generates a token, and shows a QR code.
 
 ```bash
 cmux-bridge --pair
 ```
 
-This displays a QR code in the terminal. Scan it from the iOS app's pairing screen.
+You'll be prompted for the cmux socket password (if password mode is enabled in cmux Settings > Socket Control). Then a QR code appears in the terminal — keep it visible for the next step.
 
 ### 3. Build and run the iOS app
 
 Open `ios/cmux.xcodeproj` in Xcode, select your iPhone, and run.
 
-On first launch, tap "Scan QR Code" and scan the QR displayed by `cmux-bridge --pair`.
+On first launch, tap "Scan QR Code" and scan the QR from step 2.
+
+### 4. Start the bridge
+
+After pairing, start the bridge (it stays running and the iOS app auto-connects):
+
+```bash
+cmux-bridge
+```
+
+If you used `install-bridge.sh`, the LaunchAgent starts it automatically on login. Otherwise, run `cmux-bridge` manually or add it to your shell startup.
+
+### Troubleshooting
+
+- **iOS shows "reconnecting"** — make sure `cmux-bridge` is running and cmux is open
+- **Bridge shows "cannot connect to cmux socket"** — make sure cmux is running with socket control enabled, then re-pair with `cmux-bridge --pair`
+- **Need to re-pair** — run `cmux-bridge --pair` again and scan the new QR code from the iOS app (Settings > Pair new device)
 
 ## Usage
 
