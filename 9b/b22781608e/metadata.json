@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "9bb22781608e",
+  "strategy": "manual-commit",
+  "branch": "whisperkit-stt",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "TODO.md",
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "ios/cmux/App/MainTabView.swift",
+    "ios/cmux/App/cmuxApp.swift",
+    "ios/cmux/Input/AppleSpeechEngine.swift",
+    "ios/cmux/Input/SpeechEngine.swift",
+    "ios/cmux/Input/SpeechInputManager.swift",
+    "ios/cmux/Input/WhisperModelManager.swift",
+    "ios/cmux/Input/WhisperSpeechEngine.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/cmux/Settings/SettingsView.swift",
+    "plans/cancel-speech-volume-down.md",
+    "plans/close-workspace-quick-action.md",
+    "plans/fullscreen-quick-action.md",
+    "plans/remember-focused-surface.md",
+    "plans/swipe-to-edit-transcript.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9b/b22781608e/0/metadata.json",
+      "transcript": "/9b/b22781608e/0/full.jsonl",
+      "content_hash": "/9b/b22781608e/0/content_hash.txt",
+      "prompt": "/9b/b22781608e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 184,
+    "cache_creation_tokens": 209909,
+    "cache_read_tokens": 8313535,
+    "output_tokens": 32324,
+    "api_call_count": 117
+  }
+}

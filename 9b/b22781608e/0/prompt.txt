@@ -1,0 +1,47 @@
+I noticed a small bug when a new terminal is created it should auto focus to a terminal the new one
+
+---
+
+Create this word let's make sure it's committed
+
+---
+
+Great this worked, let's make sure it's committed
+
+---
+
+Next the thing to work on is speech to text the current version is pretty shitty can you create one a research plan for how we can improve and then once we've agreed on the research and how we want to move forward we can create an implementation plan
+
+---
+
+keep the current interaction which is not hold to talk but tap to start speech on and then tap volume up again to end
+
+---
+
+Yes turn it into a concrete implementation plan
+
+---
+
+getting this build error
+
+Showing Recent Errors Only
+github.com: Authentication failed because the credentials were missing
+
+---
+
+the PAT didn't work but username/password lead to new errors
+Can you do a build + type check to see the errors and fix
+
+---
+
+done
+
+---
+
+seeing model ready on the settings page but logs are showing error when trying to start speech on
+
+Loading models...
+
+Model file not found at /var/mobile/Containers/Data/Application/202286EF-668F-4FB8-A1CA-86110B227D37/Library/Application Support/WhisperModels/MelSpectrogram.mlmodelc
+
+[Whisper] start failed: Model file not found at /var/mobile/Containers/Data/Application/202286EF-668F-4FB8-A1CA-86110B227D37/Library/Application Support/WhisperModels/MelSpectrogram.mlmodelc

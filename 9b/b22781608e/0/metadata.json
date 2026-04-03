@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "9bb22781608e",
+  "session_id": "754463d9-65cf-413e-a422-ce499b0a614b",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T21:25:46.425307Z",
+  "branch": "whisperkit-stt",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "TODO.md",
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "ios/cmux/App/MainTabView.swift",
+    "ios/cmux/App/cmuxApp.swift",
+    "ios/cmux/Input/AppleSpeechEngine.swift",
+    "ios/cmux/Input/SpeechEngine.swift",
+    "ios/cmux/Input/SpeechInputManager.swift",
+    "ios/cmux/Input/WhisperModelManager.swift",
+    "ios/cmux/Input/WhisperSpeechEngine.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/cmux/Settings/SettingsView.swift",
+    "plans/cancel-speech-volume-down.md",
+    "plans/close-workspace-quick-action.md",
+    "plans/fullscreen-quick-action.md",
+    "plans/remember-focused-surface.md",
+    "plans/swipe-to-edit-transcript.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "1406185c12b1",
+  "token_usage": {
+    "input_tokens": 184,
+    "cache_creation_tokens": 209909,
+    "cache_read_tokens": 8313535,
+    "output_tokens": 32324,
+    "api_call_count": 117
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T21:25:46.116132Z",
+    "agent_lines": 565,
+    "human_added": 234,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 799,
+    "agent_percentage": 70.71339173967459
+  }
+}
