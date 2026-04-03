@@ -254,3 +254,8 @@ I think that was actually the new bridge, I ran the above commmands and still st
 ---
 
 great so this worked, make sure the README.md reflects the steps needed to start this including cmux-bridge and cmux-bridge --pair if it's not already + in the scripts
+
+---
+
+last thing, there seems to be a bit of a bug with the notification / orange ring
+If it's currently focused on that surface or when focused on that surface, have that notification clear after a few seconds or after interaction (i.e. quick action or speech on)
