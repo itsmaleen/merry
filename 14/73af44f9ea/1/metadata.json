@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1473af44f9ea",
+  "session_id": "ses_2b11cc6fdfferAfi6Y38XYplsp",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T01:04:21.385941Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "ios/cmux/Input/VolumeButtonHandler.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "agent": "OpenCode",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "84603188e3dd",
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T01:04:21.384904Z",
+    "agent_lines": 14,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 14,
+    "agent_percentage": 100
+  }
+}
