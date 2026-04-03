@@ -67,8 +67,13 @@ final class VolumeButtonHandler: ObservableObject {
                 }
             }
 
+            // Set volume first, then start observing AFTER the adjustment
+            // lockout clears — prevents the initial setVolume from being
+            // interpreted as a button press
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.setVolume(0.5)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.startObserving(session: session)
             }
         }
