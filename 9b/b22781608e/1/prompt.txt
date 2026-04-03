@@ -1,0 +1,33 @@
+So I want this session to keep track of notes and updating the to-do for things we wanna work on
+
+---
+
+So the first one being having a way to cancel the speech on recording if there was a traffic that was already started this should be cancelled by clicking the volume down once speech is on so my speech is on instead of cycling it just cancels
+
+---
+
+The next being someway to edit the transcript so maybe if I swiped while speech was on it would let me move to like a keyboard experience and the keyboard experience could be on portrait or landscape mode
+
+---
+
+Another one being including the toggle to fullscreen terminal into a quick action
+
+---
+
+But we all these to do is should be saved in are marked down not in your to-do list because we're not gonna accomplish them right now just wanna keep track of these ideas
+
+---
+
+Another one being as you're switching through workspaces we should remember the last one that was focussed on and that being the surface that is kept focus went back to that workspace instead of going back to the beginning of the list
+
+---
+
+Also we should add a close workspace option to the quick actions under workspace is to toggle or category
+
+---
+
+Yes turn it into a concrete implementation plan
+
+---
+
+don't have the plans in the todo, put it in plans folder and add references in the todo

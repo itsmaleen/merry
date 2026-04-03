@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "9bb22781608e",
+  "session_id": "8e55029c-2523-4503-b6f0-09a70d0babb0",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T21:25:46.527506Z",
+  "branch": "whisperkit-stt",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "TODO.md",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "plans/cancel-speech-volume-down.md",
+    "plans/close-workspace-quick-action.md",
+    "plans/fullscreen-quick-action.md",
+    "plans/remember-focused-surface.md",
+    "plans/swipe-to-edit-transcript.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "5514b249023c",
+  "token_usage": {
+    "input_tokens": 2338,
+    "cache_creation_tokens": 32200,
+    "cache_read_tokens": 725677,
+    "output_tokens": 8799,
+    "api_call_count": 30
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T21:25:46.450082Z",
+    "agent_lines": 89,
+    "human_added": 554,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 643,
+    "agent_percentage": 13.841368584758943
+  }
+}
