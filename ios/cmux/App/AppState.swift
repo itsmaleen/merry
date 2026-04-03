@@ -147,6 +147,35 @@ final class AppState: ObservableObject {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
     }
 
+    func createWorkspace(name: String? = nil) {
+        var params: [String: Any] = [:]
+        if let name { params["name"] = name }
+        send(method: "workspace.create", params: params) { [weak self] _ in
+            self?.refreshWorkspaces()
+            self?.refreshSurfaces()
+        }
+    }
+
+    func splitSurface(direction: String, surfaceID: String? = nil) {
+        var params: [String: Any] = ["direction": direction]
+        if let surfaceID { params["surface_id"] = surfaceID }
+        send(method: "surface.split", params: params) { [weak self] _ in
+            self?.refreshSurfaces()
+        }
+    }
+
+    func createSurface(type: String = "terminal") {
+        send(method: "surface.create", params: ["type": type]) { [weak self] _ in
+            self?.refreshSurfaces()
+        }
+    }
+
+    func closeSurface(_ surfaceID: String) {
+        send(method: "surface.close", params: ["surface_id": surfaceID]) { [weak self] _ in
+            self?.refreshSurfaces()
+        }
+    }
+
     func clearNotifications() {
         send(method: "notification.clear", params: [:]) { [weak self] _ in
             self?.notifications = []

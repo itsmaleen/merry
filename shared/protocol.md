@@ -109,6 +109,9 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
 **Surfaces:**
 - `surface.list` — `{"workspace_id":"..."}` (optional, defaults to current)
 - `surface.focus` — `{"surface_id":"..."}`
+- `surface.create` — `{"type":"terminal"}` (or "browser", creates in focused pane)
+- `surface.split` — `{"direction":"right","surface_id":"..."}` (direction: left/right/up/down)
+- `surface.close` — `{"surface_id":"..."}`
 
 **Input:**
 - `surface.send_text` — `{"surface_id":"...","text":"ls\n"}`

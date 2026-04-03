@@ -1,11 +1,140 @@
 import SwiftUI
 import AudioToolbox
 
+// MARK: - Quick action model
+
+struct QuickAction: Identifiable {
+    let id = UUID()
+    let label: String
+    let icon: String
+    let section: String
+    let action: () -> Void
+}
+
+enum QuickActionBuilder {
+    @MainActor
+    static func build(surfaceID sid: String, appState: AppState) -> [QuickAction] {
+        [
+            QuickAction(label: "Enter", icon: "return", section: "Input") {
+                appState.sendKey("enter", to: sid)
+            },
+            QuickAction(label: "Ctrl+C", icon: "xmark.circle", section: "Input") {
+                appState.sendKey("ctrl+c", to: sid)
+            },
+            QuickAction(label: "Ctrl+D", icon: "eject", section: "Input") {
+                appState.sendKey("ctrl+d", to: sid)
+            },
+            QuickAction(label: "Ctrl+Z", icon: "pause.circle", section: "Input") {
+                appState.sendKey("ctrl+z", to: sid)
+            },
+            QuickAction(label: "Clear", icon: "trash", section: "Input") {
+                appState.sendKey("ctrl+l", to: sid)
+            },
+            QuickAction(label: "Tab", icon: "arrow.right.to.line", section: "Input") {
+                appState.sendKey("tab", to: sid)
+            },
+            QuickAction(label: "Escape", icon: "escape", section: "Input") {
+                appState.sendKey("escape", to: sid)
+            },
+            QuickAction(label: "Up Arrow", icon: "arrow.up", section: "Input") {
+                appState.sendKey("up", to: sid)
+            },
+            QuickAction(label: "Down Arrow", icon: "arrow.down", section: "Input") {
+                appState.sendKey("down", to: sid)
+            },
+            QuickAction(label: "Split Right", icon: "rectangle.split.2x1", section: "Terminal") {
+                appState.splitSurface(direction: "right", surfaceID: sid)
+            },
+            QuickAction(label: "Split Down", icon: "rectangle.split.1x2", section: "Terminal") {
+                appState.splitSurface(direction: "down", surfaceID: sid)
+            },
+            QuickAction(label: "New Terminal", icon: "plus.rectangle", section: "Terminal") {
+                appState.createSurface()
+            },
+            QuickAction(label: "Close Surface", icon: "xmark.rectangle", section: "Terminal") {
+                appState.closeSurface(sid)
+            },
+            QuickAction(label: "New Workspace", icon: "square.grid.2x2", section: "Workspace") {
+                appState.createWorkspace()
+            },
+        ]
+    }
+}
+
+@MainActor
+final class QuickActionState: ObservableObject {
+    @Published var isOpen = false
+    @Published var selectedIndex = 0
+    @Published var currentSectionIndex = 0
+    var actions: [QuickAction] = []
+
+    var sectionOrder: [String] { ["Input", "Terminal", "Workspace"] }
+
+    var currentSection: String {
+        guard sectionOrder.indices.contains(currentSectionIndex) else { return sectionOrder[0] }
+        return sectionOrder[currentSectionIndex]
+    }
+
+    var currentSectionActions: [(Int, QuickAction)] {
+        actions.enumerated().filter { $0.element.section == currentSection }.map { ($0.offset, $0.element) }
+    }
+
+    func open(with actions: [QuickAction]) {
+        self.actions = actions
+        currentSectionIndex = 0
+        selectedIndex = actions.firstIndex(where: { $0.section == sectionOrder[0] }) ?? 0
+        isOpen = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    func dismiss() {
+        isOpen = false
+        actions = []
+    }
+
+    func cycle() {
+        let sectionItems = currentSectionActions
+        guard !sectionItems.isEmpty else { return }
+        if let currentPos = sectionItems.firstIndex(where: { $0.0 == selectedIndex }) {
+            let nextPos = (currentPos + 1) % sectionItems.count
+            selectedIndex = sectionItems[nextPos].0
+        } else {
+            selectedIndex = sectionItems[0].0
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    func nextSection() {
+        currentSectionIndex = (currentSectionIndex + 1) % sectionOrder.count
+        // Select first item in new section
+        if let first = currentSectionActions.first {
+            selectedIndex = first.0
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    func prevSection() {
+        currentSectionIndex = (currentSectionIndex - 1 + sectionOrder.count) % sectionOrder.count
+        if let first = currentSectionActions.first {
+            selectedIndex = first.0
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    func execute() {
+        guard actions.indices.contains(selectedIndex) else { return }
+        actions[selectedIndex].action()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        dismiss()
+    }
+}
+
 struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
+    @StateObject private var quickAction = QuickActionState()
     @State private var lastNotificationCount = 0
     @State private var cycleDirection: Edge = .trailing
 
@@ -31,7 +160,13 @@ struct WorkspaceLayoutView: View {
                 workspaceBar
                     .padding(.bottom, 4)
             }
+
+            // Quick action overlay
+            if quickAction.isOpen {
+                quickActionOverlay
+            }
         }
+        .animation(.spring(response: 0.25, dampingFraction: 0.85), value: quickAction.isOpen)
         .onChange(of: appState.notifications.count) { oldCount, newCount in
             if newCount > oldCount {
                 AudioServicesPlaySystemSound(1007)
@@ -48,6 +183,130 @@ struct WorkspaceLayoutView: View {
             }
         }
         .onDisappear {}
+    }
+
+    // MARK: - Quick actions
+
+    private func openQuickActions() {
+        guard let surface = focusedSurface else { return }
+        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState))
+    }
+
+    private var quickActionOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { quickAction.dismiss() }
+                .gesture(
+                    DragGesture(minimumDistance: 30)
+                        .onEnded { value in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if value.translation.width < -30 || value.translation.height < -30 {
+                                    quickAction.nextSection()
+                                } else if value.translation.width > 30 || value.translation.height > 30 {
+                                    quickAction.prevSection()
+                                }
+                            }
+                        }
+                )
+
+            VStack(spacing: 0) {
+                // Section tabs
+                HStack(spacing: 0) {
+                    ForEach(Array(quickAction.sectionOrder.enumerated()), id: \.element) { idx, section in
+                        let isActive = idx == quickAction.currentSectionIndex
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                quickAction.currentSectionIndex = idx
+                                if let first = quickAction.currentSectionActions.first {
+                                    quickAction.selectedIndex = first.0
+                                }
+                            }
+                        } label: {
+                            Text(section.uppercased())
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(isActive ? .white : .white.opacity(0.3))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .overlay(alignment: .bottom) {
+                                    if isActive {
+                                        Rectangle()
+                                            .fill(Color.white)
+                                            .frame(height: 2)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+
+                // Current section tiles
+                let sectionItems = quickAction.currentSectionActions
+                let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: min(sectionItems.count, 5))
+
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(sectionItems, id: \.0) { index, action in
+                        let isSelected = index == quickAction.selectedIndex
+                        Button {
+                            quickAction.selectedIndex = index
+                            quickAction.execute()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                appState.refreshSurfaces()
+                            }
+                        } label: {
+                            VStack(spacing: 5) {
+                                Image(systemName: action.icon)
+                                    .font(.system(size: 16))
+                                Text(action.label)
+                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                            .foregroundStyle(isSelected ? .white : .white.opacity(0.5))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(isSelected ? Color.white.opacity(0.2) : Color.white.opacity(0.05))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(isSelected ? Color.white.opacity(0.4) : .clear, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .animation(.easeInOut(duration: 0.2), value: quickAction.currentSectionIndex)
+
+                // Hints
+                HStack(spacing: 16) {
+                    hintLabel(key: "VOL-", label: "cycle")
+                    hintLabel(key: "VOL+", label: "select")
+                    hintLabel(key: "SWIPE", label: "section")
+                    hintLabel(key: "2xDN", label: "close")
+                }
+                .foregroundStyle(.white.opacity(0.2))
+                .padding(.bottom, 10)
+            }
+            .frame(maxWidth: 420)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+            )
+        }
+        .transition(.opacity)
+    }
+
+    private func hintLabel(key: String, label: String) -> some View {
+        HStack(spacing: 3) {
+            Text(key).font(.system(size: 9, weight: .bold, design: .monospaced))
+            Text(label).font(.system(size: 9, design: .monospaced))
+        }
     }
 
     // MARK: - Surface layout
@@ -84,21 +343,26 @@ struct WorkspaceLayoutView: View {
                         insertion: .move(edge: cycleDirection).combined(with: .opacity),
                         removal: .move(edge: cycleDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
                     ))
-                    .gesture(
-                        DragGesture(minimumDistance: 40)
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        openQuickActions()
+                    }
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 50)
                             .onEnded { value in
-                                if value.translation.width < -40 {
+                                guard !quickAction.isOpen else { return }
+                                if value.translation.width < -50 {
                                     cycleDirection = .trailing
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                         appState.cycleSurface()
                                     }
-                                } else if value.translation.width > 40 {
+                                } else if value.translation.width > 50 {
                                     cycleDirection = .leading
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                         appState.cycleSurfaceBackward()
                                     }
                                 }
-                            }
+                            },
+                        including: .gesture
                     )
                 }
 
@@ -143,7 +407,7 @@ struct WorkspaceLayoutView: View {
     }
 
     private func tileHeight(for count: Int, in totalHeight: CGFloat) -> CGFloat {
-        let available = totalHeight - 52 // leave room for workspace bar
+        let available = totalHeight - 52
         let spacing = CGFloat(max(0, count - 1)) * 6
         return max(60, (available - spacing) / CGFloat(count))
     }
@@ -166,15 +430,12 @@ struct WorkspaceLayoutView: View {
 
     private var workspaceBar: some View {
         HStack(spacing: 0) {
-            // Status dot
             statusDot
                 .padding(.leading, 16)
                 .padding(.trailing, 12)
 
-            // Workspace pills (centered)
             workspacePills
 
-            // Speech indicator + refresh
             HStack(spacing: 10) {
                 if speechManager.isRecording {
                     Circle()
@@ -277,38 +538,73 @@ struct WorkspaceLayoutView: View {
             .shadow(color: color.opacity(0.5), radius: 3)
     }
 
-    // MARK: - Actions
+    // MARK: - Volume callbacks
 
     private func wireVolumeCallbacks() {
         let appState = appState
         let speech = speechManager
+        let qa = quickAction
 
         volumeHandler.onSingleDown = {
-            print("[VolumeHandler] singleDown → cycleSurface")
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                appState.cycleSurface()
+            print("[VolumeHandler] singleDown")
+            Task { @MainActor in
+                if qa.isOpen {
+                    qa.cycle()
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        appState.cycleSurface()
+                    }
+                }
             }
         }
         volumeHandler.onDoubleDown = {
-            print("[VolumeHandler] doubleDown → cycleWorkspace")
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                appState.cycleWorkspace()
+            print("[VolumeHandler] doubleDown")
+            Task { @MainActor in
+                if qa.isOpen {
+                    qa.dismiss()
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        appState.cycleWorkspace()
+                    }
+                }
             }
         }
-        volumeHandler.onSpeechBegan = {
-            Task { @MainActor in speech.start() }
-        }
-        volumeHandler.onSpeechEnded = {
+        volumeHandler.onSingleUp = {
+            print("[VolumeHandler] singleUp")
             Task { @MainActor in
-                let pending = speech.transcript
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                let text = speech.stop()
-                let finalText = text.isEmpty ? pending : text
-                print("[Speech] sending: \(finalText)")
-                if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
-                    let autoSubmit = UserDefaults.standard.bool(forKey: "autoSubmitSpeech")
-                    let toSend = autoSubmit ? finalText + "\n" : finalText
-                    appState.sendText(toSend, to: surfaceID)
+                if qa.isOpen {
+                    // Confirm selected action
+                    qa.execute()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        appState.refreshSurfaces()
+                    }
+                } else if speech.isRecording {
+                    // Stop recording and send
+                    let pending = speech.transcript
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    let text = speech.stop()
+                    let finalText = text.isEmpty ? pending : text
+                    print("[Speech] sending: \(finalText)")
+                    if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                        let autoSubmit = UserDefaults.standard.bool(forKey: "autoSubmitSpeech")
+                        let toSend = autoSubmit ? finalText + "\n" : finalText
+                        appState.sendText(toSend, to: surfaceID)
+                    }
+                } else {
+                    // Start recording
+                    speech.start()
+                }
+            }
+        }
+        volumeHandler.onDoubleUp = {
+            print("[VolumeHandler] doubleUp → quickActions")
+            Task { @MainActor in
+                if qa.isOpen {
+                    qa.dismiss()
+                } else if let surface = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
+                            ?? appState.surfaces.first {
+                    let sid = surface.id
+                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState))
                 }
             }
         }

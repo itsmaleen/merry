@@ -4,8 +4,8 @@ import MediaPlayer
 final class VolumeButtonHandler: ObservableObject {
     var onSingleDown: (() -> Void)?
     var onDoubleDown: (() -> Void)?
-    var onSpeechBegan: (() -> Void)?
-    var onSpeechEnded: (() -> Void)?
+    var onSingleUp: (() -> Void)?
+    var onDoubleUp: (() -> Void)?
 
     // Added to window hierarchy in start() for HUD suppression + slider access
     let volumeView = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 1, height: 1))
@@ -14,8 +14,13 @@ final class VolumeButtonHandler: ObservableObject {
     // Only read/written on main thread
     private var isAdjustingVolume = false
 
+    // Volume-down double-tap
     private var lastDownTime: Date?
-    private var pendingSingleTimer: Timer?
+    private var pendingDownTimer: Timer?
+
+    // Volume-up double-tap
+    private var lastUpTime: Date?
+    private var pendingUpTimer: Timer?
 
     private(set) var speechActive = false
 
@@ -24,7 +29,6 @@ final class VolumeButtonHandler: ObservableObject {
     }
 
     func start() {
-        // Must be in the window hierarchy for slider subview to exist and for HUD suppression
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let window = UIApplication.shared.connectedScenes
@@ -37,7 +41,6 @@ final class VolumeButtonHandler: ObservableObject {
             let session = AVAudioSession.sharedInstance()
             try? session.setActive(true)
 
-            // Allow MPVolumeView to populate its slider subview before use
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.setVolume(0.5)
                 self?.startObserving(session: session)
@@ -48,8 +51,13 @@ final class VolumeButtonHandler: ObservableObject {
     func stop() {
         observation?.invalidate()
         observation = nil
-        pendingSingleTimer?.invalidate()
+        pendingDownTimer?.invalidate()
+        pendingUpTimer?.invalidate()
         volumeView.removeFromSuperview()
+    }
+
+    func clearSpeechState() {
+        speechActive = false
     }
 
     // MARK: - Private
@@ -63,21 +71,21 @@ final class VolumeButtonHandler: ObservableObject {
             let delta = newVal - oldVal
             guard abs(delta) > 0.01 else { return }
 
-            // Move all logic to main thread so isAdjustingVolume is safe
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.isAdjustingVolume else { return }
                 if delta < 0 {
-                    // Ignore volume-down during speech — audio session route
-                    // changes cause spurious negative-delta KVO events
                     guard !self.speechActive else { return }
                     self.handleVolumeDown()
-                    // Delay volume reset so the second press of a double-click
-                    // isn't swallowed by the isAdjustingVolume guard
+                    // Delay reset so second press isn't swallowed
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                         self?.setVolume(0.5)
                     }
                 } else {
                     self.handleVolumeUp()
+                    // Delay reset so second press isn't swallowed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                        self?.setVolume(0.5)
+                    }
                 }
             }
         }
@@ -86,14 +94,14 @@ final class VolumeButtonHandler: ObservableObject {
     private func handleVolumeDown() {
         let now = Date()
         if let last = lastDownTime, now.timeIntervalSince(last) < 0.5 {
-            pendingSingleTimer?.invalidate()
-            pendingSingleTimer = nil
+            pendingDownTimer?.invalidate()
+            pendingDownTimer = nil
             lastDownTime = nil
             onDoubleDown?()
         } else {
             lastDownTime = now
-            pendingSingleTimer?.invalidate()
-            pendingSingleTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: false) { [weak self] _ in
+            pendingDownTimer?.invalidate()
+            pendingDownTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: false) { [weak self] _ in
                 self?.lastDownTime = nil
                 self?.onSingleDown?()
             }
@@ -101,14 +109,20 @@ final class VolumeButtonHandler: ObservableObject {
     }
 
     private func handleVolumeUp() {
-        if speechActive {
-            speechActive = false
-            onSpeechEnded?()
+        let now = Date()
+        if let last = lastUpTime, now.timeIntervalSince(last) < 0.5 {
+            pendingUpTimer?.invalidate()
+            pendingUpTimer = nil
+            lastUpTime = nil
+            onDoubleUp?()
         } else {
-            speechActive = true
-            onSpeechBegan?()
+            lastUpTime = now
+            pendingUpTimer?.invalidate()
+            pendingUpTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: false) { [weak self] _ in
+                self?.lastUpTime = nil
+                self?.onSingleUp?()
+            }
         }
-        setVolume(0.5)
     }
 
     private func setVolume(_ value: Float) {

@@ -25,25 +25,40 @@
 - [x] Send text command — `surface.send_text`
 - [x] Connection status indicator (connected / reconnecting / offline)
 
-## iOS App — Layout View
+## iOS App — Layout View ✅
 
-- [x] NavigationStack-based layout (replaced broken ZStack root)
 - [x] Surface grid with cards, tap to focus
 - [x] Workspace pills with auto-scroll to active workspace
 - [x] Friendly workspace labels (fallback for raw IDs)
 - [x] Volume-down single press to cycle surfaces
 - [x] Volume-down double press to cycle workspaces
-- [x] Volume-up hold for speech input
+- [x] Volume-up toggle for speech input (STT)
+- [x] Auto-submit speech toggle in Settings
 - [x] Notification sound + vibration on new notifications
-- [x] Orange ring on surface cards with notifications
 - [x] Orange ring on current workspace pill when it has notifications
-- [ ] Pane spatial layout (GeometryReader approach broken inside NavigationStack — needs rework)
-- [ ] Gear/settings button overlay
+- [x] Landscape-only orientation
+- [x] Split layout: focused surface 65%, secondary tiles 35%
+- [x] Swipe left/right on focused card to cycle surfaces
+- [x] Tap/swipe-up on tiles to promote to focused
+- [x] Spring animations on cycling
+- [x] Terminal-style title bar on cards (replaced traffic lights)
+- [x] Glass material card design with pulsing notification ring
+- [x] Slide-out sidebar menu (replaces TabView)
+- [x] Dark background with radial center glow
+
+## iOS App — Polish & Next
+
+- [ ] Long-press on focused card → quick actions (Enter, Ctrl+C, etc.)
+- [ ] Better STT model (replace Apple Speech with Whisper or similar)
+- [ ] Surface notification indicators (needs panel_id ↔ surface_id debug — see plans/)
+- [ ] Pane spatial layout (GeometryReader broken inside current structure — needs rework)
+- [ ] Haptic feedback on surface/workspace cycling
 
 ## Cross-Workspace Notifications
 
 See `plans/cross-workspace-notifications.md` for full design.
 
+- [ ] Debug panel_id ↔ surface_id mapping (log both on notification arrival)
 - [ ] Bridge: build surface→workspace lookup table on cmux connect
 - [ ] Bridge: enrich `notification.created` with `workspace_id` and `surface_title`
 - [ ] Protocol: add `workspace_id`, `surface_title` to `notification.created` schema
