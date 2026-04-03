@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1f9270a749e2",
+  "session_id": "0483ba58-1635-415a-b418-41a2f7114f79",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T01:20:25.658119Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "TODO.md",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "ios/cmux/Info.plist"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "27686cefa455",
+  "token_usage": {
+    "input_tokens": 432,
+    "cache_creation_tokens": 232372,
+    "cache_read_tokens": 46114346,
+    "output_tokens": 120651,
+    "api_call_count": 333
+  },
+  "session_metrics": {
+    "turn_count": 48
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T01:20:24.664738Z",
+    "agent_lines": 0,
+    "human_added": 24,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 24,
+    "agent_percentage": 0
+  }
+}
