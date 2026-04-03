@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1653b5cae1e7",
+  "session_id": "0483ba58-1635-415a-b418-41a2f7114f79",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T04:01:05.154638Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "bridge/cmd/cmux-bridge/main.go",
+    "bridge/go.mod",
+    "bridge/internal/ws/server.go",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Connection/PairingStore.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "0dd637d72865",
+  "token_usage": {
+    "input_tokens": 534,
+    "cache_creation_tokens": 279117,
+    "cache_read_tokens": 66860765,
+    "output_tokens": 143032,
+    "api_call_count": 413
+  },
+  "session_metrics": {
+    "turn_count": 59
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T04:01:04.000501Z",
+    "agent_lines": 204,
+    "human_added": 150,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 354,
+    "agent_percentage": 57.6271186440678
+  }
+}

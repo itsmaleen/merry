@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1653b5cae1e7",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "bridge/cmd/cmux-bridge/main.go",
+    "bridge/go.mod",
+    "bridge/internal/ws/server.go",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Connection/PairingStore.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/16/53b5cae1e7/0/metadata.json",
+      "transcript": "/16/53b5cae1e7/0/full.jsonl",
+      "content_hash": "/16/53b5cae1e7/0/content_hash.txt",
+      "prompt": "/16/53b5cae1e7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 534,
+    "cache_creation_tokens": 279117,
+    "cache_read_tokens": 66860765,
+    "output_tokens": 143032,
+    "api_call_count": 413
+  }
+}
