@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1653b5cae1e7",
+  "session_id": "ses_2b11cc6fdfferAfi6Y38XYplsp",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T04:01:09.821063Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "ios/cmux/Connection/PairingStore.swift",
+    "README.md",
+    "bridge/go.mod",
+    "bridge/go.sum",
+    "bridge/internal/pair/qr.go",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Connection/BridgeClient.swift",
+    "bridge/cmd/cmux-bridge/main.go",
+    "bridge/internal/ws/server.go",
+    "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate"
+  ],
+  "agent": "OpenCode",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "84603188e3dd",
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T04:01:09.820366Z",
+    "agent_lines": 354,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 354,
+    "agent_percentage": 100
+  }
+}
