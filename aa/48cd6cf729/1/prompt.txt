@@ -1,0 +1,4 @@
+can you rebase local main and then we can add new tab to quick actions that would be AI commands like
+claude --dangerously-skip-permissions (or wtv the correct arg is) and other "useful" ones are that are not easy to say
+
+Should also then have something in the settings that allows to edit, hide and add to the quick actions
