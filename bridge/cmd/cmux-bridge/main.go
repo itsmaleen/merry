@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/mdns"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/pair"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/poller"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/socket"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/ws"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/mdns"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/pair"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
 )
 
 const (

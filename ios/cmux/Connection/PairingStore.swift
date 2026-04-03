@@ -8,7 +8,7 @@ struct PairingCredentials: Codable {
 }
 
 final class PairingStore {
-    private let service = "ai.manaflow.cmux-bridge"
+    private let service = "dev.itsmaleen.cmux-bridge"
     private let account = "credentials"
 
     func save(_ credentials: PairingCredentials) throws {

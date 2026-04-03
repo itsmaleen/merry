@@ -2,7 +2,7 @@
 
 ## Bridge — Phase 1 (LAN + Polling) ✅
 
-- [x] Go module init (`go mod init github.com/manaflow-ai/cmux-companion`)
+- [x] Go module init (`go mod init github.com/itsmaleen/cmux-companion`)
 - [x] cmux socket client (`bridge/internal/socket/`) — connect, authenticate (password mode), send v2 JSON-RPC, read responses
 - [x] Notification poller (`bridge/internal/poller/`) — poll `notification.list` every 1s, diff, emit new events
 - [x] WebSocket server (`bridge/internal/ws/`) — serve clients, push notification events, proxy control commands to socket

@@ -98,7 +98,7 @@ struct PairingCredentials: Codable {
     let port: Int
     let token: String
 }
-// stored under key: "ai.manaflow.cmux-bridge.credentials"
+// stored under key: "dev.itsmaleen.cmux-bridge.credentials"
 ```
 
 ## Bonjour Discovery

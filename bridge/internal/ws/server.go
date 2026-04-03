@@ -6,8 +6,8 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/poller"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
 
 // Server is the WebSocket HTTP server.

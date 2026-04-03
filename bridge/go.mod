@@ -1,4 +1,4 @@
-module github.com/manaflow-ai/cmux-companion/bridge
+module github.com/itsmaleen/cmux-companion/bridge
 
 go 1.23
 

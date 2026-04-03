@@ -97,8 +97,8 @@ tail -f /tmp/cmux-bridge.log
 cmux-bridge --pair
 
 # Restart bridge (if installed as LaunchAgent)
-launchctl unload ~/Library/LaunchAgents/ai.manaflow.cmux-bridge.plist
-launchctl load ~/Library/LaunchAgents/ai.manaflow.cmux-bridge.plist
+launchctl unload ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist
+launchctl load ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist
 ```
 
 ## Project structure

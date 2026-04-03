@@ -7,8 +7,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/poller"
-	"github.com/manaflow-ai/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
 
 const bridgeVersion = "0.1.0"

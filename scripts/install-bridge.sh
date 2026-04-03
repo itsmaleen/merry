@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BINARY="/usr/local/bin/cmux-bridge"
-PLIST_LABEL="ai.manaflow.cmux-bridge"
+PLIST_LABEL="com.itsmaleen.cmux-bridge"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

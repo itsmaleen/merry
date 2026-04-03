@@ -141,10 +141,10 @@ TXT records:
 `scripts/install-bridge.sh` writes:
 
 ```xml
-<!-- ~/Library/LaunchAgents/ai.manaflow.cmux-bridge.plist -->
+<!-- ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist -->
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>ai.manaflow.cmux-bridge</string>
+  <key>Label</key><string>com.itsmaleen.cmux-bridge</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/cmux-bridge</string>
