@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "164322295ad1",
+  "session_id": "ses_2b11cc6fdfferAfi6Y38XYplsp",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T03:05:17.86847Z",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "plans/tailscale-integration.md"
+  ],
+  "agent": "OpenCode",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "84603188e3dd",
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T03:05:17.867696Z",
+    "agent_lines": 0,
+    "human_added": 180,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 180,
+    "agent_percentage": 0
+  }
+}
