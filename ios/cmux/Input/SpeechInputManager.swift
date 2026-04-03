@@ -81,6 +81,11 @@ final class SpeechInputManager: ObservableObject {
         return result
     }
 
+    func cancel() {
+        print("[Speech] cancelled")
+        cleanupAudio()
+    }
+
     private func cleanupAudio() {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)

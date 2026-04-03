@@ -21,6 +21,9 @@ struct QuickActionSettingsView: View {
         ("New Terminal", "plus.rectangle", "Terminal"),
         ("Close Surface", "xmark.rectangle", "Terminal"),
         ("New Workspace", "square.grid.2x2", "Workspace"),
+        ("Zoom", "arrow.up.left.and.arrow.down.right", "Terminal"),
+        ("Fullscreen", "rectangle.fill", "Workspace"),
+        ("Close Workspace", "xmark.square", "Workspace"),
     ]
 
     private var builtInSections: [(String, [(label: String, icon: String, section: String)])] {

@@ -13,7 +13,7 @@ struct QuickAction: Identifiable {
 
 enum QuickActionBuilder {
     @MainActor
-    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore) -> [QuickAction] {
+    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, onToggleFullscreen: @escaping () -> Void = {}) -> [QuickAction] {
         let builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
@@ -54,8 +54,19 @@ enum QuickActionBuilder {
             QuickAction(label: "Close Surface", icon: "xmark.rectangle", section: "Terminal") {
                 appState.closeSurface(sid)
             },
+            QuickAction(label: "Zoom", icon: "arrow.up.left.and.arrow.down.right", section: "Terminal") {
+                appState.togglePaneZoom(sid)
+            },
             QuickAction(label: "New Workspace", icon: "square.grid.2x2", section: "Workspace") {
                 appState.createWorkspace()
+            },
+            QuickAction(label: "Fullscreen", icon: "rectangle.fill", section: "Workspace") {
+                onToggleFullscreen()
+            },
+            QuickAction(label: "Close Workspace", icon: "xmark.square", section: "Workspace") {
+                if let wsID = appState.currentWorkspaceID {
+                    appState.closeWorkspace(wsID)
+                }
             },
         ]
 
@@ -76,6 +87,7 @@ enum QuickActionBuilder {
 @MainActor
 final class QuickActionState: ObservableObject {
     @Published var isOpen = false
+    @Published var isFullscreen = false
     @Published var selectedIndex = 0
     @Published var currentSectionIndex = 0
     var actions: [QuickAction] = []
@@ -155,6 +167,8 @@ struct WorkspaceLayoutView: View {
     @StateObject private var quickAction = QuickActionState()
     @State private var lastNotificationCount = 0
     @State private var cycleDirection: Edge = .trailing
+    @State private var isEditingTranscript = false
+    @State private var editingText = ""
 
     var body: some View {
         ZStack {
@@ -175,13 +189,26 @@ struct WorkspaceLayoutView: View {
                     surfaceLayout
                 }
 
-                workspaceBar
-                    .padding(.bottom, 4)
+                if !quickAction.isFullscreen {
+                    workspaceBar
+                        .padding(.bottom, 4)
+                }
             }
 
             // Quick action overlay
             if quickAction.isOpen {
                 quickActionOverlay
+            }
+        }
+        .fullScreenCover(isPresented: $isEditingTranscript) {
+            TranscriptEditorView(
+                isPresented: $isEditingTranscript,
+                text: editingText
+            ) { finalText in
+                if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                    let toSend = autoSubmitSpeech ? finalText + "\n" : finalText
+                    appState.sendText(toSend, to: surfaceID)
+                }
             }
         }
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: quickAction.isOpen)
@@ -223,7 +250,7 @@ struct WorkspaceLayoutView: View {
 
     private func openQuickActions() {
         guard let surface = focusedSurface else { return }
-        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState, store: quickActionStore))
+        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState, store: quickActionStore, onToggleFullscreen: { [quickAction] in quickAction.isFullscreen.toggle() }))
     }
 
     private var quickActionOverlay: some View {
@@ -357,7 +384,7 @@ struct WorkspaceLayoutView: View {
 
     private var surfaceLayout: some View {
         GeometryReader { geo in
-            let hasSidebar = secondarySurfaces.count > 0
+            let hasSidebar = secondarySurfaces.count > 0 && !quickAction.isFullscreen
             let mainWidth = hasSidebar ? geo.size.width * 0.65 : geo.size.width
             let sideWidth = geo.size.width * 0.35
 
@@ -384,6 +411,13 @@ struct WorkspaceLayoutView: View {
                         DragGesture(minimumDistance: 50)
                             .onEnded { value in
                                 guard !quickAction.isOpen else { return }
+                                if speechManager.isRecording {
+                                    // Swipe while recording opens transcript editor
+                                    editingText = speechManager.stop()
+                                    volumeHandler.clearSpeechState()
+                                    isEditingTranscript = true
+                                    return
+                                }
                                 if value.translation.width < -50 {
                                     cycleDirection = .trailing
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -575,10 +609,16 @@ struct WorkspaceLayoutView: View {
         let qa = quickAction
         let store = quickActionStore
 
+        let volHandler = volumeHandler
         volumeHandler.onSingleDown = {
             print("[VolumeHandler] singleDown")
             Task { @MainActor in
-                if qa.isOpen {
+                if speech.isRecording {
+                    speech.cancel()
+                    volHandler.clearSpeechState()
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.impactOccurred()
+                } else if qa.isOpen {
                     qa.cycle()
                 } else {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -634,7 +674,7 @@ struct WorkspaceLayoutView: View {
                 } else if let surface = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
                             ?? appState.surfaces.first {
                     let sid = surface.id
-                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store))
+                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store, onToggleFullscreen: { qa.isFullscreen.toggle() }))
                 }
             }
         }

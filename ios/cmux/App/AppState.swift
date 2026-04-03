@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
 
+    private var lastFocusedSurface: [String: String] = [:]
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -106,7 +107,7 @@ final class AppState: ObservableObject {
     func selectWorkspace(_ id: String) {
         send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
             self?.currentWorkspaceID = id
-            self?.localFocusedSurfaceID = nil
+            self?.localFocusedSurfaceID = self?.lastFocusedSurface[id]
             self?.refreshSurfaces()
             self?.refreshPanes()
         }
@@ -114,6 +115,9 @@ final class AppState: ObservableObject {
 
     func focusSurface(_ id: String) {
         localFocusedSurfaceID = id
+        if let wsID = currentWorkspaceID {
+            lastFocusedSurface[wsID] = id
+        }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
             self?.refreshPanes()
@@ -124,6 +128,10 @@ final class AppState: ObservableObject {
         send(method: "pane.focus", params: ["pane_id": id]) { [weak self] _ in
             self?.refreshPanes()
         }
+    }
+
+    func togglePaneZoom(_ surfaceID: String) {
+        sendKey("cmd+shift+enter", to: surfaceID)
     }
 
     func cycleSurface() {
@@ -181,6 +189,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    func closeWorkspace(_ id: String) {
+        send(method: "workspace.close", params: ["workspace_id": id]) { [weak self] _ in
+            self?.lastFocusedSurface.removeValue(forKey: id)
+            self?.refreshWorkspaces()
+            // Select next available workspace
+            if self?.currentWorkspaceID == id {
+                if let next = self?.workspaces.first(where: { $0.id != id }) {
+                    self?.selectWorkspace(next.id)
+                }
+            }
+        }
+    }
+
     func splitSurface(direction: String, surfaceID: String? = nil) {
         let previousIDs = Set(surfaces.map(\.id))
         var params: [String: Any] = ["direction": direction]
@@ -228,6 +249,11 @@ final class AppState: ObservableObject {
         send(method: "surface.list", params: params) { [weak self] result in
             if let list = result["surfaces"] as? [[String: Any]] {
                 self?.surfaces = list.compactMap(Surface.init)
+                // Validate remembered surface still exists
+                if let localID = self?.localFocusedSurfaceID,
+                   self?.surfaces.contains(where: { $0.id == localID }) == false {
+                    self?.localFocusedSurfaceID = nil
+                }
                 // Auto-select first surface if nothing is focused
                 if self?.focusedSurfaceID == nil, let first = self?.surfaces.first {
                     self?.localFocusedSurfaceID = first.id
