@@ -213,3 +213,7 @@ Cool let's commit these changes now
 ---
 
 There seems to be a weird small bug where maybe after it's idle for too long the control stopped working as in the volume up or down the touchscreen still works though
+
+---
+
+All right I think that might've fixed it so we can commit a change
