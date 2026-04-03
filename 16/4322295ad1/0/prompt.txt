@@ -271,3 +271,7 @@ I noticed when I'm cycling through sometimes after a while the volume buttons do
 ---
 
 Cool what's left in our to do
+
+---
+
+Can you start planning how we would do the tail skill implementation
