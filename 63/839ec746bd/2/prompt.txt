@@ -1,0 +1,24 @@
+alright let's go down the list of improvements from TODO
+
+---
+
+I want to go through the UX ideas we were talking about
+Pull up those plans and lets implement
+
+---
+
+Everything seems to be working except the full screen which first of all should show up under the terminal options because it's making one specific terminal full screen full screen so figure out how to send a command to Cmux
+
+---
+
+what I meant by fullscreen quick action was to do the toggle pane zoom command on cmux so create that new action and call it zoom and keep fullscreen option as is
+
+---
+
+zoom doens't seem to do anything
+how can I test that tit's the right command being sent
+
+---
+
+In the settings of cmux I see the shortcut for "toggle pane zoom" which is CMD+SHIFT+ENTER 
+That's what I want to shortcut for

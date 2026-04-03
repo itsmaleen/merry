@@ -3,7 +3,7 @@
   "checkpoint_id": "63839ec746bd",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 2,
+  "checkpoints_count": 8,
   "files_touched": [
     "ios/cmux.xcodeproj/project.pbxproj",
     "ios/cmux/App/AppState.swift",
@@ -29,13 +29,19 @@
       "transcript": "/63/839ec746bd/1/full.jsonl",
       "content_hash": "/63/839ec746bd/1/content_hash.txt",
       "prompt": "/63/839ec746bd/1/prompt.txt"
+    },
+    {
+      "metadata": "/63/839ec746bd/2/metadata.json",
+      "transcript": "/63/839ec746bd/2/full.jsonl",
+      "content_hash": "/63/839ec746bd/2/content_hash.txt",
+      "prompt": "/63/839ec746bd/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 780,
-    "cache_creation_tokens": 1050620,
-    "cache_read_tokens": 86156369,
-    "output_tokens": 183783,
-    "api_call_count": 572
+    "input_tokens": 913,
+    "cache_creation_tokens": 1143121,
+    "cache_read_tokens": 94491704,
+    "output_tokens": 207304,
+    "api_call_count": 689
   }
 }

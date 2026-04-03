@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "63839ec746bd",
+  "session_id": "8e55029c-2523-4503-b6f0-09a70d0babb0",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-03T22:17:17.176769Z",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Input/SpeechInputManager.swift",
+    "ios/cmux/Input/TranscriptEditorView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/cmux/Settings/QuickActionSettingsView.swift",
+    "plans/cancel-speech-volume-down.md",
+    "plans/close-workspace-quick-action.md",
+    "plans/fullscreen-quick-action.md",
+    "plans/remember-focused-surface.md",
+    "plans/swipe-to-edit-transcript.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "6395570552cd",
+  "checkpoint_transcript_start": 116,
+  "transcript_lines_at_start": 116,
+  "token_usage": {
+    "input_tokens": 133,
+    "cache_creation_tokens": 92501,
+    "cache_read_tokens": 8335335,
+    "output_tokens": 23521,
+    "api_call_count": 117
+  },
+  "session_metrics": {
+    "turn_count": 15
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-03T22:17:16.346817Z",
+    "agent_lines": 212,
+    "human_added": 8,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 221,
+    "agent_percentage": 95.92760180995475
+  }
+}
