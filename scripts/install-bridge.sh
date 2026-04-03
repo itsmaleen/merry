@@ -4,12 +4,21 @@ set -euo pipefail
 BINARY="/usr/local/bin/cmux-bridge"
 PLIST_LABEL="com.itsmaleen.cmux-bridge"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
+ENABLE_TAILSCALE="${1:---no-tailscale}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Build and install binary
 echo "Building cmux-bridge..."
 bash "$SCRIPT_DIR/build.sh" "$BINARY"
+
+# Build ProgramArguments
+ARGS="    <string>${BINARY}</string>"
+if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
+    ARGS="${ARGS}
+    <string>--tailscale</string>"
+    echo "Tailscale enabled."
+fi
 
 # Write LaunchAgent plist
 echo "Installing LaunchAgent → $PLIST_PATH"
@@ -23,7 +32,7 @@ cat > "$PLIST_PATH" <<EOF
   <string>${PLIST_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${BINARY}</string>
+${ARGS}
   </array>
   <key>RunAtLoad</key>
   <true/>
