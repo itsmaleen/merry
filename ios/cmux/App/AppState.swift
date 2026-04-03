@@ -59,7 +59,8 @@ final class AppState: ObservableObject {
               let token = components.queryItems?.first(where: { $0.name == "token" })?.value
         else { return }
 
-        let credentials = PairingCredentials(host: host, port: port, token: token)
+        let tailscaleHost = components.queryItems?.first(where: { $0.name == "tailscale_host" })?.value
+        let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost)
         try? pairingStore.save(credentials)
         connect(to: credentials)
         isPairingPresented = false
@@ -336,7 +337,7 @@ extension AppState: BridgeDiscoveryDelegate {
         guard connectionStatus == .disconnected,
               let stored = try? pairingStore.load() else { return }
         if let match = candidates.first(where: { $0.host == stored.host && $0.port == stored.port }) {
-            connect(to: PairingCredentials(host: match.host, port: match.port, token: stored.token))
+            connect(to: PairingCredentials(host: match.host, port: match.port, token: stored.token, tailscaleHost: stored.tailscaleHost))
         }
     }
 }

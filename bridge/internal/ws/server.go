@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
@@ -49,17 +50,33 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
+	return s.Serve(ctx, ln)
+}
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- s.httpServer.Serve(ln)
-	}()
+// Serve serves on the given listeners until ctx is cancelled.
+// All listeners share the same HTTP handler and auth token.
+func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(listeners))
+
+	for _, ln := range listeners {
+		wg.Add(1)
+		go func(l net.Listener) {
+			defer wg.Done()
+			if err := s.httpServer.Serve(l); err != http.ErrServerClosed {
+				errCh <- err
+			}
+		}(ln)
+	}
 
 	select {
 	case <-ctx.Done():
 		_ = s.httpServer.Shutdown(context.Background())
+		wg.Wait()
 		return nil
 	case err := <-errCh:
+		_ = s.httpServer.Shutdown(context.Background())
+		wg.Wait()
 		return err
 	}
 }

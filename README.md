@@ -101,6 +101,27 @@ Swipe left/right to switch between action sections.
 - Hamburger menu (top-left) for navigation to other views
 - Pull to refresh surfaces
 
+## Tailscale (remote access)
+
+To access cmux from outside your LAN (e.g., phone on cellular), enable Tailscale:
+
+```bash
+# First time: pair with --tailscale to include tailnet hostname in QR
+cmux-bridge --pair --tailscale
+
+# Run with Tailscale enabled
+cmux-bridge --tailscale
+```
+
+On first `--tailscale` run, a browser opens for Tailscale OAuth login (one-time).
+The bridge joins your tailnet as `cmux-bridge.your-tailnet.ts.net`.
+
+**Prerequisites**: Tailscale app installed on your iPhone, logged into the same tailnet.
+
+The iOS app automatically tries LAN first, then falls back to the tailnet address if LAN is unreachable. No config changes needed on the phone after pairing.
+
+You can also set `"tailscale": true` in `~/.config/cmux-bridge/config.json` to always enable it.
+
 ## Logs and debugging
 
 ```bash

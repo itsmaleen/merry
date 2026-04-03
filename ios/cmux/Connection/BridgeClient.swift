@@ -94,12 +94,23 @@ final class BridgeClient: NSObject {
 
     // MARK: - Private
 
+    /// Whether to try the tailscale host on next connection attempt.
+    private var useTailscale = false
+
     private func startConnection() {
-        let urlString = "ws://\(credentials.host):\(credentials.port)/ws"
+        let host: String
+        if useTailscale, let tsHost = credentials.tailscaleHost, !tsHost.isEmpty {
+            host = tsHost
+        } else {
+            host = credentials.host
+        }
+
+        let urlString = "ws://\(host):\(credentials.port)/ws"
         guard let url = URL(string: urlString) else { return }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = useTailscale ? 10 : 5
 
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         self.session = session
@@ -195,6 +206,12 @@ final class BridgeClient: NSObject {
     private func scheduleReconnect() {
         let delay = backoff
         backoff = min(backoff * 2, 30)
+
+        // Alternate between LAN and Tailscale on each retry
+        if credentials.tailscaleHost != nil {
+            useTailscale.toggle()
+        }
+
         reconnectTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, self.shouldReconnect else { return }
@@ -212,6 +229,7 @@ extension BridgeClient: URLSessionWebSocketDelegate {
         didOpenWithProtocol protocol: String?
     ) {
         backoff = 1
+        useTailscale = false // Reset — LAN worked, prefer it next time
         Task { @MainActor in
             self.delegate?.clientDidConnect(self)
         }

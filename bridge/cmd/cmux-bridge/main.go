@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
+	"tailscale.com/tsnet"
 )
 
 const (
@@ -28,18 +30,22 @@ const (
 )
 
 type config struct {
-	SocketPath     string `json:"socket_path"`
-	SocketPassword string `json:"socket_password"`
-	BridgePort     int    `json:"bridge_port"`
-	PollIntervalMs int    `json:"poll_interval_ms"`
+	SocketPath        string `json:"socket_path"`
+	SocketPassword    string `json:"socket_password"`
+	BridgePort        int    `json:"bridge_port"`
+	PollIntervalMs    int    `json:"poll_interval_ms"`
+	Tailscale         bool   `json:"tailscale"`
+	TailscaleHostname string `json:"tailscale_hostname"`
 }
 
 func defaultConfig() config {
 	return config{
-		SocketPath:     "",
-		SocketPassword: "",
-		BridgePort:     defaultPort,
-		PollIntervalMs: defaultPollInterval,
+		SocketPath:        "",
+		SocketPassword:    "",
+		BridgePort:        defaultPort,
+		PollIntervalMs:    defaultPollInterval,
+		Tailscale:         false,
+		TailscaleHostname: "cmux-bridge",
 	}
 }
 
@@ -80,12 +86,18 @@ func saveConfig(dir string, cfg config) error {
 
 func main() {
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
+	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	flag.Parse()
 
 	dir := configDir()
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// CLI flag overrides config
+	if *tailscaleFlag {
+		cfg.Tailscale = true
 	}
 
 	// Resolve socket path
@@ -132,9 +144,38 @@ func runPair(dir string, cfg config) {
 		log.Fatalf("token: %v", err)
 	}
 
-	if err := pair.PrintQR("", cfg.BridgePort, token); err != nil {
+	// If Tailscale enabled, start tsnet to get the hostname
+	var tailscaleHost string
+	if cfg.Tailscale {
+		tailscaleHost = startTailscaleForPairing(dir, cfg)
+	}
+
+	if err := pair.PrintQR("", cfg.BridgePort, token, tailscaleHost); err != nil {
 		log.Fatalf("qr: %v", err)
 	}
+}
+
+// startTailscaleForPairing starts a tsnet server to discover the tailnet hostname.
+func startTailscaleForPairing(dir string, cfg config) string {
+	ts := &tsnet.Server{
+		Hostname: cfg.TailscaleHostname,
+		Dir:      filepath.Join(dir, "tailscale"),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	status, err := ts.Up(ctx)
+	if err != nil {
+		log.Printf("tailscale: failed to start: %v", err)
+		ts.Close()
+		return ""
+	}
+
+	dnsName := strings.TrimSuffix(status.Self.DNSName, ".")
+	log.Printf("tailscale: %s", dnsName)
+	ts.Close()
+	return dnsName
 }
 
 // runDaemon starts the bridge in daemon mode with reconnect loop.
@@ -143,7 +184,6 @@ func runDaemon(dir string, cfg config) {
 		// Probe the socket; if it responds with auth_required, fail fast
 		client := socket.NewClient(cfg.SocketPath, "")
 		if err := client.Connect(); err != nil {
-			// Connection error — could be socket not running, fail with helpful message
 			log.Fatalf("cannot connect to cmux socket at %s: %v\nRun with --pair to configure", cfg.SocketPath, err)
 		}
 		_, probeErr := client.Send("system.ping", nil)
@@ -176,7 +216,7 @@ func runDaemon(dir string, cfg config) {
 	}()
 	go poll.Run(stopPoller)
 
-	// Reconnect loop — also broadcasts cmux.connected / cmux.disconnected to WS clients.
+	// Reconnect loop
 	go func() {
 		backoff := time.Second
 		for {
@@ -215,7 +255,6 @@ func runDaemon(dir string, cfg config) {
 				Data: map[string]any{"bridge_version": ws.BridgeVersion()},
 			})
 
-			// Wait until connection drops (Send will return error)
 		pingLoop:
 			for {
 				select {
@@ -236,7 +275,7 @@ func runDaemon(dir string, cfg config) {
 		}
 	}()
 
-	// Start mDNS advertisement
+	// Start mDNS advertisement (LAN discovery)
 	stopMDNS, err := mdns.Advertise(cfg.BridgePort)
 	if err != nil {
 		log.Printf("mdns: %v (continuing without mDNS)", err)
@@ -244,11 +283,44 @@ func runDaemon(dir string, cfg config) {
 		defer stopMDNS()
 	}
 
-	// Start WebSocket server
-	server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnectedFlag })
+	// Build listeners
 	addr := fmt.Sprintf(":%d", cfg.BridgePort)
-	log.Printf("ws: listening on %s", addr)
-	if err := server.ListenAndServe(ctx, addr); err != nil {
+	lanLn, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("lan listen %s: %v", addr, err)
+	}
+	log.Printf("ws: listening on %s (LAN)", addr)
+
+	listeners := []net.Listener{lanLn}
+
+	// Tailscale listener
+	var tsServer *tsnet.Server
+	if cfg.Tailscale {
+		tsServer = &tsnet.Server{
+			Hostname: cfg.TailscaleHostname,
+			Dir:      filepath.Join(dir, "tailscale"),
+		}
+
+		log.Printf("tailscale: starting as %s ...", cfg.TailscaleHostname)
+		tsLn, err := tsServer.Listen("tcp", addr)
+		if err != nil {
+			log.Printf("tailscale: listen failed: %v (continuing without tailnet)", err)
+		} else {
+			status, err := tsServer.Up(ctx)
+			if err != nil {
+				log.Printf("tailscale: up failed: %v (continuing without tailnet)", err)
+			} else {
+				dnsName := strings.TrimSuffix(status.Self.DNSName, ".")
+				log.Printf("tailscale: listening on %s:%d", dnsName, cfg.BridgePort)
+				listeners = append(listeners, tsLn)
+			}
+		}
+		defer tsServer.Close()
+	}
+
+	// Start WebSocket server on all listeners
+	server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnectedFlag })
+	if err := server.Serve(ctx, listeners...); err != nil {
 		log.Fatalf("ws server: %v", err)
 	}
 }

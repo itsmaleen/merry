@@ -5,6 +5,14 @@ struct PairingCredentials: Codable {
     let host: String
     let port: Int
     let token: String
+    let tailscaleHost: String?
+
+    init(host: String, port: Int, token: String, tailscaleHost: String? = nil) {
+        self.host = host
+        self.port = port
+        self.token = token
+        self.tailscaleHost = tailscaleHost
+    }
 }
 
 final class PairingStore {
