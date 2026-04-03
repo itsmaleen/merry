@@ -13,8 +13,8 @@ struct QuickAction: Identifiable {
 
 enum QuickActionBuilder {
     @MainActor
-    static func build(surfaceID sid: String, appState: AppState) -> [QuickAction] {
-        [
+    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore) -> [QuickAction] {
+        let builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
             },
@@ -58,6 +58,18 @@ enum QuickActionBuilder {
                 appState.createWorkspace()
             },
         ]
+
+        // Filter out hidden built-in actions
+        var result = builtIn.filter { !store.isBuiltInHidden($0.label) }
+
+        // Append visible custom actions
+        for custom in store.customActions where !custom.isHidden {
+            result.append(QuickAction(label: custom.label, icon: custom.icon, section: custom.section) {
+                appState.sendText(custom.command, to: sid)
+            })
+        }
+
+        return result
     }
 }
 
@@ -68,7 +80,12 @@ final class QuickActionState: ObservableObject {
     @Published var currentSectionIndex = 0
     var actions: [QuickAction] = []
 
-    var sectionOrder: [String] { ["Input", "Terminal", "Workspace"] }
+    private static let canonicalOrder = ["Input", "Terminal", "Workspace", "AI"]
+
+    var sectionOrder: [String] {
+        let present = Set(actions.map(\.section))
+        return Self.canonicalOrder.filter { present.contains($0) }
+    }
 
     var currentSection: String {
         guard sectionOrder.indices.contains(currentSectionIndex) else { return sectionOrder[0] }
@@ -131,6 +148,7 @@ final class QuickActionState: ObservableObject {
 
 struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject var quickActionStore: QuickActionStore
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
@@ -205,7 +223,7 @@ struct WorkspaceLayoutView: View {
 
     private func openQuickActions() {
         guard let surface = focusedSurface else { return }
-        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState))
+        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState, store: quickActionStore))
     }
 
     private var quickActionOverlay: some View {
@@ -555,6 +573,7 @@ struct WorkspaceLayoutView: View {
         let appState = appState
         let speech = speechManager
         let qa = quickAction
+        let store = quickActionStore
 
         volumeHandler.onSingleDown = {
             print("[VolumeHandler] singleDown")
@@ -615,7 +634,7 @@ struct WorkspaceLayoutView: View {
                 } else if let surface = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
                             ?? appState.surfaces.first {
                     let sid = surface.id
-                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState))
+                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store))
                 }
             }
         }

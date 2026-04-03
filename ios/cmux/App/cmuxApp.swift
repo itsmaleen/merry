@@ -4,6 +4,7 @@ import UserNotifications
 @main
 struct cmuxApp: App {
     @StateObject private var appState = AppState()
+    @StateObject private var quickActionStore = QuickActionStore()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
@@ -14,6 +15,7 @@ struct cmuxApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(quickActionStore)
                 .onOpenURL { url in
                     appState.handlePairingURL(url)
                 }
