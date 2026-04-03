@@ -1,0 +1,1 @@
+I noticed a small bug when a new terminal is created it should auto focus to a terminal the new one
