@@ -38,6 +38,11 @@ ${ARGS}
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>${HOME}</string>
+  </dict>
   <key>StandardOutPath</key>
   <string>/tmp/cmux-bridge.log</string>
   <key>StandardErrorPath</key>
