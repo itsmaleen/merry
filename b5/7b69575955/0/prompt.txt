@@ -292,3 +292,7 @@ can I use the scripts?
 
 I ran the install script, did cmux-bridge --pair --tailscale, logged in to tailscale which then showed the QR code but now the app is stuck on "reconnecting" 
 How can we debug this?
+
+---
+
+didn't we have a script to run this in the background?
