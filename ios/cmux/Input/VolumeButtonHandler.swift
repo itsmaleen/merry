@@ -14,6 +14,7 @@ final class VolumeButtonHandler: ObservableObject {
     private var interruptionObserver: Any?
     // Only read/written on main thread
     private var isAdjustingVolume = false
+    private var startupGrace = true
 
     // Volume-down double-tap
     private var lastDownTime: Date?
@@ -67,9 +68,15 @@ final class VolumeButtonHandler: ObservableObject {
                 }
             }
 
+            // Ignore spurious KVO events during startup (audio session
+            // activation and setVolume can trigger false volume changes)
+            self.startupGrace = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.setVolume(0.5)
                 self?.startObserving(session: session)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.startupGrace = false
             }
         }
     }
@@ -102,7 +109,7 @@ final class VolumeButtonHandler: ObservableObject {
             guard abs(delta) > 0.01 else { return }
 
             DispatchQueue.main.async { [weak self] in
-                guard let self, !self.isAdjustingVolume else { return }
+                guard let self, !self.isAdjustingVolume, !self.startupGrace else { return }
                 if delta < 0 {
                     guard !self.speechActive else { return }
                     self.handleVolumeDown()
