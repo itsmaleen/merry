@@ -296,3 +296,7 @@ How can we debug this?
 ---
 
 didn't we have a script to run this in the background?
+
+---
+
+I ran the install script and it seems like I still need to manually run cmux-bridge --tailscale for this to work
