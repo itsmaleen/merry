@@ -182,16 +182,18 @@ final class AppState: ObservableObject {
     }
 
     func splitSurface(direction: String, surfaceID: String? = nil) {
+        let previousIDs = Set(surfaces.map(\.id))
         var params: [String: Any] = ["direction": direction]
         if let surfaceID { params["surface_id"] = surfaceID }
         send(method: "surface.split", params: params) { [weak self] _ in
-            self?.refreshSurfaces()
+            self?.refreshSurfacesAndFocusNew(previousIDs: previousIDs)
         }
     }
 
     func createSurface(type: String = "terminal") {
+        let previousIDs = Set(surfaces.map(\.id))
         send(method: "surface.create", params: ["type": type]) { [weak self] _ in
-            self?.refreshSurfaces()
+            self?.refreshSurfacesAndFocusNew(previousIDs: previousIDs)
         }
     }
 
@@ -229,6 +231,24 @@ final class AppState: ObservableObject {
                 // Auto-select first surface if nothing is focused
                 if self?.focusedSurfaceID == nil, let first = self?.surfaces.first {
                     self?.localFocusedSurfaceID = first.id
+                }
+            }
+        }
+    }
+
+    private func refreshSurfacesAndFocusNew(previousIDs: Set<String>) {
+        var params: [String: Any] = [:]
+        if let id = currentWorkspaceID {
+            params["workspace_id"] = id
+        }
+        send(method: "surface.list", params: params) { [weak self] result in
+            guard let self else { return }
+            if let list = result["surfaces"] as? [[String: Any]] {
+                self.surfaces = list.compactMap(Surface.init)
+                if let newSurface = self.surfaces.first(where: { !previousIDs.contains($0.id) }) {
+                    self.focusSurface(newSurface.id)
+                } else if self.focusedSurfaceID == nil, let first = self.surfaces.first {
+                    self.localFocusedSurfaceID = first.id
                 }
             }
         }
