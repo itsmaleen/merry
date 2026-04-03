@@ -193,3 +193,7 @@ Cool that worked one last thing let's actually make each section its own tab and
 ---
 
 When swiping allow for the swiping gesture to happen outside of the quick action menu and it being recognized for a quick action menu essentially if a swipe happens anywhere on the screen
+
+---
+
+Cool that works now let's commit these changes
