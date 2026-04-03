@@ -250,3 +250,7 @@ And should this all be taken care of by some start script so we don't need to ma
 ---
 
 I think that was actually the new bridge, I ran the above commmands and still stuck in "reconnecting"
+
+---
+
+great so this worked, make sure the README.md reflects the steps needed to start this including cmux-bridge and cmux-bridge --pair if it's not already + in the scripts
