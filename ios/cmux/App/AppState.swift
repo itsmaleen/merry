@@ -201,6 +201,10 @@ final class AppState: ObservableObject {
         send(method: "surface.list", params: params) { [weak self] result in
             if let list = result["surfaces"] as? [[String: Any]] {
                 self?.surfaces = list.compactMap(Surface.init)
+                // Auto-select first surface if nothing is focused
+                if self?.focusedSurfaceID == nil, let first = self?.surfaces.first {
+                    self?.localFocusedSurfaceID = first.id
+                }
             }
         }
     }
