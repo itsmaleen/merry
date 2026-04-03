@@ -11,6 +11,7 @@ final class VolumeButtonHandler: ObservableObject {
     let volumeView = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 1, height: 1))
 
     private var observation: NSKeyValueObservation?
+    private var interruptionObserver: Any?
     // Only read/written on main thread
     private var isAdjustingVolume = false
 
@@ -49,6 +50,23 @@ final class VolumeButtonHandler: ObservableObject {
             try? session.setCategory(.ambient)
             try? session.setActive(true)
 
+            // Listen for audio session interruptions and restart
+            if self.interruptionObserver == nil {
+                self.interruptionObserver = NotificationCenter.default.addObserver(
+                    forName: AVAudioSession.interruptionNotification,
+                    object: session,
+                    queue: .main
+                ) { [weak self] notification in
+                    guard let info = notification.userInfo,
+                          let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                          let type = AVAudioSession.InterruptionType(rawValue: typeValue),
+                          type == .ended else { return }
+                    // Restart after interruption ends
+                    print("[VolumeHandler] audio interruption ended, restarting")
+                    self?.start()
+                }
+            }
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.setVolume(0.5)
                 self?.startObserving(session: session)
@@ -61,6 +79,10 @@ final class VolumeButtonHandler: ObservableObject {
         observation = nil
         pendingDownTimer?.invalidate()
         pendingUpTimer?.invalidate()
+        if let observer = interruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            interruptionObserver = nil
+        }
         volumeView.removeFromSuperview()
     }
 

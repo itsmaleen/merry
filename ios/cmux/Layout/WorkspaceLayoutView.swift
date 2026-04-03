@@ -193,9 +193,9 @@ struct WorkspaceLayoutView: View {
             }
         }
         .onDisappear {}
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Restart volume handler — iOS deactivates AVAudioSession
-            // when backgrounded, killing the volume KVO observer
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Restart volume handler — iOS can deactivate AVAudioSession
+            // when backgrounded, interrupted, or idle, killing the KVO observer
             volumeHandler.start()
             appState.refreshSurfaces()
         }
