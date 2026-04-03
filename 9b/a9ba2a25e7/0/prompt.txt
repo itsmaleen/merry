@@ -263,3 +263,7 @@ If it's currently focused on that surface or when focused on that surface, have 
 ---
 
 give me a description to add to the github repo
+
+---
+
+I noticed when I'm cycling through sometimes after a while the volume buttons don't work anymore
