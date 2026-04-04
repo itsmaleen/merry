@@ -124,3 +124,7 @@ Could we include the full history of a surfaces content on scroll up so I would 
 ---
 
 Download history button showed some loading animation after being clicked and then nothing happened
+
+---
+
+Cool that worked we can commit the changes
