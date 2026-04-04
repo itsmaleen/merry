@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
+    @Published var browserURLs: [String: String] = [:]
 
     private var lastFocusedSurface: [String: String] = [:]
     private let pairingStore = PairingStore()
@@ -200,6 +201,14 @@ final class AppState: ObservableObject {
                     .joined(separator: "\n")
                     .replacingOccurrences(of: "\\n+$", with: "", options: .regularExpression)
                 self?.surfaceContent[surfaceID] = trimmed
+            }
+        }
+    }
+
+    func readBrowserURL(_ surfaceID: String) {
+        send(method: "browser.url.get", params: ["surface_id": surfaceID]) { [weak self] result in
+            if let url = result["url"] as? String {
+                self?.browserURLs[surfaceID] = url
             }
         }
     }
@@ -445,13 +454,17 @@ struct Workspace: Identifiable {
 struct Surface: Identifiable {
     let id: String
     let title: String
+    let type: String
     let workspaceID: String?
     let isFocused: Bool
+
+    var isBrowser: Bool { type == "browser" }
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
         self.id = id
-        self.title = (dict["title"] as? String) ?? (dict["type"] as? String) ?? id
+        self.type = (dict["type"] as? String) ?? "terminal"
+        self.title = (dict["title"] as? String) ?? self.type
         self.workspaceID = dict["workspace_id"] as? String
         self.isFocused = dict["is_focused"] as? Bool ?? false
     }

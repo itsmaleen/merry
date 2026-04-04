@@ -7,6 +7,8 @@ struct PaneCardView: View {
     let isTranscribing: Bool
     let transcript: String
     var terminalText: String = ""
+    var isBrowser: Bool = false
+    var browserURL: String = ""
 
     @State private var notificationPulse = false
     @State private var userScrolledUp = false
@@ -51,8 +53,41 @@ struct PaneCardView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 10)
                             .padding(.top, 8)
+                    } else if isBrowser {
+                        VStack(spacing: 8) {
+                            Image(systemName: "globe")
+                                .font(.system(size: isFocused ? 28 : 16))
+                                .foregroundStyle(.white.opacity(0.2))
+                            if !browserURL.isEmpty {
+                                Text(browserURL
+                                    .replacingOccurrences(of: "https://", with: "")
+                                    .replacingOccurrences(of: "http://", with: ""))
+                                    .font(.system(size: isFocused ? 10 : 7, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.4))
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                            }
+                            if !title.isEmpty {
+                                Text(title)
+                                    .font(.system(size: isFocused ? 9 : 7, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.3))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if !terminalText.isEmpty {
                         terminalContentView
+                    } else if !isBrowser {
+                        // Loading state for terminals before content arrives
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .tint(.white.opacity(0.3))
+                            Text("Loading…")
+                                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.2))
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -129,8 +164,8 @@ struct PaneCardView: View {
 
     private var titleBar: some View {
         HStack(spacing: 6) {
-            // Terminal icon
-            Image(systemName: "terminal")
+            // Surface type icon
+            Image(systemName: isBrowser ? "globe" : "terminal")
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(isFocused ? .white.opacity(0.5) : .white.opacity(0.2))
 

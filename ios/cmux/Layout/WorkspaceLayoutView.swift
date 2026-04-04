@@ -402,7 +402,9 @@ struct WorkspaceLayoutView: View {
                         hasNotification: appState.hasNotification(for: surface),
                         isTranscribing: speechManager.isRecording,
                         transcript: speechManager.transcript,
-                        terminalText: appState.surfaceContent[surface.id] ?? ""
+                        terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+                        isBrowser: surface.isBrowser,
+                        browserURL: appState.browserURLs[surface.id] ?? ""
                     )
                     .id(surface.id)
                     .frame(width: mainWidth - (hasSidebar ? 4 : 16))
@@ -451,7 +453,9 @@ struct WorkspaceLayoutView: View {
                                     hasNotification: appState.hasNotification(for: surface),
                                     isTranscribing: false,
                                     transcript: "",
-                                    terminalText: appState.surfaceContent[surface.id] ?? ""
+                                    terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+                                    isBrowser: surface.isBrowser,
+                                    browserURL: appState.browserURLs[surface.id] ?? ""
                                 )
                                 .frame(height: tileHeight(for: secondarySurfaces.count, in: geo.size.height))
                                 .onTapGesture {
@@ -610,23 +614,35 @@ struct WorkspaceLayoutView: View {
 
     // MARK: - Content polling
 
+    @State private var pollCycleCount = 0
+
     private func startContentPolling() {
-        refreshAllSurfaceContent()
-        contentPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak appState] _ in
+        // Initial fetch — focused only
+        if let focused = focusedSurface {
+            fetchContent(for: focused)
+        }
+        contentPollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak appState] _ in
             Task { @MainActor in
                 guard let appState else { return }
+                self.pollCycleCount += 1
                 let focusedID = appState.focusedSurfaceID
+                // Focused surface every cycle, secondary every 5th (~15s)
                 for surface in appState.surfaces {
-                    appState.readSurfaceText(surface.id, scrollback: surface.id == focusedID)
+                    if surface.id == focusedID {
+                        self.fetchContent(for: surface)
+                    } else if self.pollCycleCount % 5 == 0 {
+                        self.fetchContent(for: surface)
+                    }
                 }
             }
         }
     }
 
-    private func refreshAllSurfaceContent() {
-        let focusedID = appState.focusedSurfaceID
-        for surface in appState.surfaces {
-            appState.readSurfaceText(surface.id, scrollback: surface.id == focusedID)
+    private func fetchContent(for surface: Surface) {
+        if surface.isBrowser {
+            appState.readBrowserURL(surface.id)
+        } else {
+            appState.readSurfaceText(surface.id)
         }
     }
 
