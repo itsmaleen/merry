@@ -108,3 +108,7 @@ I tested it out and works decently so can commit
 ---
 
 Can you go ahead and update the to-do markdown that we have with everything that's been done and then yeah that's it
+
+---
+
+great now commit and push the whole thing
