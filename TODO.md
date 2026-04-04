@@ -39,12 +39,26 @@
 - [x] Swipe gestures + spring animations
 - [x] README with full setup + usage docs
 
+## iOS App — UX Improvements ✅
+
+- [x] Cancel speech/recording via volume down with haptic feedback
+- [x] Swipe-to-edit transcript with keyboard mode (TranscriptEditorView)
+- [x] Zoom quick action (Terminal) — sends cmd+shift+enter to toggle pane zoom
+- [x] Fullscreen quick action (Workspace) — hides sidebar + workspace bar
+- [x] Close Workspace quick action
+- [x] Remember last focused surface per workspace across switches
+- [x] Live terminal content viewing via surface.read_text (3s polling)
+- [x] Browser surface detection — globe icon + URL display
+- [x] Loading spinner for terminal cards before content arrives
+- [x] Command dictionary with autocomplete suggestions in transcript editor
+
 ## Polish & Improvements
 
 - [ ] Better STT model (replace Apple Speech with Whisper or similar)
 - [ ] Haptic feedback on surface/workspace cycling
 - [ ] Pane spatial layout (GeometryReader needs rework for current structure)
 - [ ] Screenshots in README
+- [ ] Browser surface screenshots (browser.screenshot polling)
 
 ## Bridge — Phase 2 (notification.subscribe)
 
