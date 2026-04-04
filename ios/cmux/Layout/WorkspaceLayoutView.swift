@@ -169,6 +169,7 @@ struct WorkspaceLayoutView: View {
     @State private var cycleDirection: Edge = .trailing
     @State private var isEditingTranscript = false
     @State private var editingText = ""
+    @State private var contentPollTimer: Timer?
 
     var body: some View {
         ZStack {
@@ -236,8 +237,12 @@ struct WorkspaceLayoutView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 volumeHandler.start()
             }
+            startContentPolling()
         }
-        .onDisappear {}
+        .onDisappear {
+            contentPollTimer?.invalidate()
+            contentPollTimer = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             // Restart volume handler — iOS can deactivate AVAudioSession
             // when backgrounded, interrupted, or idle, killing the KVO observer
@@ -396,7 +401,8 @@ struct WorkspaceLayoutView: View {
                         isFocused: true,
                         hasNotification: appState.hasNotification(for: surface),
                         isTranscribing: speechManager.isRecording,
-                        transcript: speechManager.transcript
+                        transcript: speechManager.transcript,
+                        terminalText: appState.surfaceContent[surface.id] ?? ""
                     )
                     .id(surface.id)
                     .frame(width: mainWidth - (hasSidebar ? 4 : 16))
@@ -444,7 +450,8 @@ struct WorkspaceLayoutView: View {
                                     isFocused: false,
                                     hasNotification: appState.hasNotification(for: surface),
                                     isTranscribing: false,
-                                    transcript: ""
+                                    transcript: "",
+                                    terminalText: appState.surfaceContent[surface.id] ?? ""
                                 )
                                 .frame(height: tileHeight(for: secondarySurfaces.count, in: geo.size.height))
                                 .onTapGesture {
@@ -599,6 +606,28 @@ struct WorkspaceLayoutView: View {
             .fill(color)
             .frame(width: 6, height: 6)
             .shadow(color: color.opacity(0.5), radius: 3)
+    }
+
+    // MARK: - Content polling
+
+    private func startContentPolling() {
+        refreshAllSurfaceContent()
+        contentPollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak appState] _ in
+            Task { @MainActor in
+                guard let appState else { return }
+                let focusedID = appState.focusedSurfaceID
+                for surface in appState.surfaces {
+                    appState.readSurfaceText(surface.id, scrollback: surface.id == focusedID)
+                }
+            }
+        }
+    }
+
+    private func refreshAllSurfaceContent() {
+        let focusedID = appState.focusedSurfaceID
+        for surface in appState.surfaces {
+            appState.readSurfaceText(surface.id, scrollback: surface.id == focusedID)
+        }
     }
 
     // MARK: - Volume callbacks

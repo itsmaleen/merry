@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     // Tracks the last surface explicitly focused by the user; used when surface.list
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
+    @Published var surfaceContent: [String: String] = [:]
 
     private var lastFocusedSurface: [String: String] = [:]
     private let pairingStore = PairingStore()
@@ -178,6 +179,29 @@ final class AppState: ObservableObject {
 
     func sendKey(_ key: String, to surfaceID: String) {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
+    }
+
+    func readSurfaceText(_ surfaceID: String, lines: Int = 50, scrollback: Bool = false) {
+        var params: [String: Any] = ["surface_id": surfaceID]
+        if scrollback {
+            params["scrollback"] = true
+        } else {
+            params["lines"] = lines
+        }
+        if let wsID = currentWorkspaceID {
+            params["workspace_id"] = wsID
+        }
+        send(method: "surface.read_text", params: params) { [weak self] result in
+            if let text = result["text"] as? String {
+                // Trim trailing whitespace per line and remove blank trailing lines
+                let trimmed = text
+                    .split(separator: "\n", omittingEmptySubsequences: false)
+                    .map { $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
+                    .joined(separator: "\n")
+                    .replacingOccurrences(of: "\\n+$", with: "", options: .regularExpression)
+                self?.surfaceContent[surfaceID] = trimmed
+            }
+        }
     }
 
     func createWorkspace(name: String? = nil) {
