@@ -32,6 +32,7 @@
 		AA1B2C3D4E5F60718293A4B5 /* QuickActionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F60718293A4B5C6 /* QuickActionStore.swift */; };
 		CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F60718293A4B5C6D7E8 /* QuickActionSettingsView.swift */; };
 		EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF60718293A4B5C6D7E8F90A /* QuickActionEditView.swift */; };
+		4B5C6D7E8F90A1B2C3D4E5F6 /* CommandDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F90A1B2C3D4E5 /* CommandDictionary.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		31258BB494FDCC0F968F7BEE /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		35B7A4CAA64894DF972AEDAE /* WorkspaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceListView.swift; sourceTree = "<group>"; };
 		46410B90D2F45E6882E585AD /* cmux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = cmux.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A4B5C6D7E8F90A1B2C3D4E5 /* CommandDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandDictionary.swift; sourceTree = "<group>"; };
 		596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputManager.swift; sourceTree = "<group>"; };
 		64B351B6ABD7CDE8B988761F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCardView.swift; sourceTree = "<group>"; };
@@ -149,6 +151,7 @@
 		E873BB80B6E37B095232A742 /* Input */ = {
 			isa = PBXGroup;
 			children = (
+				3A4B5C6D7E8F90A1B2C3D4E5 /* CommandDictionary.swift */,
 				596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */,
 				7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */,
 				BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */,
@@ -247,6 +250,7 @@
 				CBF87F9FAD9B0CCED7B3E9D0 /* AppState.swift in Sources */,
 				0B57002A5DC6E4752107EA83 /* BridgeClient.swift in Sources */,
 				A66072EAEC497AD9D4AF1EEC /* BridgeDiscovery.swift in Sources */,
+				4B5C6D7E8F90A1B2C3D4E5F6 /* CommandDictionary.swift in Sources */,
 				BBE5F6FFB4637EE4F980DA45 /* ConnectionStatusBar.swift in Sources */,
 				29D357A92492EA0F206C6A29 /* ContentView.swift in Sources */,
 				80AE92760C00B2E71E97A2EC /* ControlView.swift in Sources */,

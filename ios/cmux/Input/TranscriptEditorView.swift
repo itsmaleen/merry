@@ -6,6 +6,7 @@ struct TranscriptEditorView: View {
     var onSend: (String) -> Void
 
     @FocusState private var isFocused: Bool
+    @StateObject private var commandDict = CommandDictionary()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +25,7 @@ struct TranscriptEditorView: View {
                 Spacer()
 
                 Button("Send") {
+                    learnCommand(text)
                     onSend(text)
                     isPresented = false
                 }
@@ -46,11 +48,68 @@ struct TranscriptEditorView: View {
                 )
                 .padding(.horizontal, 16)
 
+            // Command suggestions bar
+            commandSuggestionsBar
+                .padding(.top, 8)
+
             Spacer()
         }
         .background(Color.black.ignoresSafeArea())
         .onAppear {
             isFocused = true
+        }
+    }
+
+    // MARK: - Suggestions bar
+
+    private var currentWord: String {
+        // Get the last word being typed (after last space or newline)
+        let trimmed = text.replacingOccurrences(of: "\n", with: " ")
+        return trimmed.split(separator: " ").last.map(String.init) ?? ""
+    }
+
+    private var commandSuggestionsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(commandDict.suggestions(for: currentWord), id: \.self) { cmd in
+                    Button {
+                        insertSuggestion(cmd)
+                    } label: {
+                        Text(cmd)
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.white.opacity(0.1))
+                            )
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .frame(height: 36)
+    }
+
+    private func insertSuggestion(_ command: String) {
+        // Replace the current word with the suggestion
+        let parts = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        if parts.isEmpty {
+            text = command + " "
+        } else {
+            var updated = parts
+            updated[updated.count - 1] = command
+            text = updated.joined(separator: " ") + " "
+        }
+    }
+
+    private func learnCommand(_ input: String) {
+        // Learn the first word of what was sent (the command)
+        let firstWord = input.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: " ").first.map(String.init) ?? ""
+        if !firstWord.isEmpty {
+            commandDict.add(firstWord)
         }
     }
 }
