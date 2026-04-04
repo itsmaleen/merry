@@ -1,0 +1,86 @@
+alright let's go down the list of improvements from TODO
+
+---
+
+I want to go through the UX ideas we were talking about
+Pull up those plans and lets implement
+
+---
+
+Everything seems to be working except the full screen which first of all should show up under the terminal options because it's making one specific terminal full screen full screen so figure out how to send a command to Cmux
+
+---
+
+what I meant by fullscreen quick action was to do the toggle pane zoom command on cmux so create that new action and call it zoom and keep fullscreen option as is
+
+---
+
+zoom doens't seem to do anything
+how can I test that tit's the right command being sent
+
+---
+
+In the settings of cmux I see the shortcut for "toggle pane zoom" which is CMD+SHIFT+ENTER 
+That's what I want to shortcut for
+
+---
+
+great that worked, now commit these cahnges
+
+---
+
+next main thing that's important to get done is having a way to "see" what's happening from the iOS app
+
+Let's think through how that could work - doesn cmux allow for some kind of streaming of content? If not there's probably some way to do it specifically for claude code but do some research, look at the cmux repo at ~/cmux and let's come up with different strategies
+
+---
+
+Yeah let's start with that but we need to make sure to format it nicely within our surface windows in the iOS apps
+
+---
+
+So was this supposed to be empty until you tap because right now it seems like it's showing all the text which is fine because that's a better result. What's the current limitation
+
+---
+
+This is pretty good for now is there a way that we could allow for more scrollback or essentially full scrolling of all the content
+
+---
+
+The tap to refresh or the tap to the focus card to load the full scroll back history doesn't seem to work we should fetch the full scrollback history if we try to scroll past the 50 lines maybe show a small animation
+
+---
+
+There seems to be a bit of an issue where it takes multiple scroll ups to actually load the content and then as your scrolling sometimes it jumps all the way down or when you do the scroll up and it does the animation it jumps all the way back down and you have to scroll up again to retry to load the history it all feels a little junkies is there a way to make it much more smoother and more bulletproof
+
+---
+
+Great that seemed to work well let's commit these changes
+
+---
+
+Now the next thing is we need to figure out how to stream the browser surfaces
+
+---
+
+Let's do strategy three
+
+---
+
+Not seeing the browser snapshot just the title and like the URL in the middle of the surface and it seems that the app is starting to lag now because of it when switching workspaces when switching surfaces
+
+---
+
+Let's roll back all these changes since I asked about doing the browser stuff
+
+---
+
+And then let's just do a browser surface shows the title and the Europe are all in the middle of that surface I think it was whatever the fallback was set up as
+
+---
+
+It's still seems to lag
+
+---
+
+Seems much better now last thing to do is have some small loading animation for before the tax content loads so let's say you're going to your cycling through a different workspace before the surface text shows have some loading animation
