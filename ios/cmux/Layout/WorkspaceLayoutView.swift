@@ -170,6 +170,8 @@ struct WorkspaceLayoutView: View {
     @State private var isEditingTranscript = false
     @State private var editingText = ""
     @State private var contentPollTimer: Timer?
+    @State private var fullHistorySurfaces: Set<String> = []
+    @State private var loadingHistory: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -404,7 +406,12 @@ struct WorkspaceLayoutView: View {
                         transcript: speechManager.transcript,
                         terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
                         isBrowser: surface.isBrowser,
-                        browserURL: appState.browserURLs[surface.id] ?? ""
+                        browserURL: appState.browserURLs[surface.id] ?? "",
+                        hasFullHistory: fullHistorySurfaces.contains(surface.id),
+                        isLoadingHistory: loadingHistory.contains(surface.id),
+                        onLoadHistory: { [surface] in
+                            loadHistory(for: surface.id)
+                        }
                     )
                     .id(surface.id)
                     .frame(width: mainWidth - (hasSidebar ? 4 : 16))
@@ -593,6 +600,9 @@ struct WorkspaceLayoutView: View {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }
+                // Reset history state for new workspace
+                fullHistorySurfaces.removeAll()
+                loadingHistory.removeAll()
             }
         }
     }
@@ -615,6 +625,25 @@ struct WorkspaceLayoutView: View {
     // MARK: - Content polling
 
     @State private var pollCycleCount = 0
+
+    private func loadHistory(for surfaceID: String) {
+        guard !loadingHistory.contains(surfaceID) else { return }
+        let previousLength = appState.surfaceContent[surfaceID]?.count ?? 0
+        loadingHistory.insert(surfaceID)
+        appState.readSurfaceText(surfaceID, scrollback: true)
+
+        // Poll until content actually changes or timeout after 5s
+        var checks = 0
+        Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
+            checks += 1
+            let currentLength = appState.surfaceContent[surfaceID]?.count ?? 0
+            if currentLength != previousLength || checks >= 16 {
+                timer.invalidate()
+                loadingHistory.remove(surfaceID)
+                fullHistorySurfaces.insert(surfaceID)
+            }
+        }
+    }
 
     private func startContentPolling() {
         // Initial fetch — focused only
@@ -642,7 +671,8 @@ struct WorkspaceLayoutView: View {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
         } else {
-            appState.readSurfaceText(surface.id)
+            // Keep full history if already loaded, otherwise fetch 50 lines
+            appState.readSurfaceText(surface.id, scrollback: fullHistorySurfaces.contains(surface.id))
         }
     }
 

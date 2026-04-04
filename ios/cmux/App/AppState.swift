@@ -263,7 +263,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    func refreshWorkspaces() {
+    func refreshWorkspaces(then completion: (() -> Void)? = nil) {
         send(method: "workspace.list", params: [:]) { [weak self] result in
             if let list = result["workspaces"] as? [[String: Any]] {
                 self?.workspaces = list.compactMap(Workspace.init)
@@ -271,6 +271,7 @@ final class AppState: ObservableObject {
         }
         send(method: "workspace.current", params: [:]) { [weak self] result in
             self?.currentWorkspaceID = result["id"] as? String
+            completion?()
         }
     }
 
@@ -375,9 +376,10 @@ final class AppState: ObservableObject {
 extension AppState: BridgeClientDelegate {
     func clientDidConnect(_ client: BridgeClient) {
         connectionStatus = .connected
-        refreshWorkspaces()
-        refreshSurfaces()
-        refreshPanes()
+        refreshWorkspaces {
+            self.refreshSurfaces()
+            self.refreshPanes()
+        }
     }
 
     func clientDidDisconnect(_ client: BridgeClient, error: Error?) {
@@ -397,9 +399,10 @@ extension AppState: BridgeClientDelegate {
             notifications = []
         case .cmuxConnected:
             connectionStatus = .connected(cmuxConnected: true)
-            refreshWorkspaces()
-            refreshSurfaces()
-            refreshPanes()
+            refreshWorkspaces {
+                self.refreshSurfaces()
+                self.refreshPanes()
+            }
         case .cmuxDisconnected:
             connectionStatus = .connected(cmuxConnected: false)
             panes = []

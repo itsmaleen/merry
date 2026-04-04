@@ -9,10 +9,12 @@ struct PaneCardView: View {
     var terminalText: String = ""
     var isBrowser: Bool = false
     var browserURL: String = ""
+    var hasFullHistory: Bool = false
+    var isLoadingHistory: Bool = false
+    var onLoadHistory: (() -> Void)?
 
     @State private var notificationPulse = false
     @State private var userScrolledUp = false
-    @State private var lastContentLength = 0
 
     var body: some View {
         ZStack {
@@ -107,6 +109,31 @@ struct PaneCardView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
+                    // Load history button at the top (focused cards only)
+                    if isFocused && !hasFullHistory {
+                        Button {
+                            onLoadHistory?()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isLoadingHistory {
+                                    ProgressView()
+                                        .scaleEffect(0.5)
+                                        .tint(.white.opacity(0.4))
+                                } else {
+                                    Image(systemName: "arrow.up.circle")
+                                        .font(.system(size: 10))
+                                }
+                                Text(isLoadingHistory ? "Loading…" : "Load history")
+                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                            }
+                            .foregroundStyle(.white.opacity(0.35))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                        }
+                        .disabled(isLoadingHistory)
+                        .id("top")
+                    }
+
                     Text(terminalText)
                         .font(.system(size: isFocused ? 9 : 7, weight: .regular, design: .monospaced))
                         .foregroundStyle(.white.opacity(isFocused ? 0.85 : 0.5))
@@ -117,45 +144,24 @@ struct PaneCardView: View {
 
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .background(
-                    GeometryReader { contentGeo in
-                        Color.clear.preference(
-                            key: ContentHeightKey.self,
-                            value: contentGeo.frame(in: .named("termScroll")).minY
-                        )
-                    }
-                )
-            }
-            .coordinateSpace(name: "termScroll")
-            .onPreferenceChange(ContentHeightKey.self) { offset in
-                // If content top is visible (offset >= -5), user is near the top
-                // If offset is very negative, user is scrolled down / at bottom
-                if let offset {
-                    // Detect if user has scrolled away from bottom
-                    // offset close to 0 or positive means we can see the top = scrolled up
-                    userScrolledUp = offset > -20
-                }
             }
             .simultaneousGesture(
-                DragGesture(minimumDistance: 5)
+                DragGesture(minimumDistance: 3)
                     .onChanged { value in
-                        if value.translation.height > 0 {
-                            // Scrolling up (dragging down)
+                        if value.translation.height > 5 {
                             userScrolledUp = true
+                        } else if value.translation.height < -5 {
+                            userScrolledUp = false
                         }
                     }
-                    .onEnded { _ in }
             )
             .onAppear {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: terminalText) {
-                let newLength = terminalText.count
                 if !userScrolledUp {
-                    // Only auto-scroll if user hasn't scrolled up
                     proxy.scrollTo("bottom", anchor: .bottom)
                 }
-                lastContentLength = newLength
             }
         }
     }
@@ -212,12 +218,5 @@ struct PaneCardView: View {
         if hasNotification { return Color.orange.opacity(0.6) }
         if isFocused { return Color.white.opacity(0.5) }
         return Color.white.opacity(0.08)
-    }
-}
-
-private struct ContentHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = nextValue() ?? value
     }
 }
