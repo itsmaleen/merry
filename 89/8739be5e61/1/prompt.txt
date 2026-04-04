@@ -52,3 +52,7 @@ The tap to refresh or the tap to the focus card to load the full scroll back his
 ---
 
 There seems to be a bit of an issue where it takes multiple scroll ups to actually load the content and then as your scrolling sometimes it jumps all the way down or when you do the scroll up and it does the animation it jumps all the way back down and you have to scroll up again to retry to load the history it all feels a little junkies is there a way to make it much more smoother and more bulletproof
+
+---
+
+Great that seemed to work well let's commit these changes
