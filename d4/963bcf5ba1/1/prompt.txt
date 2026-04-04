@@ -84,3 +84,7 @@ It's still seems to lag
 ---
 
 Seems much better now last thing to do is have some small loading animation for before the tax content loads so let's say you're going to your cycling through a different workspace before the surface text shows have some loading animation
+
+---
+
+Great we can commit these changes now
