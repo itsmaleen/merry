@@ -96,3 +96,11 @@ Is there some way to set up some kind of dictionary for the keyboard to use when
 ---
 
 Could we combine options one and two
+
+---
+
+I tested it out and works decently so can commit
+
+---
+
+I tested it out and works decently so can commit
