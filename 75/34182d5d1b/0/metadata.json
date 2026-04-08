@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "7534182d5d1b",
+  "session_id": "05402994-df43-4482-92b7-a957aecaecfa",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-08T04:44:55.252399Z",
+  "branch": "worktree-luminous-shimmying-curry",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/App/ConnectionStatusBar.swift",
+    "ios/cmux/App/ContentView.swift",
+    "ios/cmux/Connection/BridgeClient.swift",
+    "ios/cmux/Connection/PairingStore.swift",
+    "ios/cmux/Control/SendTextView.swift",
+    "ios/cmux/Control/WorkspaceListView.swift",
+    "ios/cmux/Info.plist",
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/cmux/Notifications/NotificationRow.swift",
+    "ios/cmux/Notifications/NotificationsView.swift",
+    "ios/cmux/Pairing/PairingView.swift",
+    "ios/cmux/Settings/SettingsView.swift"
+  ],
+  "agent": "Cursor",
+  "model": "default",
+  "turn_id": "5e682c2713d9",
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-08T04:44:55.228471Z",
+    "agent_lines": 1244,
+    "human_added": 1602,
+    "human_modified": 150,
+    "human_removed": 0,
+    "total_committed": 2996,
+    "agent_percentage": 41.52202937249666
+  }
+}

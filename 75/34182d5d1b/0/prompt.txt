@@ -1,0 +1,35 @@
+Read through /Users/marlin/.claude/projects/-Users-marlin-cmux-companion/memory/project_transcript_rendering_bug.md
+
+and then let's come up with plan to fix issue
+
+I don't believe polling should be involved. We should investigate how it work with cmux and then why it would be different when switching to t3code bridge
+
+Should be able to see transcript when speech is toggled on as STT is happening
+
+---
+
+Just to double check, there should be no reason that polling or a timer is necessary for using the STT to show the transcript as an overlay (considering the logs seem to correctly update the transcript)
+
+---
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+---
+
+still waiting on the ouput
+
+---
+
+Still not seeing the transcript showing and seems like these changes (and/or others) have broken loading surfaces when switching workspaces of cmux
+
+Seeing that cmux workspace picking on the ios app is switching the workspace on cmux but no surfaces showing on layout tab (the list is showing in surfaces tab)
+
+---
+
+Great this fixed the issues now just need to make sure the transcript overlay is showing at the bottom of the "surface" and allows for wrapping / growing as text comes in
+
+---
+
+Can you summarize the changes and what worked so I can send to claude

@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "7534182d5d1b",
+  "strategy": "manual-commit",
+  "branch": "worktree-luminous-shimmying-curry",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/App/ConnectionStatusBar.swift",
+    "ios/cmux/App/ContentView.swift",
+    "ios/cmux/Connection/BridgeClient.swift",
+    "ios/cmux/Connection/PairingStore.swift",
+    "ios/cmux/Control/SendTextView.swift",
+    "ios/cmux/Control/WorkspaceListView.swift",
+    "ios/cmux/Info.plist",
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/cmux/Notifications/NotificationRow.swift",
+    "ios/cmux/Notifications/NotificationsView.swift",
+    "ios/cmux/Pairing/PairingView.swift",
+    "ios/cmux/Settings/SettingsView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/75/34182d5d1b/0/metadata.json",
+      "transcript": "/75/34182d5d1b/0/full.jsonl",
+      "content_hash": "/75/34182d5d1b/0/content_hash.txt",
+      "prompt": "/75/34182d5d1b/0/prompt.txt"
+    }
+  ]
+}
