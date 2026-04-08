@@ -1,0 +1,1178 @@
+Can you think through the thought of turning this code from a companion specific from cmux to more generalized i.e. the iOS companion app for t3code or codex
+
+1) does codex have an iOS app
+2) let's think through the mobile app opportunity
+3) does it make sense to abstract what we have to make this happen 
+4) what would the flows look like with these other apps
+
+---
+
+t3code users seem to be a solid micro community + the creator of t3code could help me go viral / gain clout
+
+Isn't the goal of our companion app to allow for interacting with your AI workspace remotely so it makes sense to have different "bridges" to allow the app to work with the different mediums?
+
+---
+
+Yes but also include codex in this check so that we can create a proper abstraction of the bridge protocol
+
+Then we'll need to think if the current UI is the best way to move forward (might need to have almost like different "themes" or UIs?)
+
+---
+
+the cmux session concept isn't a workspace, it's a "surface" (i.e. terminal) running a specific TUI like claude or opencode
+
+---
+
+I guess each bridge should allow for non agent surfaces (i.e. the terminals we have in cmux) and for the opencode stuff I think it gets covered by cmux
+
+---
+
+Yes and then we'll extend because cmux has browser surfaces and I believe that will come in to t3code at some point
+
+---
+
+So before we move forward, we should be good to test where the current version should still have cmux working using the bridge-agnostic setup?
+
+---
+
+give me the pwd/cwd so I can open in xcode to test it out
+
+---
+
+can we add something in the settings to tell which bridge is being used (also so I can tell that the app is different)
+
+---
+
+Great that seemed to work great that seemed to work
+
+---
+
+There seems to be a problem not seeing the record the speech on mode I'm not seeing the text being recorded or transcript being taken
+
+---
+
+I'm seeing the rec indicator and the transcript is showing in xcode logs but not seeing the transcript on the app so it's not obvious that speech on is working.
+
+This wasn't the case before the changes. So REC is showing but no transcript text on the iOS app but showing in xcode logs and when speech is toggled again, transcript is sent. Seems like just a frontend issue
+
+---
+
+Cool it seems like it worked
+
+---
+
+Seems like the scroll to get the full history is not working
+
+---
+
+it was a feature we had before, when you scrolled up on a surface, the load history button would show and then when clicked, it would return the full history
+
+---
+
+Can we make a UX improvement where it's a scroll and then you kinda have to scroll up to scroll up again to trigger it like classic mobile iOS experience
+
+---
+
+Great this is good now let's move forward with the rest of the set up so adding the other bridges
+
+---
+
+In the set up can the companion app be connected to multiple different bridges so CMX antique three code and code and that way I can cycle through reach to test each
+
+---
+
+Can you allow settings page to be portrait mode and scrollable if necessary
+
+We should also include like info bubbles + instructions on how to setup the other bridges (i.e. how to connect to codex or t3code)
+
+---
+
+the code in setup guides is showing as white text and isn't legible with the background of the codeblocks used
+
+---
+
+should setup a QR scan for both t3code and codex to avoid the manual entry
+
+---
+
+tried connecting to codex and nothing happened after following the steps and manually entering the values (I used 192.168.5.163 and 4080) after running codex app-server --listen ws://0.0.0.0:4080
+
+---
+
+Oh I guess there needs to be some indication that bridge was setup correctly (because there was no indication that it was setup correctly) but it did work
+
+---
+
+or the bridge says connected but not seeing any surfaces/threads when I'm seeing one in the codex app
+
+Does the codex app-server not work with the codex app?
+
+---
+
+We should be wrapping the Codex CLI because the goal of the companion app is to be used in conjuction / be able to switch from on the desktop to AFK
+
+---
+
+I tried connecting t3code and getting stuck on "reconnecting" so doesn't seem like that worked either
+
+Let's start fixing t3code first
+
+---
+
+<task-notification>
+<task-id>bvnptwdtr</task-id>
+<tool-use-id>toolu_017LdPSmTQeXJS57BXNBDQPm</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion--claude-worktrees-luminous-shimmying-curry/5c2b9f32-5c2b-46aa-a105-37f4fe9e83d9/tasks/bvnptwdtr.output</output-file>
+<status>failed</status>
+<summary>Background command "Find bundled node" failed with exit code 144</summary>
+</task-notification>
+
+---
+
+update the t3code guide and wtv else to get t3code setup working else
+
+---
+
+<task-notification>
+<task-id>bmcb3j15v</task-id>
+<tool-use-id>toolu_01LQXpnFQrtDhRKQgieiDNMB</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion--claude-worktrees-luminous-shimmying-curry/5c2b9f32-5c2b-46aa-a105-37f4fe9e83d9/tasks/bmcb3j15v.output</output-file>
+<status>failed</status>
+<summary>Background command "Verify WebSocket upgrade works" failed with exit code 144</summary>
+</task-notification>
+
+---
+
+seeing t3code bridge connected but not seeing anything on the iOS app. Seeing these logs from xcode
+[T3CodeBridge] received: {"id":"unknown","error":{"message":"Invalid request format: Missing key\n  at [\"body\"]"}}
+
+[T3CodeBridge] received: {"id":"unknown","error":{"message":"Invalid request format: Missing key\n  at [\"body\"]"}}
+
+[T3CodeBridge] received: {"type":"push","sequence":22,"channel":"server.providersUpdated","data":{"providers":[{"provider":"codex","enabled":true,"installed":true,"version":"0.112.0","status":"ready","authStatus":"authenticat
+
+[CodexBridge] received: {"error":{"code":-32600,"message":"Not initialized"},"id":"2"}
+
+[CodexBridge] received: {"error":{"code":-32600,"message":"Not initialized"},"id":"3"}
+
+[T3CodeBridge] received: {"id":"unknown","error":{"message":"Invalid request format: Missing key\n  at [\"body\"]"}}
+
+---
+
+seeing these logs but on the t3code. Somethign to mention is that the command to launch t3 code (npx t3@latest) says t3code is running but didn't launch the app, I had to open it manually
+
+[T3CodeBridge] received: {"type":"push","sequence":31,"channel":"server.providersUpdated","data":{"providers":[{"provider":"codex","enabled":true,"installed":true,"version":"0.112.0","status":"ready","authStatus":"authenticated","checkedAt":"2026-04-06T02:42:46.274Z","models":[{"slug":"gpt-5.4","name":"GPT-5.4","isCustom":f
+
+[T3CodeBridge] push channel=server.providersUpdated
+
+[T3CodeBridge] server event: ["providers": <__NSArrayI 0x127f3a660>(
+
+{
+
+    authStatus = authenticated;
+
+    checkedAt = "2026-04-06T02:42:46.274Z";
+
+    enabled = 1;
+
+    installed = 1;
+
+    models =     (
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.4";
+
+            slug = "gpt-5.4";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.4 Mini";
+
+            slug = "gpt-5.4-mini";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.3 Codex";
+
+            slug = "gpt-5.3-codex";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.3 Codex Spark";
+
+            slug = "gpt-5.3-codex-spark";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.2 Codex";
+
+            slug = "gpt-5.2-codex";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = "Extra High";
+
+                        value = xhigh;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "GPT-5.2";
+
+            slug = "gpt-5.2";
+
+        }
+
+    );
+
+    provider = codex;
+
+    status = ready;
+
+    version = "0.112.0";
+
+},
+
+{
+
+    authStatus = unknown;
+
+    checkedAt = "2026-04-06T02:42:53.409Z";
+
+    enabled = 1;
+
+    installed = 1;
+
+    message = "Claude Agent CLI is installed but failed to run. file:///Users/marlin/Library/pnpm/global/5/.pnpm/@anthropic-ai+claude-code@2.1.87/node_modules/@anthropic-ai/claude-code/cli.js:8\nimport{createRequire as H15}from\"node:module\";var Y15=Object.create;var{getPrototypeOf:z15,defineProperty:iS6,getOwnPropertyNames:sz7,getOwnPropertyDescriptor:A15}=Object,tz7=Object.prototype.hasOwnProperty;function ez7(q){return this[q]}var O15,$15,w6=(q,K,_)=>{var Y=q!=null&&typeof q===\"object\";if(Y){var z=K?O15??=new WeakMap:$15??=new WeakMap,A=z.get(q);if(A)return A}_=q!=null?Y15(z15(q)):{};let O=K||!q||!q.__esModule?iS6(_,\"default\",{value:q,enumerable:!0}):_;for(let $ of sz7(q))if(!tz7.call(O,$))iS6(O,$,{get:ez7.bind(q,$),enumerable:!0});if(Y)z.set(q,O);return O},f4=(q)=>{var K=(az7??=new WeakMap).get(q),_;if(K)return K;if(K=iS6({},\"__esModule\",{value:!0}),q&&typeof q===\"object\"||typeof q===\"function\"){for(var Y of sz7(q))if(!tz7.call(K,Y))iS6(K,Y,{get:ez7.bind(q,Y),enumerable:!(_=A15(q,Y))||_.enumerable})}return az7.set(q,K),K},az7,u=(q,K)=>()=>(K||q((K={exports:{}}).exports,K),K.exports);var w15=(q)=>q;function j15(q,K){this[q]=w15.bind(null,K)}var T8=(q,K)=>{for(var _ in K)iS6(q,_,{get:K[_],enumerable:!0,configurable:!0,set:j15.bind(K,_)})};var y=(q,K)=>()=>(q&&(K=q(q=0)),K);var g6=H15(import.meta.url),J15=Symbol.dispose||Symbol.for(\"Symbol.dispose\"),X15=Symbol.asyncDispose||Symbol.for(\"Symbol.asyncDispose\"),VY=(q,K,_)=>{if(K!=null){if(typeof K!==\"object\"&&typeof K!==\"function\")throw TypeError('Object expected to be assigned to \"using\" declaration');var Y;if(_)Y=K[X15];if(Y===void 0)Y=K[J15];if(typeof Y!==\"function\")throw TypeError(\"Object not disposable\");q.push([_,Y,K])}else if(_)q.push([_]);return K},NY=(q,K,_)=>{var Y=typeof SuppressedError===\"function\"?SuppressedError:function(O,$,w,j){return j=Error(w),j.name=\"SuppressedError\",j.error=O,j.suppressed=$,j},z=(O)=>K=_?new Y(O,K,\"An error was suppressed during disposal\"):(_=!0,O),A=(O)=>{while(O=q.pop())try{var $=O[1]&&O[1].call(O[2]);if(O[0])return Promise.resolve($).then(A,(w)=>(z(w),A()))}catch(w){z(w)}if(_)throw K};return A()};function M15(){this.__data__=[],this.size=0}var q27;var K27=y(()=>{q27=M15});function D15(q,K){return q===K||q!==q&&K!==K}var JB;var nJ6=y(()=>{JB=D15});function P15(q,K){var _=q.length;while(_--)if(JB(q[_][0],K))return _;return-1}var Fs;var nS6=y(()=>{nJ6();Fs=P15});function G15(q){var K=this.__data__,_=Fs(K,q);if(_<0)return!1;var Y=K.length-1;if(_==Y)K.pop();else Z15.call(K,_,1);return--this.size,!0}var W15,Z15,_27;var Y27=y(()=>{nS6();W15=Array.prototype,Z15=W15.splice;_27=G15});function f15(q){var K=this.__data__,_=Fs(K,q);return _<0?void 0:K[_][1]}var z27;var A27=y(()=>{nS6();z27=f15});function T15(q){return Fs(this.__data__,q)>-1}var O27;var $27=y(()=>{nS6();O27=T15});function v15(q,K){var _=this.__data__,Y=Fs(_,q);if(Y<0)++this.size,_.push([q,K]);else _[Y][1]=K;return this}var w27;var j27=y(()=>{nS6();w27=v15});function rJ6(q){var K=-1,_=q==null?0:q.length;this.clear();while(++K<_){var Y=q[K];this.set(Y[0],Y[1])}}var gs;var rS6=y(()=>{K27();Y27();A27();$27();j27();rJ6.prototype.clear=q27;rJ6.prototype.delete=_27;rJ6.prototype.get=z27;rJ6.prototype.has=O27;rJ6.prototype.set=w27;gs=rJ6});function V15(){this.__data__=new gs,this.size=0}var H27;var J27=y(()=>{rS6();H27=V15});function N15(q){var K=this.__data__,_=K.delete(q);return this.size=K.size,_}var X27;var M27=y(()=>{X27=N15});function k15(q){return this.__data__.get(q)}var D27;var P27=y(()=>{D27=k15});function y15(q){return this.__data__.has(q)}var W27;var Z27=y(()=>{W27=y15});var E15,pq8;var Zc8=y(()=>{E15=typeof global==\"object\"&&global&&global.Object===Object&&global,pq8=E15});var L15,R15,mH;var VR=y(()=>{Zc8();L15=typeof self==\"object\"&&self&&self.Object===Object&&self,R15=pq8||L15||Function(\"return this\")(),mH=R15});var h15,lD;var B56=y(()=>{VR();h15=mH.Symbol,lD=h15});function b15(q){var K=S15.call(q,oS6),_=q[oS6];try{q[oS6]=void 0;var Y=!0}catch(A){}var z=C15.call(q);if(Y)if(K)q[oS6]=_;else delete q[oS6];return z}var G27,S15,C15,oS6,f27;var T27=y(()=>{B56();G27=Object.prototype,S15=G27.hasOwnProperty,C15=G27.toString,oS6=lD?lD.toStringTag:void 0;f27=b15});function u15(q){return x15.call(q)}var I15,x15,v27;var V27=y(()=>{I15=Object.prototype,x15=I15.toString;v27=u15});function p15(q){if(q==null)return q===void 0?B15:m15;return N27&&N27 in Object(q)?f27(q):v27(q)}var m15=\"[object Null]\",B15=\"[object Undefined]\",N27,Ny;var p56=y(()=>{B56();T27();V27();N27=lD?lD.toStringTag:void 0;Ny=p15});function F15(q){var K=typeof q;return q!=null&&(K==\"object\"||K==\"function\")}var KA;var tf=y(()=>{KA=F15});function c15(q){if(!KA(q))return!1;var K=Ny(q);return K==U15||K==Q15||K==g15||K==d15}var g15=\"[object AsyncFunction]\",U15=\"[object Function]\",Q15=\"[object GeneratorFunction]\",d15=\"[object Proxy]\",oJ6;var Fq8=y(()=>{p56();tf();oJ6=c15});var l15,gq8;var k27=y(()=>{VR();l15=mH[\"__core-js_shared__\"],gq8=l15});function i15(q){return!!y27&&y27 in q}var y27,E27;var L27=y(()=>{k27();y27=function(){var q=/[^.]+$/.exec(gq8&&gq8.keys&&gq8.keys.IE_PROTO||\"\");return q?\"Symbol(src)_1.\"+q:\"\"}();E27=i15});function o15(q){if(q!=null){try{return r15.call(q)}catch(K){}try{return q+\"\"}catch(K){}}return\"\"}var n15,r15,md;var Gc8=y(()=>{n15=Function.prototype,r15=n15.toString;md=o15});function Y75(q){if(!KA(q)||E27(q))return!1;var K=oJ6(q)?_75:s15;return K.test(md(q))}var a15,s15,t15,e15,q75,K75,_75,R27;var h27=y(()=>{Fq8();L27();tf();Gc8();a15=/[\\\\^$.*+?()[\\]{}|]/g,s15=/^\\[object .+?Constructor\\]$/,t15=Function.prototype,e15=Object.prototype,q75=t15.toString,K75=e15.hasOwnProperty,_75=RegExp(\"^\"+q75.call(K75).replace(a15,\"\\\\$&\").replace(/hasOwnProperty|(function).*?(?=\\\\\\()| for .+?(?=\\\\\\])/g,\"$1.*?\")+\"$\");R27=Y75});function z75(q,K){return q==null?void 0:q[K]}var S27;var C27=y(()=>{S27=z75});function A75(q,K){var _=S27(q,K);return R27(_)?_:void 0}var wV;var Us=y(()=>{h27();C27();wV=A75});var O75,Qs;var Uq8=y(()=>{Us();VR();O75=wV(mH,\"Map\"),Qs=O75});var $75,Bd;var aS6=y(()=>{Us();$75=wV(Object,\"create\"),Bd=$75});function w75(){this.__data__=Bd?Bd(null):{},this.size=0}var b27;var I27=y(()=>{aS6();b27=w75});function j75(q){var K=this.has(q)&&delete this.__data__[q];return this.size-=K?1:0,K}var x27;var u27=y(()=>{x27=j75});function M75(q){var K=this.__data__;if(Bd){var _=K[q];return _===H75?void 0:_}return X75.call(K,q)?K[q]:void 0}var H75=\"__lodash_hash_undefined__\",J75,X75,m27;var B27=y(()=>{aS6();J75=Object.prototype,X75=J75.hasOwnProperty;m27=M75});function W75(q){var K=this.__data__;return Bd?K[q]!==void 0:P75.call(K,q)}var D75,P75,p27;var F27=y(()=>{aS6();D75=Object.prototype,P75=D75.hasOwnProperty;p27=W75});function G75(q,K){var _=this.__data__;return this.size+=this.has(q)?0:1,_[q]=Bd&&K===void 0?Z75:K,this}var Z75=\"__lodash_hash_undefined__\",g27;var U27=y(()=>{aS6();g27=G75});function aJ6(q){var K=-1,_=q==null?0:q.length;this.clear();while(++K<_){var Y=q[K];this.set(Y[0],Y[1])}}var fc8;var Q27=y(()=>{I27();u27();B27();F27();U27();aJ6.prototype.clear=b27;aJ6.prototype.delete=x27;aJ6.prototype.get=m27;aJ6.prototype.has=p27;aJ6.prototype.set=g27;fc8=aJ6});function f75(){this.size=0,this.__data__={hash:new fc8,map:new(Qs||gs),string:new fc8}}var d27;var c27=y(()=>{Q27();rS6();Uq8();d27=f75});function T75(q){var K=typeof q;return K==\"string\"||K==\"number\"||K==\"symbol\"||K==\"boolean\"?q!==\"__proto__\":q===null}var l27;var i27=y(()=>{l27=T75});function v75(q,K){var _=q.__data__;return l27(K)?_[typeof K==\"string\"?\"string\":\"hash\"]:_.map}var ds;var sS6=y(()=>{i27();ds=v75});function V75(q){var K=ds(this,q).delete(q);return this.size-=K?1:0,K}var n27;var r27=y(()=>{sS6();n27=V75});function N75(q){return ds(this,q).get(q)}var o27;var a27=y(()=>{sS6();o27=N75});function k75(q){return ds(this,q).has(q)}var s27;var t27=y(()=>{sS6();s27=k75});function y75(q,K){var _=ds(this,q),Y=_.size;return _.set(q,K),this.size+=_.size==Y?0:1,this}var e27;var qA7=y(()=>{sS6();e27=y75});function sJ6(q){var K=-1,_=q==null?0:q.length;this.clear();while(++K<_){var Y=q[K];this.set(Y[0],Y[1])}}var F56;var Qq8=y(()=>{c27();r27();a27();t27();qA7();sJ6.prototype.clear=d27;sJ6.prototype.delete=n27;sJ6.prototype.get=o27;sJ6.prototype.has=s27;sJ6.prototype.set=e27;F56=sJ6});function L75(q,K){var _=this.__data__;if(_ instanceof gs){v";
+
+    models =     (
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                                        {
+
+                        label = 200k;
+
+                        value = 200k;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = 1M;
+
+                        value = 1m;
+
+                    }
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                    ultrathink
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Max;
+
+                        value = max;
+
+                    },
+
+                                        {
+
+                        label = Ultrathink;
+
+                        value = ultrathink;
+
+                    }
+
+                );
+
+                supportsFastMode = 1;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "Claude Opus 4.6";
+
+            slug = "claude-opus-4-6";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                                        {
+
+                        label = 200k;
+
+                        value = 200k;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = 1M;
+
+                        value = 1m;
+
+                    }
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                    ultrathink
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                                        {
+
+                        label = Low;
+
+                        value = low;
+
+                    },
+
+                                        {
+
+                        label = Medium;
+
+                        value = medium;
+
+                    },
+
+                                        {
+
+                        isDefault = 1;
+
+                        label = High;
+
+                        value = high;
+
+                    },
+
+                                        {
+
+                        label = Ultrathink;
+
+                        value = ultrathink;
+
+                    }
+
+                );
+
+                supportsFastMode = 0;
+
+                supportsThinkingToggle = 0;
+
+            };
+
+            isCustom = 0;
+
+            name = "Claude Sonnet 4.6";
+
+            slug = "claude-sonnet-4-6";
+
+        },
+
+                {
+
+            capabilities =             {
+
+                contextWindowOptions =                 (
+
+                );
+
+                promptInjectedEffortLevels =                 (
+
+                );
+
+                reasoningEffortLevels =                 (
+
+                );
+
+                supportsFastMode = 0;
+
+                supportsThinkingToggle = 1;
+
+            };
+
+            isCustom = 0;
+
+            name = "Claude Haiku 4.5";
+
+            slug = "claude-haiku-4-5";
+
+        }
+
+    );
+
+    provider = claudeAgent;
+
+    status = error;
+
+    version = "2.1.87";
+
+}
+
+)
+
+]
+
+[T3CodeBridge] sending: {"id":"6","body":{"_tag":"orchestration.getSnapshot"}}
+
+[T3CodeBridge] received: {"id":"6","result":{"snapshotSequence":1019,"projects":[{"id":"097ccbc6-d769-488a-baa5-7ae5f67e5de6","title":"agent-dashboard","workspaceRoot":"/Users/marlin/holly/claw/agent-dashboard","defaultModelSelection":{"provider":"codex","model":"gpt-5.4"},"scripts":[],"createdAt":"2026-03-07T04:07:34.334Z"
+
+[T3CodeBridge] snapshot keys: ["result", "id"]
+
+[T3CodeBridge] no projects in snapshot, full result: ["result": {
+
+    projects =     (
+
+                {
+
+            createdAt = "2026-03-07T04:07:34.334Z";
+
+            defaultModelSelection =             {
+
+                model = "gpt-5.4";
+
+                provider = codex;
+
+            };
+
+            deletedAt = "<null>";
+
+            id = "097ccbc6-d769-488a-baa5-7ae5f67e5de6";
+
+            scripts =             (
+
+            );
+
+            title = "agent-dashboard";
+
+            updatedAt = "2026-03-07T04:07:34.334Z";
+
+            workspaceRoot = "
+
+---
+
+seeing some of the threads but others are stuck on loading + not seeing new "surfaces" created from t3code or new messages not showing (as in stuck on loading)
+
+---
+
+need to update / the quick actions to work for t3code as in they should be specific to t3code (i.e. no split down or split right and "new terminal" should start a new thread, etc.)
+
+---
+
+seeing speech on and off but transcript isn't sent to t3code
+
+---
+
+need to update the settings page to be able to remove or update any specific bridge
+
+---
+
+instead of having ipconfig getifaddr en0 for setting up t3code or codex, can we do like cmux setup and leverage tailscale?
+
+Went to a new location and on new wifi and can't seem to connect to t3code
+
+---
+
+tailscale connection working
+Now to fix speech + sending transcript to t3code
+
+Speech on and not seeing transcript of speech on the iOS app and then when speech toggled, not seeing it sent. I am seeing the speech transcript in xcode logs
+
+---
+
+seeing a few issues
+1) iOS frontend isn't showing the transcript when speech toggled on like it used to
+2) error from logs
+[T3CodeBridge] sendText to 75be17ec-cbb7-4bb4-9eef-3084a83cebda: Hi how's it going a lot more than time so keep an eye out for the next one because
+
+[T3CodeBridge] sending: {"id":"17","body":{"command":{"input":"Hi how's it going a lot more than time so keep an eye out for the next one because","_tag":"thread.turn.start","threadId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda"}
+
+[T3CodeBridge] sending: {"id":"18","body":{"data":"Hi how's it going a lot more than time so keep an eye out for the next one because","threadId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda","_tag":"terminal.write"}}
+
+[T3CodeBridge] received: {"id":"unknown","error":{"message":"Invalid request format: Expected { readonly \"type\": \"project.create\", ... } | { readonly \"type\": \"project.meta.update\", ... } | { readonly \"type\": \"project.delete\", ... } | { readonly \"type\": \"thread.create\", ... } | { readonly \"type\": \"thread.d
+
+[T3CodeBridge] RPC error for id=unknown: Invalid request format: Expected { readonly "type": "project.create", ... } | { readonly "type": "project.meta.update", ... } | { readonly "type": "project.delete", ... } | { readonly "type": "thread.create", ... } | { readonly "type": "thread.delete", ... } | { readonly "type": "thread.archive", ... } | { readonly "type": "thread.unarchive", ... } | { readonly "type": "thread.meta.update", ... } | { readonly "type": "thread.runtime-mode.set", ... } | { readonly "type": "thread.interaction-mode.set", ... } | { readonly "type": "thread.turn.start", ... } | { readonly "type": "thread.turn.interrupt", ... } | { readonly "type": "thread.approval.respond", ... } | { readonly "type": "thread.user-input.respond", ... } | { readonly "type": "thread.checkpoint.revert", ... } | { readonly "type": "thread.session.stop", ... }, got {"input":"Hi how's it going a lot more than time so keep an eye out for the next one because","_tag":"thread.turn.start","threadId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda"}
+
+  at ["body"]["command"]
+
+[T3CodeBridge] received: {"id":"18","error":{"message":"TerminalError: Failed to write to terminal\n    at catch (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:17410:22)\n    at file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/internal/effect.js:695:10
+
+[T3CodeBridge] RPC error for id=18: TerminalError: Failed to write to terminal
+
+    at catch (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:17410:22)
+
+    at file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/internal/effect.js:695:103
+
+    at ~effect/Utils/internal (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/Utils.js:69:12)
+
+    at file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/internal/effect.js:695:84
+
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+    at Effect.fn (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:21987:9)
+
+    at Effect.fn (definition) (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:21474:29) {
+
+  [cause]: Error: Unknown terminal thread: 75be17ec-cbb7-4bb4-9eef-3084a83cebda, terminal: default
+
+      at TerminalManagerRuntime.requireSession (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:17350:23)
+
+      at TerminalManagerRuntime.write (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:16834:24)
+
+      at try (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/dist/index.mjs:17409:23)
+
+      at file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/internal/effect.js:695:26
+
+      at ~effect/Utils/internal (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/Utils.js:69:12)
+
+      at MixedScheduler.<anonymous> (file:///Users/marlin/.npm/_npx/89628044cae88a02/node_modules/t3/node_modules/effect/dist/internal/effect.js:695:7)
+
+}
+
+[T3CodeBridge] terminal.write response: [:]
+
+---
+
+It looks like this open source project is kinda working on this (when it comes to claude code and codex) but I think the UX is not great and seemgingly there's still opportunity
+
+https://github.com/slopus/happy
+
+---
+
+let's step back and look at + come up with our own unified session protocol 
+1) do we think this would help maintain our bridges?
+2) what would the changes be?
+
+---
+
+let's step back and look at + come up with our own unified session protocol 
+1) do we think this would help maintain our bridges?
+2) what would the changes be?
+
+---
+
+let's step back and look at + come up with our own unified session protocol 
+1) do we think this would help maintain our bridges?
+2) what would the changes be?
+
+---
+
+let's step back and look at + come up with our own unified session protocol 
+1) do we think this would help maintain our bridges?
+2) what would the changes be?
+
+---
+
+add this to a plan and we can tackle it later because not convinced this is the best approach
+
+---
+
+so back to before the happy stuff, where did we leave of?
+
+---
+
+the cmux transcript version works (now having duplicate transcript showing during speech on) but when switching to t3code bridge, still not seeing transcript on the frontend <- issue #1
+seems like the transcript sending to t3code isn't working eiter <- issue 2
+relevant xcode logs - come up with a plan to fix and then let's review before you try to fix it
+[T3CodeBridge] sending: {"id":"20","body":{"_tag":"orchestration.getSnapshot"}}
+
+[Speech] transcript: So it seems like the teamwork version works but not the T3 code 1
+
+[T3CodeBridge] received: {"id":"unknown","error":{"message":"Invalid request format: Missing key\n  at [\"body\"][\"command\"][\"commandId\"]"}}
+
+[T3CodeBridge] RPC error for id=unknown: Invalid request format: Missing key
+
+  at ["body"]["command"]["commandId"]
+
+---
+
+Yes but before implementing, specifically for issue 2, do a deep dive on the required fields to make sure we can properly implement with t3code and avoid issues
+
+---
+
+yes
+
+---
+
+Instead of this fix we should revert and make sure rec + speech toggle works just as it was done in the main branch for all bridges
+
+## Issue 2: Threads from wrong project showing on iOS
+  In `T3CodeBridge.swift`, `refreshSnapshot()` calls `listSurfaces(groupID: nil)`
+   which returns ALL threads across all projects. The views use
+  `appState.surfaces` directly instead of `appState.currentGroupSurfaces`. Fix:
+  either pass `currentGroupID` when refreshing surfaces, or update views to use
+  `currentGroupSurfaces`.
+
+  ## Issue 3: Speech transcript overlay not appearing
+  The transcript IS being captured and sent (confirmed in logs), but the green
+  overlay doesn't appear during recording. The main branch renders the transcript
+   INSIDE `PaneCardView` (with `isTranscribing` and `transcript` parameters, REC
+  indicator in the title bar, transcript text in the card body). The worktree
+  moved it to a standalone ZStack overlay in `WorkspaceLayoutView` positioned at
+  the bottom with `.padding(.bottom, 44)`, but it's likely being obscured by the
+  surface cards or workspace bar.
+
+  Fix: restore the main branch approach — add `isTranscribing: Bool` and
+  `transcript: String` parameters back to `PaneCardView`, render the transcript
+  inside the focused card body, show a REC indicator in the title bar, and pass
+  `speechManager.isRecording` / `speechManager.transcript` from
+  WorkspaceLayoutView when creating the focused PaneCardView. Remove the
+  standalone overlay from WorkspaceLayoutView.
+
+  Reference the main branch `PaneCardView.swift` for the exact implementation
+  pattern.
+
+---
+
+the issue of the other threads incorrectly showing was fixed but still having issue of not seeing the transcript when recording
+
+definitely a frontend issue because when speech toggled off, message is sent
+
+maybe because the surface "window" used is different from cmux and so the transcript overlay is being hidden or some other issue
+
+can you investigate this frontend issue and suggest solutions
+
+---
+
+go with option 1 but make sure z index is correct / considers the existing components
+
+---
+
+not seeing the transcript but the backend works so investigate how to fix the frontend to make sure that the transcript shows as speech is happening
+proof from logs that speech is working:
+[Speech] transcript: Can
+
+[Speech] transcript: Can you
+
+[Speech] transcript: Can you see
+
+[Speech] transcript: Can you see the
+
+[Speech] transcript: Can you see the different
+
+[Speech] transcript: Can you see the different work
+
+[Speech] transcript: Can you see the different work tree
+
+[Speech] transcript: Can you see the different work trees
+
+[Speech] transcript: Can you see the different work trees being
+
+[Speech] transcript: Can you see the different work trees being worked
+
+[Speech] transcript: Can you see the different work trees being worked on
+
+---
+
+this didn't work, not seeing the transcript on the frontend still
+here are the xcode logs:
+
+[Speech] transcript: Can you inspect the work trees
+
+[T3CodeBridge] sending: {"id":"17","body":{"_tag":"orchestration.getSnapshot"}}
+
+[T3CodeBridge] received: {"id":"17","result":{"snapshotSequence":1122,"projects":[{"id":"097ccbc6-d769-488a-baa5-7ae5f67e5de6","title":"agent-dashboard","workspaceRoot":"/Users/marlin/holly/claw/agent-dashboard","defaultModelSelection":{"provider":"codex","model":"gpt-5.4"},"scripts":[],"createdAt":"2026-03-07T04:07:34.334Z
+
+[VolumeHandler] singleUp
+
+[VolumeHandler] singleUp
+
+[Speech] stopping, transcript: 
+
+           SessionCore.mm:517   Failed to set properties, error: '!pri'
+
+[Speech] sending: 
+
+[Speech] stopping, transcript: Can you inspect the work trees
+
+[Speech] sending: Can you inspect the work trees
+
+[T3CodeBridge] sendText to 75be17ec-cbb7-4bb4-9eef-3084a83cebda: Can you inspect the work trees
+
+[T3CodeBridge] sending: {"body":{"command":{"runtimeMode":"full-access","interactionMode":"default","commandId":"55265D1F-41C4-431F-8652-07DB3D627E04","threadId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda","createdAt":"2026-04-07
+
+[Speech] transcript: Can you inspect the work trees
+
+[T3CodeBridge] received: {"id":"18","result":{"sequence":1124}}
+
+[T3CodeBridge] turn.start response: ["sequence": 1124]
+
+[T3CodeBridge] received: {"type":"push","sequence":2452,"channel":"orchestration.domainEvent","data":{"sequence":1123,"eventId":"368730c4-1b94-473a-808d-48a50f15c38d","aggregateKind":"thread","aggregateId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda","occurredAt":"2026-04-07T23:54:17.879Z","commandId":"55265D1F-41C4-431F-8652-07D
+
+[T3CodeBridge] push channel=orchestration.domainEvent
+
+[T3CodeBridge] orchestration event: thread.message-sent
+
+[T3CodeBridge] sending: {"body":{"_tag":"orchestration.getSnapshot"},"id":"19"}
+
+[T3CodeBridge] received: {"type":"push","sequence":2453,"channel":"orchestration.domainEvent","data":{"sequence":1124,"eventId":"5d374c5f-4df3-47bd-9044-dcbc9608ce70","aggregateKind":"thread","aggregateId":"75be17ec-cbb7-4bb4-9eef-3084a83cebda","occurredAt":"2026-04-07T23:54:17.879Z","commandId":"55265D1F-41C4-431F-8652-07D
+
+[T3CodeBridge] push channel=orchestration.domainEvent
+
+[T3CodeBridge] orchestration event: thread.turn-start-requested
+
+---
+
+still not seeing the transcript during speech toggled on as transcription is happening - probably need to add logs to debug
+
+---
+
+here are the logs but nothing on the frontend was seen other than the rec red circle
+[PaneCardView] overlay mounted with speechManager
+
+[VolumeHandler] singleUp
+
+[VolumeHandler] singleUp
+
+[Speech] started recording
+
+[Speech] started recording
+
+[PaneCardView] overlay mounted with speechManager
+
+[TranscriptOverlay] body eval — recording=true transcript=''
+
+[TranscriptOverlay] recording but transcript empty
+
+[Speech] recognition error: No speech detected
+
+[T3CodeBridge] received: {"type":"push","sequence":2540,"channel":"server.providersUpdated","data":{"providers":[{"provider":"codex","enabled":true,"installed":true,"version":"0.112.0","status":"ready","authStatus":"authenticated","checkedAt":"2026-04-08T00:05:53.345Z","models":[{"slug":"gpt-5.4","name":"GPT-5.4","isCustom"
+
+[T3CodeBridge] push channel=server.providersUpdated
+
+[Speech] transcript: Hello
+
+[T3CodeBridge] sending: {"id":"58","body":{"_tag":"orchestration.getSnapshot"}}
+
+[T3CodeBridge] received: {"id":"58","result":{"snapshotSequence":1185,"projects":[{"id":"097ccbc6-d769-488a-baa5-7ae5f67e5de6","title":"agent-dashboard","workspaceRoot":"/Users/marlin/holly/claw/agent-dashboard","defaultModelSelection":{"provider":"codex","model":"gpt-5.4"},"scripts":[],"createdAt":"2026-03-07T04:07:34.334Z
+
+[PaneCardView] overlay mounted with speechManager
+
+[Speech] transcript: Hello hello
+
+[VolumeHandler] singleUp
+
+[VolumeHandler] singleUp
+
+[Speech] stopping, transcript: Hello hello
+
+           SessionCore.mm:517   Failed to set properties, error: '!pri'
+
+[Speech] sending: Hello hello
+
+[T3CodeBridge] sendText to 39408d55-dda2-4cd9-b9db-c0ba6ad8fbfe: Hello hello
+
+[T3CodeBridge] sending: {"id":"59","body":{"_tag":"orchestration.dispatchCommand","command":{"threadId":"39408d55-dda2-4cd9-b9db-c0ba6ad8fbfe","commandId":"8A77B019-85B3-4862-A36A-79D860F48EEF","interactionMode":"default","r
+
+[Speech] stopping, transcript: 
+
+[Speech] sending: 
+
+[PaneCardView] overlay mounted with speechManager
+
+[TranscriptOverlay] body eval — recording=false transcript=''
+
+[Speech] transcript: Hello hello
+
+[T3CodeBridge] received: {"id":"59","result":{"sequence":1187}}
+
+---
+
+the transcript overlay should be fully independent of the polling?? When speech toggle on, as [Speech] transcript is being updated, that should show directly on the frontend (which is how it works on the main branch for cmux and should not work differently)
+
+---
+
+still not working, let's document this frontend issue to be picked up later or investigated manually - write out the full isseue and what has been attempted

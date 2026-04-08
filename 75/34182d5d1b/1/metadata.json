@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.2",
   "checkpoint_id": "7534182d5d1b",
+  "session_id": "5c2b9f32-5c2b-46aa-a105-37f4fe9e83d9",
   "strategy": "manual-commit",
+  "created_at": "2026-04-08T04:44:57.120599Z",
   "branch": "worktree-luminous-shimmying-curry",
-  "checkpoints_count": 55,
+  "checkpoints_count": 49,
   "files_touched": [
     "ios/cmux.xcodeproj/project.pbxproj",
     "ios/cmux/App/AppState.swift",
@@ -26,25 +28,26 @@
     "ios/cmux/Pairing/PairingView.swift",
     "ios/cmux/Settings/SettingsView.swift"
   ],
-  "sessions": [
-    {
-      "metadata": "/75/34182d5d1b/0/metadata.json",
-      "transcript": "/75/34182d5d1b/0/full.jsonl",
-      "content_hash": "/75/34182d5d1b/0/content_hash.txt",
-      "prompt": "/75/34182d5d1b/0/prompt.txt"
-    },
-    {
-      "metadata": "/75/34182d5d1b/1/metadata.json",
-      "transcript": "/75/34182d5d1b/1/full.jsonl",
-      "content_hash": "/75/34182d5d1b/1/content_hash.txt",
-      "prompt": "/75/34182d5d1b/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "5303579064fa",
   "token_usage": {
     "input_tokens": 9096,
     "cache_creation_tokens": 2036079,
     "cache_read_tokens": 103029130,
     "output_tokens": 189753,
     "api_call_count": 436
+  },
+  "session_metrics": {
+    "turn_count": 54
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-08T04:44:55.329249Z",
+    "agent_lines": 3146,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3146,
+    "agent_percentage": 100
   }
 }
