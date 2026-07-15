@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "e8fcf1143e0e",
+  "strategy": "manual-commit",
+  "branch": "fix/scrollback-via-deep-read",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/TerminalTextView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e8/fcf1143e0e/0/metadata.json",
+      "transcript": "/e8/fcf1143e0e/0/full.jsonl",
+      "compact_transcript": "/e8/fcf1143e0e/0/transcript.jsonl",
+      "content_hash": "/e8/fcf1143e0e/0/content_hash.txt",
+      "prompt": "/e8/fcf1143e0e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15452,
+    "cache_creation_tokens": 566679,
+    "cache_read_tokens": 28779423,
+    "output_tokens": 157459,
+    "api_call_count": 164
+  }
+}
