@@ -10,10 +10,6 @@ struct PaneCardView: View {
     var contentScale: CGFloat = 1.0
     var isBrowser: Bool = false
     var browserURL: String = ""
-    var hasFullHistory: Bool = false
-    var isLoadingHistory: Bool = false
-    var onLoadHistory: (() -> Void)?
-
     @State private var notificationPulse = false
 
     var body: some View {
@@ -107,37 +103,12 @@ struct PaneCardView: View {
 
     private var terminalContentView: some View {
         // UITextView-backed so output is selectable (copy) and URLs are tappable.
-        // Scrolling near the top of a focused card loads older history on demand.
+        // For the focused surface the polled text already includes scrollback,
+        // so scrolling up just works — no on-demand loading needed.
         TerminalTextView(
             text: terminalText,
             fontSize: (isFocused ? 9 : 7) * contentScale,
-            textOpacity: isFocused ? 0.85 : 0.5,
-            onScrolledNearTop: (isFocused && !hasFullHistory && !isLoadingHistory)
-                ? { onLoadHistory?() } : nil
-        )
-        .overlay(alignment: .top) {
-            if isLoadingHistory {
-                loadingHistoryPill
-                    .padding(.top, 4)
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: isLoadingHistory)
-    }
-
-    private var loadingHistoryPill: some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .scaleEffect(0.5)
-                .tint(.white.opacity(0.4))
-            Text("Loading history…")
-                .font(.system(size: 8, weight: .medium, design: .monospaced))
-        }
-        .foregroundStyle(.white.opacity(0.5))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(
-            Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            textOpacity: isFocused ? 0.85 : 0.5
         )
     }
 

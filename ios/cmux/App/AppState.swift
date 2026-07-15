@@ -2,19 +2,6 @@ import Foundation
 import Combine
 import UserNotifications
 
-/// One-shot latch so exactly one of {RPC response, timeout} runs a completion.
-private final class CompletionGuard: @unchecked Sendable {
-    private let lock = NSLock()
-    private var finished = false
-    func tryFinish() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        if finished { return false }
-        finished = true
-        return true
-    }
-}
-
 @MainActor
 final class AppState: ObservableObject {
     @Published var connectionStatus: ConnectionStatus = .disconnected
@@ -29,15 +16,8 @@ final class AppState: ObservableObject {
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
     @Published var browserURLs: [String: String] = [:]
-    // Surfaces whose surfaceContent holds the full scrollback (loaded on demand
-    // when the user scrolls to the top), kept fresh by splicing each 50-line
-    // tail poll onto the stored history instead of re-fetching the whole buffer.
-    @Published private(set) var surfaceHasFullHistory: Set<String> = []
 
     private var lastFocusedSurface: [String: String] = [:]
-    // Reentrancy guard for loadSurfaceHistory: the view-level loading state
-    // resets on workspace switches, so an in-flight fetch must be tracked here.
-    private var historyLoadsInFlight: Set<String> = []
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -232,6 +212,14 @@ final class AppState: ObservableObject {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
     }
 
+    /// Reads a surface's text. cmux's `surface.read_text` returns the last
+    /// `lines` rows *including terminal scrollback* — so a large `lines` value
+    /// yields the scrollable history directly, with no separate load step. The
+    /// focused surface asks for a deep window (history); background surfaces a
+    /// shallow one (cheap live preview). Note: full-screen TUIs like claude-code
+    /// repaint a fixed viewport and keep little/no terminal scrollback, so for
+    /// those this returns roughly the visible screen — that's a cmux limitation,
+    /// not a bug here. See [[project_cmux_no_scrollback]].
     func readSurfaceText(_ surfaceID: String, lines: Int = 50) {
         var params: [String: Any] = ["surface_id": surfaceID, "lines": lines]
         if let wsID = currentWorkspaceID {
@@ -239,103 +227,19 @@ final class AppState: ObservableObject {
         }
         send(method: "surface.read_text", params: params) { [weak self] result in
             guard let self, let text = result["text"] as? String else { return }
-            let tail = Self.trimTerminalText(text)
-            let newContent: String
-            if self.surfaceHasFullHistory.contains(surfaceID),
-               let existing = self.surfaceContent[surfaceID],
-               !existing.isEmpty {
-                if let merged = Self.spliceTail(tail, ontoHistory: existing) {
-                    // Re-cap on growth so a long-running session can't push the
-                    // stored history past what UITextView lays out comfortably.
-                    newContent = merged.count > existing.count
-                        ? Self.capHistoryLines(merged) : merged
-                } else {
-                    // The tail no longer anchors into the stored history (e.g. a
-                    // TUI redrew its screen). Drop back to tail-only; scrolling
-                    // up will reload history from scratch.
-                    self.surfaceHasFullHistory.remove(surfaceID)
-                    newContent = tail
-                }
-            } else {
-                newContent = tail
-            }
+            let content = Self.capHistoryLines(Self.trimTerminalText(text))
             // Diff before assigning: a no-op write to a @Published dictionary
             // still fires objectWillChange every poll.
-            if self.surfaceContent[surfaceID] != newContent {
-                self.surfaceContent[surfaceID] = newContent
+            if self.surfaceContent[surfaceID] != content {
+                self.surfaceContent[surfaceID] = content
             }
         }
     }
 
-    /// Fetches the full scrollback for a surface once, splices the current tail
-    /// onto it, and marks the surface so subsequent 50-line polls keep the
-    /// history fresh instead of re-fetching the whole buffer every cycle.
-    func loadSurfaceHistory(_ surfaceID: String, completion: @escaping (Bool) -> Void) {
-        guard !surfaceHasFullHistory.contains(surfaceID) else {
-            completion(true)
-            return
-        }
-        guard !historyLoadsInFlight.contains(surfaceID) else {
-            completion(false)
-            return
-        }
-        historyLoadsInFlight.insert(surfaceID)
-        var params: [String: Any] = ["surface_id": surfaceID, "scrollback": true]
-        if let wsID = currentWorkspaceID {
-            params["workspace_id"] = wsID
-        }
-
-        // BridgeClient drops pending completions on disconnect without calling
-        // them, so guarantee the caller's loading state clears regardless.
-        let finished = CompletionGuard()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            if finished.tryFinish() {
-                self?.historyLoadsInFlight.remove(surfaceID)
-                completion(false)
-            }
-        }
-        send(method: "surface.read_text", params: params) { [weak self] result in
-            guard finished.tryFinish() else { return }
-            self?.historyLoadsInFlight.remove(surfaceID)
-            guard let self, let text = result["text"] as? String else {
-                completion(false)
-                return
-            }
-            if text.isEmpty {
-                // No scrollback exists — mark complete so the near-top trigger
-                // stops re-firing for a surface with nothing more to load.
-                self.surfaceHasFullHistory.insert(surfaceID)
-                completion(true)
-                return
-            }
-            let tail = self.surfaceContent[surfaceID] ?? ""
-            // Trimming and splicing a multi-MB scrollback is too heavy for the
-            // main actor — process off-main, then publish the result.
-            Task.detached(priority: .userInitiated) {
-                let history = Self.trimTerminalText(Self.capHistoryLines(text))
-                let merged = Self.spliceTail(tail, ontoHistory: history) ?? history
-                await MainActor.run { [weak self] in
-                    guard let self else {
-                        completion(false)
-                        return
-                    }
-                    // A tail poll may have landed while we processed off-main;
-                    // anchor the *current* content into the merged history so
-                    // the published text ends with exactly what's on screen —
-                    // that's what lets the view keep the viewport anchored.
-                    let current = self.surfaceContent[surfaceID] ?? ""
-                    let final = current.isEmpty || current == tail
-                        ? merged
-                        : (Self.spliceTail(current, ontoHistory: merged) ?? merged)
-                    if self.surfaceContent[surfaceID] != final {
-                        self.surfaceContent[surfaceID] = final
-                    }
-                    self.surfaceHasFullHistory.insert(surfaceID)
-                    completion(true)
-                }
-            }
-        }
-    }
+    /// How many rows to request for the focused surface — deep enough to scroll
+    /// back through, bounded so a huge scrollback can't produce a payload that
+    /// stalls the socket or an attributed string UITextView can't lay out.
+    static let focusedHistoryLines = 1500
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
     nonisolated private static func trimTerminalText(_ text: String) -> String {
@@ -354,24 +258,6 @@ final class AppState: ObservableObject {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count > maxHistoryLines else { return text }
         return lines.suffix(maxHistoryLines).joined(separator: "\n")
-    }
-
-    /// Splices a fresh tail onto stored history by locating the tail's leading
-    /// lines inside the history (at a line boundary, searching from the end)
-    /// and replacing everything from that point on. Returns nil when the tail
-    /// can't be anchored — the caller decides how to degrade.
-    nonisolated private static func spliceTail(_ tail: String, ontoHistory history: String) -> String? {
-        guard !tail.isEmpty else { return history }
-        let probe = tail
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .prefix(8)
-            .joined(separator: "\n")
-        guard !probe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let range = history.range(of: probe, options: .backwards),
-              range.lowerBound == history.startIndex
-                || history[history.index(before: range.lowerBound)] == "\n"
-        else { return nil }
-        return String(history[history.startIndex..<range.lowerBound]) + tail
     }
 
     func readBrowserURL(_ surfaceID: String) {
