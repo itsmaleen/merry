@@ -33,6 +33,12 @@
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan the QR code displayed by cmux-bridge for pairing.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to discover and connect to cmux-bridge running on your Mac over the local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_cmux-bridge._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used for voice input to send text to cmux surfaces.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

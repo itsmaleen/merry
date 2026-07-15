@@ -53,7 +53,7 @@ func (c *Client) Connect() error {
 	}
 
 	c.conn = conn
-	c.reader = bufio.NewReader(conn)
+	c.reader = bufio.NewReaderSize(conn, 1<<20)
 	return nil
 }
 
@@ -96,6 +96,7 @@ func (c *Client) Send(method string, params map[string]any) (json.RawMessage, er
 	_ = c.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	if _, err := fmt.Fprintf(c.conn, "%s\n", payload); err != nil {
 		c.conn = nil
+		c.reader = nil
 		return nil, fmt.Errorf("write: %w", err)
 	}
 
@@ -104,6 +105,11 @@ func (c *Client) Send(method string, params map[string]any) (json.RawMessage, er
 		c.conn = nil
 		c.reader = nil
 		return nil, fmt.Errorf("read: %w", err)
+	}
+	if len(line) > 8<<20 {
+		c.conn = nil
+		c.reader = nil
+		return nil, fmt.Errorf("response line too large: %d bytes", len(line))
 	}
 	_ = c.conn.SetDeadline(time.Time{})
 
@@ -144,7 +150,14 @@ func DetectSocketPath() string {
 		}
 	}
 
-	// Stable default
+	// XDG state directory (cmux v2+)
+	xdgState := filepath.Join(home, ".local", "state", "cmux",
+		fmt.Sprintf("cmux-%d.sock", os.Getuid()))
+	if _, err := os.Stat(xdgState); err == nil {
+		return xdgState
+	}
+
+	// Stable default (legacy Application Support)
 	stable := filepath.Join(appSupport, "cmux.sock")
 	if _, err := os.Stat(stable); err == nil {
 		return stable

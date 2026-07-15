@@ -141,8 +141,8 @@ func (p *Poller) poll() {
 	}
 }
 
-// ResetSeenIDs clears the seen-ID set. Called after notification.clear so the
-// poller doesn't re-emit notifications that reappear after a clear.
+// ResetSeenIDs clears the seen-ID set. Called after notification.clear so that
+// notifications which reappear after a clear ARE emitted again.
 func (p *Poller) ResetSeenIDs() {
 	p.mu.Lock()
 	p.seenIDs = make(map[string]struct{})

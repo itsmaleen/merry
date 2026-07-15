@@ -27,6 +27,9 @@ targets:
               - cmux-bridge
             CFBundleURLName: dev.itsmaleen.cmux-bridge
         NSCameraUsageDescription: "Used to scan the QR code displayed by cmux-bridge for pairing."
+        NSLocalNetworkUsageDescription: "Used to discover and connect to cmux-bridge running on your Mac over the local network."
+        NSBonjourServices:
+          - _cmux-bridge._tcp
         NSMicrophoneUsageDescription: "Used for voice input to send text to cmux surfaces."
         NSSpeechRecognitionUsageDescription: "Used to transcribe your voice and send it as text to cmux."
         UILaunchScreen: {}

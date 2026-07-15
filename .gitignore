@@ -1,1 +1,13 @@
 bridge/cmux-bridge
+
+# Secrets & certificates
+.env*
+*.key
+*.pem
+*.p12
+
+# Xcode
+xcuserdata/
+.DS_Store
+*.xcuserstate
+ios/build/

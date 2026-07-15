@@ -100,8 +100,10 @@ final class QuickActionState: ObservableObject {
     }
 
     var currentSection: String {
-        guard sectionOrder.indices.contains(currentSectionIndex) else { return sectionOrder[0] }
-        return sectionOrder[currentSectionIndex]
+        let order = sectionOrder
+        guard !order.isEmpty else { return "" }
+        guard order.indices.contains(currentSectionIndex) else { return order[0] }
+        return order[currentSectionIndex]
     }
 
     var currentSectionActions: [(Int, QuickAction)] {
@@ -111,7 +113,10 @@ final class QuickActionState: ObservableObject {
     func open(with actions: [QuickAction]) {
         self.actions = actions
         currentSectionIndex = 0
-        selectedIndex = actions.firstIndex(where: { $0.section == sectionOrder[0] }) ?? 0
+        // Nothing to show if every section is hidden and there are no custom
+        // actions — bail instead of subscripting an empty sectionOrder.
+        guard let firstSection = sectionOrder.first else { return }
+        selectedIndex = actions.firstIndex(where: { $0.section == firstSection }) ?? 0
         isOpen = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
@@ -134,7 +139,9 @@ final class QuickActionState: ObservableObject {
     }
 
     func nextSection() {
-        currentSectionIndex = (currentSectionIndex + 1) % sectionOrder.count
+        let count = sectionOrder.count
+        guard count > 0 else { return }
+        currentSectionIndex = (currentSectionIndex + 1) % count
         // Select first item in new section
         if let first = currentSectionActions.first {
             selectedIndex = first.0
@@ -143,7 +150,9 @@ final class QuickActionState: ObservableObject {
     }
 
     func prevSection() {
-        currentSectionIndex = (currentSectionIndex - 1 + sectionOrder.count) % sectionOrder.count
+        let count = sectionOrder.count
+        guard count > 0 else { return }
+        currentSectionIndex = (currentSectionIndex - 1 + count) % count
         if let first = currentSectionActions.first {
             selectedIndex = first.0
         }

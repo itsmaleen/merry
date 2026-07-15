@@ -75,6 +75,10 @@ final class BridgeClient: NSObject {
         reconnectTask?.cancel()
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
+        // URLSession strongly retains its delegate (self) until invalidated —
+        // without this every connect leaks a BridgeClient.
+        session?.invalidateAndCancel()
+        session = nil
     }
 
     func send(
@@ -114,6 +118,10 @@ final class BridgeClient: NSObject {
     private var useTailscale = false
 
     private func startConnection() {
+        // Release the previous session's strong hold on us (its delegate)
+        // before spinning up a new one; otherwise each reconnect leaks.
+        session?.invalidateAndCancel()
+
         let host: String
         if useTailscale, let tsHost = credentials.tailscaleHost, !tsHost.isEmpty {
             host = tsHost
@@ -131,7 +139,9 @@ final class BridgeClient: NSObject {
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         self.session = session
         let task = session.webSocketTask(with: request)
+        completionsLock.lock()
         self.task = task
+        completionsLock.unlock()
         task.resume()
         receiveNext()
     }
@@ -218,10 +228,18 @@ final class BridgeClient: NSObject {
     }
 
     private func handleDisconnect(error: Error?) {
+        // A clean server close fires BOTH receiveNext's .failure and the
+        // didCloseWith delegate callback. Dedupe under the lock so we don't
+        // schedule two reconnects (racing, doubled connections). The lock also
+        // guards `task`, which both callbacks race to clear.
+        completionsLock.lock()
+        guard task != nil else {
+            completionsLock.unlock()
+            return
+        }
         task = nil
         // Drop any in-flight completions; their responses will never arrive.
         // A fresh connect re-issues refreshWorkspaces/Surfaces from scratch.
-        completionsLock.lock()
         completions.removeAll()
         completionsLock.unlock()
         Task { @MainActor in
