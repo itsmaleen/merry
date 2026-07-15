@@ -552,6 +552,16 @@ struct WorkspaceLayoutView: View {
                 appState.focusSurface(surface.id)
             }
         }
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    if value.translation.height < -30 {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.focusSurface(surface.id)
+                        }
+                    }
+                }
+        )
     }
 
     private func tileHeight(for count: Int, in totalHeight: CGFloat) -> CGFloat {

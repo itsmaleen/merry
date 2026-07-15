@@ -28,20 +28,28 @@ struct TerminalTextView: UIViewRepresentable {
         tv.autocorrectionType = .no
         tv.autocapitalizationType = .none
         tv.attributedText = attributed()
+        context.coordinator.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
+        let coord = context.coordinator
+        // Compare against what we last applied, NOT tv.attributedText: with
+        // dataDetectorTypes the view injects link attributes into its own
+        // attributedText, so reading it back never equals a freshly built plain
+        // string once a URL is on screen — which would reassign (and re-scroll)
+        // on every poll.
+        if text == coord.lastText, fontSize == coord.lastFontSize, textOpacity == coord.lastOpacity {
+            return
+        }
         // Don't clobber an in-progress selection (a live poll would otherwise
-        // yank the text out from under the user mid-copy).
+        // yank the text out from under the user mid-copy); reapplies once cleared.
         if tv.selectedRange.length > 0 { return }
 
-        let newAttr = attributed()
-        if tv.attributedText != newAttr {
-            tv.attributedText = newAttr
-            if context.coordinator.autoScroll {
-                scrollToBottom(tv)
-            }
+        tv.attributedText = attributed()
+        coord.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
+        if coord.autoScroll {
+            scrollToBottom(tv)
         }
     }
 
@@ -61,6 +69,9 @@ struct TerminalTextView: UIViewRepresentable {
     private func scrollToBottom(_ tv: UITextView) {
         // Defer a runloop so layout reflects the new content size first.
         DispatchQueue.main.async {
+            // Force pending layout so contentSize is correct for large appends
+            // (e.g. a full-scrollback load), otherwise we under-scroll.
+            tv.layoutIfNeeded()
             let bottom = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
             if bottom > 0 {
                 tv.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
@@ -73,6 +84,17 @@ struct TerminalTextView: UIViewRepresentable {
         /// True while the user is at (or near) the bottom; false once they
         /// scroll up to read scrollback.
         var autoScroll = true
+
+        // Last values actually applied to the text view, for change detection.
+        private(set) var lastText: String?
+        private(set) var lastFontSize: CGFloat?
+        private(set) var lastOpacity: Double?
+
+        func recordApplied(text: String, fontSize: CGFloat, opacity: Double) {
+            lastText = text
+            lastFontSize = fontSize
+            lastOpacity = opacity
+        }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             let threshold: CGFloat = 24

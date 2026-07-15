@@ -60,6 +60,11 @@ struct TerminalInputBar: View {
         .padding(.horizontal, 8)
         .animation(.easeInOut(duration: 0.18), value: focused)
         .onChange(of: focused) { _, active in isActive = active }
+        // If the bar is torn down while focused (quick actions open, the focused
+        // surface closes or becomes a browser, tab switch), `.onChange(of:focused)`
+        // won't fire — so reset here, or the parent leaves the workspace bar and
+        // secondaries hidden forever.
+        .onDisappear { isActive = false }
     }
 
     // MARK: - Header (only while composing)
