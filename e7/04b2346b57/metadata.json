@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "e704b2346b57",
+  "strategy": "manual-commit",
+  "branch": "fix/load-history",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/TerminalTextView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e7/04b2346b57/0/metadata.json",
+      "transcript": "/e7/04b2346b57/0/full.jsonl",
+      "compact_transcript": "/e7/04b2346b57/0/transcript.jsonl",
+      "content_hash": "/e7/04b2346b57/0/content_hash.txt",
+      "prompt": "/e7/04b2346b57/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6393,
+    "cache_creation_tokens": 87034,
+    "cache_read_tokens": 1422233,
+    "output_tokens": 40852,
+    "api_call_count": 22
+  }
+}

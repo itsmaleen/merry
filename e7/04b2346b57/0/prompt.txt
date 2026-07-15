@@ -1,0 +1,4 @@
+/loop /efficient-fable Review and then fix the load history feature. It doesn't work well. Should be able to have a good UI/UX + scroll nicely into the past without slowing down app load and loading of workspaces/terminals
+
+once that feature is done, reviewed and merged
+Start a very comprehensive review of the entire app focused on bugs and security. Create issues and then fix them, build tests to make sure fixes are correct + don't break existing features and merge
