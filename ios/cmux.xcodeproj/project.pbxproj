@@ -17,6 +17,7 @@
 		59F8BC48FEA3798A11AF25C3 /* PairingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FCD190109E1BB2DF408C67 /* PairingStore.swift */; };
 		5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */; };
 		5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */; };
+		A1B2C3D4E5F60718293A0001 /* TerminalTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */; };
 		80AE92760C00B2E71E97A2EC /* ControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6CEFBCA99422E02BB0230AD /* ControlView.swift */; };
 		874536F786A2CBCEB8BF95B8 /* cmuxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */; };
 		A66072EAEC497AD9D4AF1EEC /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E72205F10DF0F064030B1C /* BridgeDiscovery.swift */; };
@@ -25,6 +26,7 @@
 		C9EF3BB55242E1F2E1E6A135 /* WorkspaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B7A4CAA64894DF972AEDAE /* WorkspaceListView.swift */; };
 		CAE4DE2E046E33C1D633FB2E /* SpeechInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */; };
 		8D9E0F1A2B3C4D5E6F789012 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */; };
+		A1B2C3D4E5F60718293A0003 /* TerminalInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */; };
 		CBF87F9FAD9B0CCED7B3E9D0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B351B6ABD7CDE8B988761F /* AppState.swift */; };
 		D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */; };
 		D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */; };
@@ -48,6 +50,7 @@
 		596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputManager.swift; sourceTree = "<group>"; };
 		64B351B6ABD7CDE8B988761F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCardView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextView.swift; sourceTree = "<group>"; };
 		7EB2FCA6F59B6691541CE21E /* ConnectionStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusBar.swift; sourceTree = "<group>"; };
 		9143B92AA62E9EC62A403DC9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1E72205F10DF0F064030B1C /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
@@ -58,6 +61,7 @@
 		B2C723204E87E163A8AE865F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeButtonHandler.swift; sourceTree = "<group>"; };
 		7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEditorView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputBar.swift; sourceTree = "<group>"; };
 		D6CEFBCA99422E02BB0230AD /* ControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlView.swift; sourceTree = "<group>"; };
 		F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendTextView.swift; sourceTree = "<group>"; };
 		F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceListView.swift; sourceTree = "<group>"; };
@@ -96,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */,
+				A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */,
 				27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */,
 			);
 			path = Layout;
@@ -154,6 +159,7 @@
 				3A4B5C6D7E8F90A1B2C3D4E5 /* CommandDictionary.swift */,
 				596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */,
 				7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */,
+				A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */,
 				BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */,
 			);
 			path = Input;
@@ -260,6 +266,7 @@
 				59F8BC48FEA3798A11AF25C3 /* PairingStore.swift in Sources */,
 				F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */,
 				5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */,
+				A1B2C3D4E5F60718293A0001 /* TerminalTextView.swift in Sources */,
 				EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */,
 				CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */,
 				AA1B2C3D4E5F60718293A4B5 /* QuickActionStore.swift in Sources */,
@@ -269,6 +276,7 @@
 				CAE4DE2E046E33C1D633FB2E /* SpeechInputManager.swift in Sources */,
 				5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */,
 				8D9E0F1A2B3C4D5E6F789012 /* TranscriptEditorView.swift in Sources */,
+				A1B2C3D4E5F60718293A0003 /* TerminalInputBar.swift in Sources */,
 				A9413E362FC865CE9530E30F /* VolumeButtonHandler.swift in Sources */,
 				D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */,
 				C9EF3BB55242E1F2E1E6A135 /* WorkspaceListView.swift in Sources */,

@@ -264,14 +264,24 @@ final class AppState: ObservableObject {
     }
 
     func refreshWorkspaces(then completion: (() -> Void)? = nil) {
+        // Both list + current must land before firing `completion`, otherwise
+        // follow-up work (refreshSurfaces) can run against an empty workspace
+        // list or an unset current ID depending on which reply arrives first.
+        // Both callbacks run on the main actor, so `pending` needs no locking.
+        var pending = 2
+        let step = {
+            pending -= 1
+            if pending == 0 { completion?() }
+        }
         send(method: "workspace.list", params: [:]) { [weak self] result in
             if let list = result["workspaces"] as? [[String: Any]] {
                 self?.workspaces = list.compactMap(Workspace.init)
             }
+            step()
         }
         send(method: "workspace.current", params: [:]) { [weak self] result in
-            self?.currentWorkspaceID = result["id"] as? String
-            completion?()
+            if let id = result["id"] as? String { self?.currentWorkspaceID = id }
+            step()
         }
     }
 

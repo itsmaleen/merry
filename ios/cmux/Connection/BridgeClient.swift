@@ -52,6 +52,9 @@ final class BridgeClient: NSObject {
     private var task: URLSessionWebSocketTask?
     private var session: URLSession?
     private var completions: [String: ([String: Any]) -> Void] = [:]
+    // `completions` is written from the caller (main actor) and read from the
+    // URLSession receive queue, so all access must be serialized.
+    private let completionsLock = NSLock()
     private var reconnectTask: Task<Void, Never>?
     private var shouldReconnect = true
     private var backoff: TimeInterval = 1
@@ -82,14 +85,27 @@ final class BridgeClient: NSObject {
         let id = UUID().uuidString
         let payload: [String: Any] = ["id": id, "method": method, "params": params]
 
-        if let completion {
-            completions[id] = completion
-        }
-
+        // Serialize the payload and confirm we have a live socket *before*
+        // registering the completion, so a failed send can't leak a callback
+        // that will never fire.
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8),
               let task else { return }
 
-        task.send(.string(String(data: data, encoding: .utf8)!)) { _ in }
+        if let completion {
+            completionsLock.lock()
+            completions[id] = completion
+            completionsLock.unlock()
+        }
+
+        task.send(.string(text)) { [weak self] error in
+            guard error != nil, let self else { return }
+            // The send failed — drop the pending completion so callers that
+            // chain follow-up work (refreshSurfaces, etc.) aren't stranded.
+            self.completionsLock.lock()
+            self.completions.removeValue(forKey: id)
+            self.completionsLock.unlock()
+        }
     }
 
     // MARK: - Private
@@ -144,11 +160,18 @@ final class BridgeClient: NSObject {
             self.delegate?.clientDidReceiveMessage(self, message: bridgeMessage)
         }
 
-        // Dispatch command responses to completions
-        if let id = json["id"] as? String,
-           let completion = completions.removeValue(forKey: id),
-           let result = json["result"] as? [String: Any] {
-            Task { @MainActor in completion(result) }
+        // Dispatch command responses to completions. Fire the completion for
+        // ANY response carrying a matching id — even an `ok:true` reply with no
+        // `result` payload — otherwise chained follow-up work never runs and
+        // the UI silently goes stale.
+        if let id = json["id"] as? String {
+            completionsLock.lock()
+            let completion = completions.removeValue(forKey: id)
+            completionsLock.unlock()
+            if let completion {
+                let result = json["result"] as? [String: Any] ?? [:]
+                Task { @MainActor in completion(result) }
+            }
         }
     }
 
@@ -196,6 +219,11 @@ final class BridgeClient: NSObject {
 
     private func handleDisconnect(error: Error?) {
         task = nil
+        // Drop any in-flight completions; their responses will never arrive.
+        // A fresh connect re-issues refreshWorkspaces/Surfaces from scratch.
+        completionsLock.lock()
+        completions.removeAll()
+        completionsLock.unlock()
         Task { @MainActor in
             self.delegate?.clientDidDisconnect(self, error: error)
         }

@@ -7,6 +7,7 @@ struct PaneCardView: View {
     let isTranscribing: Bool
     let transcript: String
     var terminalText: String = ""
+    var contentScale: CGFloat = 1.0
     var isBrowser: Bool = false
     var browserURL: String = ""
     var hasFullHistory: Bool = false
@@ -14,7 +15,6 @@ struct PaneCardView: View {
     var onLoadHistory: (() -> Void)?
 
     @State private var notificationPulse = false
-    @State private var userScrolledUp = false
 
     var body: some View {
         ZStack {
@@ -106,64 +106,45 @@ struct PaneCardView: View {
     // MARK: - Terminal content
 
     private var terminalContentView: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Load history button at the top (focused cards only)
-                    if isFocused && !hasFullHistory {
-                        Button {
-                            onLoadHistory?()
-                        } label: {
-                            HStack(spacing: 6) {
-                                if isLoadingHistory {
-                                    ProgressView()
-                                        .scaleEffect(0.5)
-                                        .tint(.white.opacity(0.4))
-                                } else {
-                                    Image(systemName: "arrow.up.circle")
-                                        .font(.system(size: 10))
-                                }
-                                Text(isLoadingHistory ? "Loading…" : "Load history")
-                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                            }
-                            .foregroundStyle(.white.opacity(0.35))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                        }
-                        .disabled(isLoadingHistory)
-                        .id("top")
-                    }
-
-                    Text(terminalText)
-                        .font(.system(size: isFocused ? 9 : 7, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.white.opacity(isFocused ? 0.85 : 0.5))
-                        .lineSpacing(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-
-                    Color.clear.frame(height: 1).id("bottom")
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 3)
-                    .onChanged { value in
-                        if value.translation.height > 5 {
-                            userScrolledUp = true
-                        } else if value.translation.height < -5 {
-                            userScrolledUp = false
-                        }
-                    }
-            )
-            .onAppear {
-                proxy.scrollTo("bottom", anchor: .bottom)
-            }
-            .onChange(of: terminalText) {
-                if !userScrolledUp {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
+        // UITextView-backed so output is selectable (copy) and URLs are tappable.
+        TerminalTextView(
+            text: terminalText,
+            fontSize: (isFocused ? 9 : 7) * contentScale,
+            textOpacity: isFocused ? 0.85 : 0.5
+        )
+        // Floating "Load history" chip on focused cards, over the scrolling text.
+        .overlay(alignment: .top) {
+            if isFocused && !hasFullHistory {
+                loadHistoryButton
+                    .padding(.top, 4)
             }
         }
+    }
+
+    private var loadHistoryButton: some View {
+        Button {
+            onLoadHistory?()
+        } label: {
+            HStack(spacing: 6) {
+                if isLoadingHistory {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .tint(.white.opacity(0.4))
+                } else {
+                    Image(systemName: "arrow.up.circle")
+                        .font(.system(size: 10))
+                }
+                Text(isLoadingHistory ? "Loading…" : "Load history")
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+            }
+            .foregroundStyle(.white.opacity(0.5))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            )
+        }
+        .disabled(isLoadingHistory)
     }
 
     // MARK: - Title bar
