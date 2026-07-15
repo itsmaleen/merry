@@ -7,12 +7,14 @@ struct PaneCardView: View {
     let isTranscribing: Bool
     let transcript: String
     var terminalText: String = ""
+    var contentScale: CGFloat = 1.0
     var isBrowser: Bool = false
     var browserURL: String = ""
+    var hasFullHistory: Bool = false
+    var isLoadingHistory: Bool = false
+    var onLoadHistory: (() -> Void)?
 
     @State private var notificationPulse = false
-    @State private var userScrolledUp = false
-    @State private var lastContentLength = 0
 
     var body: some View {
         ZStack {
@@ -104,60 +106,45 @@ struct PaneCardView: View {
     // MARK: - Terminal content
 
     private var terminalContentView: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    Text(terminalText)
-                        .font(.system(size: isFocused ? 9 : 7, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.white.opacity(isFocused ? 0.85 : 0.5))
-                        .lineSpacing(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-
-                    Color.clear.frame(height: 1).id("bottom")
-                }
-                .background(
-                    GeometryReader { contentGeo in
-                        Color.clear.preference(
-                            key: ContentHeightKey.self,
-                            value: contentGeo.frame(in: .named("termScroll")).minY
-                        )
-                    }
-                )
-            }
-            .coordinateSpace(name: "termScroll")
-            .onPreferenceChange(ContentHeightKey.self) { offset in
-                // If content top is visible (offset >= -5), user is near the top
-                // If offset is very negative, user is scrolled down / at bottom
-                if let offset {
-                    // Detect if user has scrolled away from bottom
-                    // offset close to 0 or positive means we can see the top = scrolled up
-                    userScrolledUp = offset > -20
-                }
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 5)
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            // Scrolling up (dragging down)
-                            userScrolledUp = true
-                        }
-                    }
-                    .onEnded { _ in }
-            )
-            .onAppear {
-                proxy.scrollTo("bottom", anchor: .bottom)
-            }
-            .onChange(of: terminalText) {
-                let newLength = terminalText.count
-                if !userScrolledUp {
-                    // Only auto-scroll if user hasn't scrolled up
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
-                lastContentLength = newLength
+        // UITextView-backed so output is selectable (copy) and URLs are tappable.
+        TerminalTextView(
+            text: terminalText,
+            fontSize: (isFocused ? 9 : 7) * contentScale,
+            textOpacity: isFocused ? 0.85 : 0.5
+        )
+        // Floating "Load history" chip on focused cards, over the scrolling text.
+        .overlay(alignment: .top) {
+            if isFocused && !hasFullHistory {
+                loadHistoryButton
+                    .padding(.top, 4)
             }
         }
+    }
+
+    private var loadHistoryButton: some View {
+        Button {
+            onLoadHistory?()
+        } label: {
+            HStack(spacing: 6) {
+                if isLoadingHistory {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .tint(.white.opacity(0.4))
+                } else {
+                    Image(systemName: "arrow.up.circle")
+                        .font(.system(size: 10))
+                }
+                Text(isLoadingHistory ? "Loading…" : "Load history")
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+            }
+            .foregroundStyle(.white.opacity(0.5))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            )
+        }
+        .disabled(isLoadingHistory)
     }
 
     // MARK: - Title bar
@@ -212,12 +199,5 @@ struct PaneCardView: View {
         if hasNotification { return Color.orange.opacity(0.6) }
         if isFocused { return Color.white.opacity(0.5) }
         return Color.white.opacity(0.08)
-    }
-}
-
-private struct ContentHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat? = nil
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = nextValue() ?? value
     }
 }

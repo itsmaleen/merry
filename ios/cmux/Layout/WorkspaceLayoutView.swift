@@ -170,6 +170,11 @@ struct WorkspaceLayoutView: View {
     @State private var isEditingTranscript = false
     @State private var editingText = ""
     @State private var contentPollTimer: Timer?
+    @State private var fullHistorySurfaces: Set<String> = []
+    @State private var loadingHistory: Set<String> = []
+    // True while the remote-keyboard compose bar is focused; collapses the
+    // layout to just the focused terminal so it owns the whole screen.
+    @State private var keyboardActive = false
 
     var body: some View {
         ZStack {
@@ -190,11 +195,27 @@ struct WorkspaceLayoutView: View {
                     surfaceLayout
                 }
 
-                if !quickAction.isFullscreen {
+                // Always-available remote keyboard for the focused terminal.
+                if !quickAction.isFullscreen, !quickAction.isOpen,
+                   let sid = appState.focusedSurfaceID,
+                   let surface = appState.surfaces.first(where: { $0.id == sid }),
+                   !surface.isBrowser {
+                    TerminalInputBar(
+                        surfaceTitle: surface.title,
+                        isActive: $keyboardActive,
+                        onSendText: { appState.sendText($0, to: sid) },
+                        onSendEnter: { appState.sendText($0 + "\n", to: sid) },
+                        onSendKey: { appState.sendKey($0, to: sid) }
+                    )
+                    .padding(.bottom, 2)
+                }
+
+                if !quickAction.isFullscreen, !keyboardActive {
                     workspaceBar
                         .padding(.bottom, 4)
                 }
             }
+            .animation(.easeInOut(duration: 0.22), value: keyboardActive)
 
             // Quick action overlay
             if quickAction.isOpen {
@@ -248,6 +269,11 @@ struct WorkspaceLayoutView: View {
             // when backgrounded, interrupted, or idle, killing the KVO observer
             volumeHandler.start()
             appState.refreshSurfaces()
+            // Content polling can be left dead after a background/tab switch
+            // (the timer was invalidated but onAppear never re-fired). Restart
+            // it here so terminal content resumes updating without a manual
+            // navigation back into the view.
+            startContentPolling()
         }
     }
 
@@ -389,100 +415,153 @@ struct WorkspaceLayoutView: View {
 
     private var surfaceLayout: some View {
         GeometryReader { geo in
-            let hasSidebar = secondarySurfaces.count > 0 && !quickAction.isFullscreen
-            let mainWidth = hasSidebar ? geo.size.width * 0.65 : geo.size.width
-            let sideWidth = geo.size.width * 0.35
+            // iPhones report .compact width in both orientations, so size class
+            // can't tell us portrait vs landscape — compare the actual bounds.
+            let isLandscape = geo.size.width > geo.size.height
+            // While composing, hide the secondaries so the focused terminal
+            // gets the full screen alongside the keyboard.
+            let hasSecondary = secondarySurfaces.count > 0 && !quickAction.isFullscreen && !keyboardActive
 
-            HStack(spacing: 8) {
-                // Focused surface — large card
-                if let surface = focusedSurface {
-                    PaneCardView(
-                        title: surface.title,
-                        isFocused: true,
-                        hasNotification: appState.hasNotification(for: surface),
-                        isTranscribing: speechManager.isRecording,
-                        transcript: speechManager.transcript,
-                        terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
-                        isBrowser: surface.isBrowser,
-                        browserURL: appState.browserURLs[surface.id] ?? ""
-                    )
-                    .id(surface.id)
-                    .frame(width: mainWidth - (hasSidebar ? 4 : 16))
-                    .transition(.asymmetric(
-                        insertion: .move(edge: cycleDirection).combined(with: .opacity),
-                        removal: .move(edge: cycleDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
-                    ))
-                    .onLongPressGesture(minimumDuration: 0.4) {
-                        openQuickActions()
-                    }
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 50)
-                            .onEnded { value in
-                                guard !quickAction.isOpen else { return }
-                                if speechManager.isRecording {
-                                    // Swipe while recording opens transcript editor
-                                    editingText = speechManager.stop()
-                                    volumeHandler.clearSpeechState()
-                                    isEditingTranscript = true
-                                    return
-                                }
-                                if value.translation.width < -50 {
-                                    cycleDirection = .trailing
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        appState.cycleSurface()
-                                    }
-                                } else if value.translation.width > 50 {
-                                    cycleDirection = .leading
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        appState.cycleSurfaceBackward()
-                                    }
-                                }
-                            },
-                        including: .gesture
-                    )
-                }
-
-                // Secondary tiles
-                if hasSidebar {
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 6) {
-                            ForEach(secondarySurfaces) { surface in
-                                PaneCardView(
-                                    title: surface.title,
-                                    isFocused: false,
-                                    hasNotification: appState.hasNotification(for: surface),
-                                    isTranscribing: false,
-                                    transcript: "",
-                                    terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
-                                    isBrowser: surface.isBrowser,
-                                    browserURL: appState.browserURLs[surface.id] ?? ""
-                                )
-                                .frame(height: tileHeight(for: secondarySurfaces.count, in: geo.size.height))
-                                .onTapGesture {
-                                    cycleDirection = .trailing
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        appState.focusSurface(surface.id)
-                                    }
-                                }
-                                .gesture(
-                                    DragGesture(minimumDistance: 30)
-                                        .onEnded { value in
-                                            if value.translation.height < -30 {
-                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                                    appState.focusSurface(surface.id)
-                                                }
-                                            }
-                                        }
-                                )
-                            }
-                        }
-                    }
-                    .frame(width: sideWidth - 4)
+            Group {
+                if isLandscape {
+                    landscapeLayout(size: geo.size, hasSecondary: hasSecondary)
+                } else {
+                    portraitLayout(size: geo.size, hasSecondary: hasSecondary)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
         }
+    }
+
+    // Landscape: focused pane fills the left ~65%, secondaries stack in a
+    // vertical scroll sidebar on the right.
+    private func landscapeLayout(size: CGSize, hasSecondary: Bool) -> some View {
+        let mainWidth = hasSecondary ? size.width * 0.65 : size.width
+        let sideWidth = size.width * 0.35
+        return HStack(spacing: 8) {
+            if let surface = focusedSurface {
+                focusedCard(for: surface, contentScale: 1.0)
+                    .frame(width: mainWidth - (hasSecondary ? 4 : 16))
+            }
+            if hasSecondary {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 6) {
+                        ForEach(secondarySurfaces) { surface in
+                            secondaryTile(for: surface)
+                                .frame(height: tileHeight(for: secondarySurfaces.count, in: size.height))
+                        }
+                    }
+                }
+                .frame(width: sideWidth - 4)
+            }
+        }
+    }
+
+    // Portrait: focused pane fills the width up top, secondaries sit in a
+    // horizontal scroll row below — each tile gets a usable width instead of
+    // being crushed into a narrow side column.
+    private func portraitLayout(size: CGSize, hasSecondary: Bool) -> some View {
+        let rowHeight: CGFloat = hasSecondary ? max(110, size.height * 0.24) : 0
+        let tileWidth = max(150, size.width * 0.44)
+        return VStack(spacing: 8) {
+            if let surface = focusedSurface {
+                focusedCard(for: surface, contentScale: 1.25)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if hasSecondary {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(secondarySurfaces) { surface in
+                            secondaryTile(for: surface)
+                                .frame(width: tileWidth, height: rowHeight)
+                        }
+                    }
+                }
+                .frame(height: rowHeight)
+            }
+        }
+    }
+
+    // Focused surface card with its cycle/quick-action gestures.
+    private func focusedCard(for surface: Surface, contentScale: CGFloat) -> some View {
+        PaneCardView(
+            title: surface.title,
+            isFocused: true,
+            hasNotification: appState.hasNotification(for: surface),
+            isTranscribing: speechManager.isRecording,
+            transcript: speechManager.transcript,
+            terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+            contentScale: contentScale,
+            isBrowser: surface.isBrowser,
+            browserURL: appState.browserURLs[surface.id] ?? "",
+            hasFullHistory: fullHistorySurfaces.contains(surface.id),
+            isLoadingHistory: loadingHistory.contains(surface.id),
+            onLoadHistory: { loadHistory(for: surface.id) }
+        )
+        .id(surface.id)
+        .transition(.asymmetric(
+            insertion: .move(edge: cycleDirection).combined(with: .opacity),
+            removal: .move(edge: cycleDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
+        ))
+        .onLongPressGesture(minimumDuration: 0.4) {
+            openQuickActions()
+        }
+        .highPriorityGesture(
+            DragGesture(minimumDistance: 50)
+                .onEnded { value in
+                    guard !quickAction.isOpen else { return }
+                    if speechManager.isRecording {
+                        // Swipe while recording opens transcript editor
+                        editingText = speechManager.stop()
+                        volumeHandler.clearSpeechState()
+                        isEditingTranscript = true
+                        return
+                    }
+                    if value.translation.width < -50 {
+                        cycleDirection = .trailing
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.cycleSurface()
+                        }
+                    } else if value.translation.width > 50 {
+                        cycleDirection = .leading
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.cycleSurfaceBackward()
+                        }
+                    }
+                },
+            including: .gesture
+        )
+    }
+
+    // Non-focused surface tile; tap or swipe to focus it.
+    private func secondaryTile(for surface: Surface) -> some View {
+        PaneCardView(
+            title: surface.title,
+            isFocused: false,
+            hasNotification: appState.hasNotification(for: surface),
+            isTranscribing: false,
+            transcript: "",
+            terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+            isBrowser: surface.isBrowser,
+            browserURL: appState.browserURLs[surface.id] ?? ""
+        )
+        .onTapGesture {
+            cycleDirection = .trailing
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                appState.focusSurface(surface.id)
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 30)
+                .onEnded { value in
+                    if value.translation.height < -30 {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            appState.focusSurface(surface.id)
+                        }
+                    }
+                }
+        )
     }
 
     private func tileHeight(for count: Int, in totalHeight: CGFloat) -> CGFloat {
@@ -593,6 +672,9 @@ struct WorkspaceLayoutView: View {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }
+                // Reset history state for new workspace
+                fullHistorySurfaces.removeAll()
+                loadingHistory.removeAll()
             }
         }
     }
@@ -616,7 +698,30 @@ struct WorkspaceLayoutView: View {
 
     @State private var pollCycleCount = 0
 
+    private func loadHistory(for surfaceID: String) {
+        guard !loadingHistory.contains(surfaceID) else { return }
+        let previousLength = appState.surfaceContent[surfaceID]?.count ?? 0
+        loadingHistory.insert(surfaceID)
+        appState.readSurfaceText(surfaceID, scrollback: true)
+
+        // Poll until content actually changes or timeout after 5s
+        var checks = 0
+        Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
+            checks += 1
+            let currentLength = appState.surfaceContent[surfaceID]?.count ?? 0
+            if currentLength != previousLength || checks >= 16 {
+                timer.invalidate()
+                loadingHistory.remove(surfaceID)
+                fullHistorySurfaces.insert(surfaceID)
+            }
+        }
+    }
+
     private func startContentPolling() {
+        // Tear down any existing timer first — onAppear/foreground can fire more
+        // than once, and a duplicate timer means double polling and wasted RPCs.
+        contentPollTimer?.invalidate()
+        contentPollTimer = nil
         // Initial fetch — focused only
         if let focused = focusedSurface {
             fetchContent(for: focused)
@@ -642,7 +747,8 @@ struct WorkspaceLayoutView: View {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
         } else {
-            appState.readSurfaceText(surface.id)
+            // Keep full history if already loaded, otherwise fetch 50 lines
+            appState.readSurfaceText(surface.id, scrollback: fullHistorySurfaces.contains(surface.id))
         }
     }
 
