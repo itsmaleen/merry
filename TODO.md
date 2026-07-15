@@ -66,12 +66,12 @@
 - [ ] Swap poller for subscribe stream in bridge
 - [ ] Remove polling interval config
 
-## Bridge — Phase 3 (Tailscale)
+## Bridge — Phase 3 (Tailscale) — Done
 
-- [ ] Add `tsnet` dependency
-- [ ] `--tailscale` flag: embed Tailscale node, advertise on tailnet
-- [ ] Update QR code URL with Tailscale hostname
-- [ ] Update README with Tailscale setup instructions
+- [x] Add `tsnet` dependency
+- [x] `--tailscale` flag: embed Tailscale node, advertise on tailnet
+- [x] Update QR code URL with Tailscale hostname
+- [x] Update README with Tailscale setup instructions
 
 ## cmux PR
 

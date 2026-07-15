@@ -37,7 +37,11 @@ Sent when cmux receives a new notification.
 
 ### notification.cleared
 
-Sent when all notifications are cleared.
+Reserved. Intended to signal that all notifications were cleared. **Not currently
+emitted by the bridge** — `notification.clear` (a client command) only resets the
+poller's seen-ID set; no push is broadcast. The iOS client already handles this
+event, so a future bridge can broadcast it after a successful clear without a
+client change.
 
 ```json
 {
@@ -112,6 +116,20 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
 - `surface.create` — `{"type":"terminal"}` (or "browser", creates in focused pane)
 - `surface.split` — `{"direction":"right","surface_id":"..."}` (direction: left/right/up/down)
 - `surface.close` — `{"surface_id":"..."}`
+- `surface.read_text` — `{"surface_id":"...","lines":50}` for a tail, or
+  `{"surface_id":"...","scrollback":true}` for the full scrollback. Optional
+  `workspace_id`. Returns `{"text":"..."}`. Used by the iOS live-view polling
+  and load-history features.
+
+**Browsers:**
+- `browser.url.get` — `{"surface_id":"..."}` → `{"url":"..."}` (browser surfaces)
+
+**Workspaces (continued):**
+- `workspace.close` — `{"workspace_id":"..."}`
+
+**Panes:**
+- `pane.list` — `{"workspace_id":"..."}` (optional, defaults to current)
+- `pane.focus` — `{"pane_id":"..."}`
 
 **Input:**
 - `surface.send_text` — `{"surface_id":"...","text":"ls\n"}`

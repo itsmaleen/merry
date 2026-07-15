@@ -111,6 +111,9 @@ cmux-bridge --pair --tailscale
 
 # Run with Tailscale enabled
 cmux-bridge --tailscale
+
+# Or install the LaunchAgent with Tailscale always on
+./scripts/install-bridge.sh --tailscale
 ```
 
 On first `--tailscale` run, a browser opens for Tailscale OAuth login (one-time).
@@ -126,7 +129,7 @@ You can also set `"tailscale": true` in `~/.config/cmux-bridge/config.json` to a
 
 ```bash
 # Bridge logs
-tail -f /tmp/cmux-bridge.log
+tail -f ~/Library/Logs/cmux-bridge.log
 
 # Re-pair (regenerates QR)
 cmux-bridge --pair
@@ -171,7 +174,7 @@ scripts/
 |-------|---------|--------|
 | 1 | LAN bridge + polling + iOS control | Done |
 | 2 | `notification.subscribe` push stream (requires cmux PR) | Planned |
-| 3 | Tailscale embed (`tsnet`) for remote access | Planned |
+| 3 | Tailscale embed (`tsnet`) for remote access | Done |
 
 ## Related
 
