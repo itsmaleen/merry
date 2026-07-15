@@ -37,3 +37,7 @@ Seeing both the new button to hide keyboard (good) and the old floating circle b
 ---
 
 the landscape version of keyboard pulled up hides the terminal because of the keyboard size, any ideas on how to fix?
+
+---
+
+great let's commit these changes, open a PR, review, fix, merge
