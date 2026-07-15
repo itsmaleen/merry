@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "2faaabeef0ba",
+  "strategy": "manual-commit",
+  "branch": "feat/ios-portrait-keyboard-terminal-ux",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Connection/BridgeClient.swift",
+    "ios/cmux/Info.plist",
+    "ios/cmux/Input/TerminalInputBar.swift",
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/TerminalTextView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2f/aaabeef0ba/0/metadata.json",
+      "transcript": "/2f/aaabeef0ba/0/full.jsonl",
+      "compact_transcript": "/2f/aaabeef0ba/0/transcript.jsonl",
+      "content_hash": "/2f/aaabeef0ba/0/content_hash.txt",
+      "prompt": "/2f/aaabeef0ba/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10926,
+    "cache_creation_tokens": 460965,
+    "cache_read_tokens": 12117509,
+    "output_tokens": 99647,
+    "api_call_count": 102
+  }
+}
