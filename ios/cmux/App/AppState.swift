@@ -35,6 +35,9 @@ final class AppState: ObservableObject {
     @Published private(set) var surfaceHasFullHistory: Set<String> = []
 
     private var lastFocusedSurface: [String: String] = [:]
+    // Reentrancy guard for loadSurfaceHistory: the view-level loading state
+    // resets on workspace switches, so an in-flight fetch must be tracked here.
+    private var historyLoadsInFlight: Set<String> = []
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -242,6 +245,11 @@ final class AppState: ObservableObject {
             completion(true)
             return
         }
+        guard !historyLoadsInFlight.contains(surfaceID) else {
+            completion(false)
+            return
+        }
+        historyLoadsInFlight.insert(surfaceID)
         var params: [String: Any] = ["surface_id": surfaceID, "scrollback": true]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
@@ -250,11 +258,15 @@ final class AppState: ObservableObject {
         // BridgeClient drops pending completions on disconnect without calling
         // them, so guarantee the caller's loading state clears regardless.
         let finished = CompletionGuard()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            if finished.tryFinish() { completion(false) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            if finished.tryFinish() {
+                self?.historyLoadsInFlight.remove(surfaceID)
+                completion(false)
+            }
         }
         send(method: "surface.read_text", params: params) { [weak self] result in
             guard finished.tryFinish() else { return }
+            self?.historyLoadsInFlight.remove(surfaceID)
             guard let self, let text = result["text"] as? String else {
                 completion(false)
                 return
@@ -273,7 +285,10 @@ final class AppState: ObservableObject {
                 let history = Self.trimTerminalText(Self.capHistoryLines(text))
                 let merged = Self.spliceTail(tail, ontoHistory: history) ?? history
                 await MainActor.run { [weak self] in
-                    guard let self else { return }
+                    guard let self else {
+                        completion(false)
+                        return
+                    }
                     // A tail poll may have landed while we processed off-main;
                     // anchor the *current* content into the merged history so
                     // the published text ends with exactly what's on screen —

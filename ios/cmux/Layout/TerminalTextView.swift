@@ -127,12 +127,15 @@ struct TerminalTextView: UIViewRepresentable {
             autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
 
             // Near-top fires only for user-driven scrolls (programmatic
-            // setContentOffset lands here too), only when there is actually
-            // scrollable content, and at most once a second.
+            // setContentOffset lands here too), at most once a second. When the
+            // content fits the viewport there's no top to scroll to, so require
+            // a deliberate pull-down bounce instead (alwaysBounceVertical is on).
+            let nearTop = maxOffset > 0
+                ? scrollView.contentOffset.y < 120
+                : scrollView.contentOffset.y < -30
             guard let onScrolledNearTop,
                   scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating,
-                  maxOffset > 0,
-                  scrollView.contentOffset.y < 120
+                  nearTop
             else { return }
             let now = Date().timeIntervalSinceReferenceDate
             if now - lastNearTopFire > 1.0 {
