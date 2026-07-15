@@ -170,7 +170,6 @@ struct WorkspaceLayoutView: View {
     @State private var isEditingTranscript = false
     @State private var editingText = ""
     @State private var contentPollTimer: Timer?
-    @State private var fullHistorySurfaces: Set<String> = []
     @State private var loadingHistory: Set<String> = []
     // True while the remote-keyboard compose bar is focused; collapses the
     // layout to just the focused terminal so it owns the whole screen.
@@ -495,7 +494,7 @@ struct WorkspaceLayoutView: View {
             contentScale: contentScale,
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
-            hasFullHistory: fullHistorySurfaces.contains(surface.id),
+            hasFullHistory: appState.surfaceHasFullHistory.contains(surface.id),
             isLoadingHistory: loadingHistory.contains(surface.id),
             onLoadHistory: { loadHistory(for: surface.id) }
         )
@@ -672,8 +671,8 @@ struct WorkspaceLayoutView: View {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                // Reset history state for new workspace
-                fullHistorySurfaces.removeAll()
+                // Drop stale loading indicators; loaded history itself lives in
+                // AppState keyed by surface ID, so it survives workspace switches.
                 loadingHistory.removeAll()
             }
         }
@@ -700,20 +699,9 @@ struct WorkspaceLayoutView: View {
 
     private func loadHistory(for surfaceID: String) {
         guard !loadingHistory.contains(surfaceID) else { return }
-        let previousLength = appState.surfaceContent[surfaceID]?.count ?? 0
         loadingHistory.insert(surfaceID)
-        appState.readSurfaceText(surfaceID, scrollback: true)
-
-        // Poll until content actually changes or timeout after 5s
-        var checks = 0
-        Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
-            checks += 1
-            let currentLength = appState.surfaceContent[surfaceID]?.count ?? 0
-            if currentLength != previousLength || checks >= 16 {
-                timer.invalidate()
-                loadingHistory.remove(surfaceID)
-                fullHistorySurfaces.insert(surfaceID)
-            }
+        appState.loadSurfaceHistory(surfaceID) { _ in
+            loadingHistory.remove(surfaceID)
         }
     }
 
@@ -747,8 +735,9 @@ struct WorkspaceLayoutView: View {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
         } else {
-            // Keep full history if already loaded, otherwise fetch 50 lines
-            appState.readSurfaceText(surface.id, scrollback: fullHistorySurfaces.contains(surface.id))
+            // Always a 50-line tail; AppState splices it onto stored history
+            // for surfaces that have loaded their full scrollback.
+            appState.readSurfaceText(surface.id)
         }
     }
 
