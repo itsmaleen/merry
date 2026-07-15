@@ -823,3 +823,168 @@ if tailscaleHost != "" {
 | 9 | **Info** | `pair/qr.go:51` | `tailscaleHost` not URL-escaped in QR URL |</result>
 <usage><subagent_tokens>38957</subagent_tokens><tool_uses>56</tool_uses><duration_ms>283552</duration_ms></usage>
 </task-notification>
+
+---
+
+<task-notification>
+<task-id>a47b29e3bb68493e5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/a47b29e3bb68493e5.output</output-file>
+<status>completed</status>
+<summary>Agent "Review scripts and config" completed</summary>
+<result>Here is the full report, organized by area.
+
+---
+
+## Findings
+
+---
+
+### 1. CRITICAL — `NSLocalNetworkUsageDescription` and `NSBonjourServices` missing from Info.plist / project.yml
+
+**File:** `ios/cmux/Info.plist` (no line), `ios/project.yml` (no line)
+**Impact:** iOS 14+ requires both keys for any app that initiates LAN connections or uses Bonjour/mDNS. Without `NSLocalNetworkUsageDescription`, iOS silently denies local network access. Without `NSBonjourServices: ["_cmux-bridge._tcp"]`, the OS denies the `NetServiceBrowser` browse even if the privacy alert is approved. The app currently uses `NetServiceBrowser.searchForServices(ofType: "_cmux-bridge._tcp.", inDomain: "local.")` in `BridgeDiscovery.swift:15`. Auto-discovery will silently fail on any real device running iOS 14+.
+**Fix:** Add to `ios/project.yml` under `info.properties`:
+```yaml
+NSLocalNetworkUsageDescription: "Used to discover cmux-bridge on the local network."
+NSBonjourServices:
+  - _cmux-bridge._tcp
+```
+Then regenerate `Info.plist` (or add directly to it). Also run `xcodegen` or manually sync `Info.plist`.
+
+---
+
+### 2. HIGH — `xcuserstate` and `xcschememanagement.plist` committed to git; `.gitignore` rule won't un-track them
+
+**Files:**
+- `ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate` — tracked
+- `ios/cmux.xcodeproj/xcuserdata/marlin.xcuserdatad/xcschemes/xcschememanagement.plist` — tracked
+
+The pending `.gitignore` change (unstaged) adds `xcuserdata/` and `.DS_Store`, but gitignore rules don't apply to already-tracked files. These files will continue to accumulate binary diffs in the history (the xcuserstate is already showing as modified in `git status`), and they expose developer-specific workspace layout state and scheme ordering.
+**Fix:**
+```bash
+git rm --cached "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate"
+git rm --cached "ios/cmux.xcodeproj/xcuserdata/marlin.xcuserdatad/xcschemes/xcschememanagement.plist"
+# Then commit
+```
+Make sure the pending `.gitignore` changes are also committed.
+
+---
+
+### 3. HIGH — `.DS_Store` files committed to git; `gitignore` rule will not un-track them
+
+**Files tracked:**
+- `.DS_Store`
+- `bridge/.DS_Store`
+- `ios/.DS_Store`
+
+Same root cause as above: the pattern `.DS_Store` was added to `.gitignore` in a pending (unstaged) change, but all three are already tracked.
+**Fix:**
+```bash
+git rm --cached .DS_Store bridge/.DS_Store ios/.DS_Store
+```
+
+---
+
+### 4. HIGH — `ios/build/` not in `.gitignore`
+
+**File:** `.gitignore` (no entry for `ios/build/`)
+**Impact:** `ios/build/` (containing compiled `.app`, `.o`, precompiled modules, entitlements, derived data) shows as `??` in `git status`. It is not tracked, but it is not ignored. Anyone doing `git add .` would stage ~87,000 build artifacts including entitlement binaries, DerivedSources, and compiled Swift modules. The `ios/build/` tree is currently 200 MB+ on disk.
+**Fix:** Add `ios/build/` to `.gitignore`.
+
+---
+
+### 5. MEDIUM — Protocol drift: four RPC methods used in iOS have no entry in `shared/protocol.md`
+
+**File:** `shared/protocol.md` (missing methods), `ios/cmux/App/AppState.swift`
+
+The iOS client calls these methods that are not documented:
+
+| Method | Location | Usage |
+|---|---|---|
+| `surface.read_text` | `AppState.swift:210,267` | Terminal content polling |
+| `workspace.close` | `AppState.swift:365` | Workspace deletion |
+| `pane.focus` | `AppState.swift:150` | Pane focus |
+| `pane.list` | `AppState.swift:471` | Pane listing |
+
+**Fix:** Add entries for these four methods under `shared/protocol.md`'s `### Supported Methods` section with their param shapes. At minimum `surface.read_text` and `workspace.close` need full documentation since they're actively used.
+
+---
+
+### 6. MEDIUM — `notification.cleared` push event is documented but never emitted by the bridge
+
+**Files:** `shared/protocol.md:38–47`, `bridge/internal/ws/handler.go` (no broadcast), `ios/cmux/Connection/BridgeClient.swift:193`
+
+`shared/protocol.md` specifies a `notification.cleared` server → client push event. The iOS client handles it at `BridgeClient.swift:193` (`case "notification.cleared": return .notificationCleared`). The bridge never sends this event — `notification.clear` is a client command that resets the seen-ID set internally but broadcasts nothing. The `.notificationCleared` handler in iOS is dead code.
+**Fix (choose one):** Either remove the `notification.cleared` push event from `protocol.md` and the dead case from `BridgeClient.swift`, or implement it by having `proxyCommand` in `handler.go` broadcast a `notification.cleared` event after a successful `notification.clear` command (similar to how `ResetSeenIDs` is called at `handler.go:139`).
+
+---
+
+### 7. MEDIUM — `tailscale.com` marked `// indirect` in `go.mod` but is a direct import
+
+**File:** `bridge/go.mod:72`
+`tailscale.com v1.96.5 // indirect` — but `bridge/cmd/cmux-bridge/main.go:22` directly imports `tailscale.com/tsnet`. Running `go mod tidy` would move it to the direct `require` block. This is a correctness issue in the module graph (tools that analyze dependencies, security scanners like `govulncheck`) may misclassify it.
+**Fix:** `cd bridge &amp;&amp; go mod tidy`
+
+---
+
+### 8. MEDIUM — README/TODO stale: Phase 3 (Tailscale) is fully implemented but listed as "Planned"
+
+**Files:** `README.md:174`, `TODO.md:69–74`
+
+`README.md` Phase table: `| 3 | Tailscale embed (tsnet) for remote access | Planned |`
+`TODO.md` Phase 3 block has all items unchecked.
+
+Tailscale is fully implemented: `tsnet` is a dependency, `--tailscale` flag exists, `startTailscaleForPairing` and Tailscale listener in `runDaemon` are shipped. The README also has a full Tailscale usage section (lines 104–123), contradicting the "Planned" status in the table.
+**Fix:** Mark Phase 3 as Done in the table and check the TODO.md items.
+
+---
+
+### 9. LOW — `go.mod` declares `go 1.26.1` but local toolchain is `go1.23.5`
+
+**File:** `bridge/go.mod:3`
+`go 1.26.1` is not a released Go version (latest stable as of July 2026 is 1.24.x). This will cause `go: go.mod file indicates that this module needs go &gt;= 1.26.1` for contributors without a matching toolchain (behavior depends on `GOTOOLCHAIN` env var). Without a `toolchain` directive the module is not pinned to a specific download. The repo builds locally only because `GOTOOLCHAIN` is unset and 1.23.5 has a compatibility grace.
+**Fix:** Correct the `go` directive to the actual minimum required version (likely `go 1.22` or `go 1.23` given the features used), or add a `toolchain go1.23.5` line.
+
+---
+
+### 10. LOW — Bearer token comparison is not constant-time
+
+**File:** `bridge/internal/ws/auth.go:21`
+```go
+return provided == token &amp;&amp; provided != ""
+```
+Plain string `==` is susceptible to timing side channels. On a local LAN this is low-severity (an attacker would need LAN access to probe timing), but it's easy to fix.
+**Fix:** Replace with `subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1` from `crypto/subtle`.
+
+---
+
+### 11. LOW — `install-bridge.sh --tailscale` flag is undocumented in README
+
+**File:** `scripts/install-bridge.sh:7`, `README.md`
+`install-bridge.sh` accepts `--tailscale` as `$1` to embed `--tailscale` into the LaunchAgent `ProgramArguments`. This is never mentioned in the README's Tailscale section, which only shows how to run `cmux-bridge --tailscale` manually.
+**Fix:** Add a note to the Tailscale section: `sudo ./scripts/install-bridge.sh --tailscale`.
+
+---
+
+### 12. LOW — `DEVELOPMENT_TEAM = W7SDNRPA36` hardcoded in `project.pbxproj`
+
+**File:** `ios/cmux.xcodeproj/project.pbxproj:416`
+`project.yml` explicitly sets `DEVELOPMENT_TEAM: ""`, but the committed `project.pbxproj` has a hardcoded Apple Team ID (`W7SDNRPA36`). Any contributor who opens the project without re-running `xcodegen` will sign with your team ID, which fails silently if they don't have access to that team. Not a secret (team IDs are embedded in distributed binaries), but it blocks other contributors from building.
+**Fix:** Run `xcodegen generate` to regenerate `project.pbxproj` from `project.yml`, which will set `DEVELOPMENT_TEAM = ""` consistently, then commit the result.
+
+---
+
+## Areas Checked and Clean
+
+- **QR / pairing token security:** Token is 256-bit, written `0600`, not logged in daemon mode. LaunchAgent does not invoke `--pair`, so the token URL is never written to the world-readable `/tmp/cmux-bridge.log`. Terminal display by design.
+- **Config and token file permissions:** `~/.config/cmux-bridge/` created `0700`; `token` and `config.json` written `0600`. Correct.
+- **Secrets in tracked files:** No API keys, tokens, passwords, or `.env` files tracked. `config.json` (which stores `socket_password`) is in the `// indirect` config dir, not committed.
+- **`bridge/cmux-bridge` binary:** Correctly gitignored (first line of `.gitignore`), not tracked.
+- **`build.sh`:** Correct `set -euo pipefail`, resolves `SCRIPT_DIR` portably, no privilege escalation inside the script. The `sudo` is correctly applied at the call site in README.
+- **`ios/build/` artifacts:** Not tracked (only untracked/unignored).
+- **`.entire/` tooling:** `.entire/.gitignore` correctly excludes `tmp/`, `logs/`, `metadata/`. Only `settings.json` (non-sensitive) and `.gitignore` itself are tracked.
+- **`.claude/settings.local.json`:** Tracked, contains only permission allow-list entries, no secrets.
+- **Protocol: methods documented but not used in iOS** — `notification.list` and `system.ping` are used internally by the bridge (poller and daemon ping loop), not meant to be called from iOS. No drift issue there.</result>
+<usage><subagent_tokens>74355</subagent_tokens><tool_uses>118</tool_uses><duration_ms>365515</duration_ms></usage>
+</task-notification>
