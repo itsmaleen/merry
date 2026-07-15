@@ -148,6 +148,12 @@ final class AppState: ObservableObject {
         if let wsID = currentWorkspaceID {
             lastFocusedSurface[wsID] = id
         }
+        // Immediately deep-read the newly focused surface so its scrollback is
+        // there to scroll through right away, instead of showing the shallow
+        // preview until the next 3s poll upgrades it.
+        if surfaces.first(where: { $0.id == id })?.isBrowser != true {
+            readSurfaceText(id, lines: Self.focusedHistoryLines)
+        }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
             self?.refreshPanes()
