@@ -8,6 +8,12 @@ ENABLE_TAILSCALE="${1:---no-tailscale}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Keep logs out of world-readable /tmp — daemon stdout/stderr may carry
+# diagnostic detail; ~/Library/Logs is user-owned.
+LOG_DIR="$HOME/Library/Logs"
+LOG_PATH="$LOG_DIR/cmux-bridge.log"
+mkdir -p "$LOG_DIR"
+
 # Build and install binary
 echo "Building cmux-bridge..."
 bash "$SCRIPT_DIR/build.sh" "$BINARY"
@@ -44,9 +50,9 @@ ${ARGS}
     <string>${HOME}</string>
   </dict>
   <key>StandardOutPath</key>
-  <string>/tmp/cmux-bridge.log</string>
+  <string>${LOG_PATH}</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/cmux-bridge.log</string>
+  <string>${LOG_PATH}</string>
 </dict>
 </plist>
 EOF
@@ -57,7 +63,7 @@ launchctl load "$PLIST_PATH"
 
 echo ""
 echo "cmux-bridge installed and started."
-echo "Logs: tail -f /tmp/cmux-bridge.log"
+echo "Logs: tail -f $LOG_PATH"
 echo ""
 echo "To pair with the iOS app, run:"
 echo "  cmux-bridge --pair"

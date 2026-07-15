@@ -36,6 +36,10 @@ type Poller struct {
 	mu          sync.Mutex
 	subscribers []chan Event
 	seenIDs     map[string]struct{}
+	// Bumped by ResetSeenIDs. A poll captures it before its network call and
+	// discards its result if it changed meanwhile, so a notification.list issued
+	// before a clear can't repopulate seenIDs with pre-clear IDs afterward.
+	generation uint64
 }
 
 func New(client *socket.Client, interval time.Duration) *Poller {
@@ -103,6 +107,12 @@ func (p *Poller) Run(stop <-chan struct{}) {
 }
 
 func (p *Poller) poll() {
+	// Capture the generation before the network call; if a clear lands while
+	// we're waiting on cmux, ingest() will discard this now-stale result.
+	p.mu.Lock()
+	gen := p.generation
+	p.mu.Unlock()
+
 	result, err := p.client.Send("notification.list", nil)
 	if err != nil {
 		log.Printf("poller: notification.list error: %v", err)
@@ -117,18 +127,7 @@ func (p *Poller) poll() {
 		return
 	}
 
-	p.mu.Lock()
-	var newOnes []Notification
-	for _, n := range payload.Notifications {
-		if _, seen := p.seenIDs[n.ID]; !seen {
-			p.seenIDs[n.ID] = struct{}{}
-			newOnes = append(newOnes, n)
-		}
-	}
-	subs := make([]chan Event, len(p.subscribers))
-	copy(subs, p.subscribers)
-	p.mu.Unlock()
-
+	newOnes, subs := p.ingest(payload.Notifications, gen)
 	for _, n := range newOnes {
 		ev := Event{Type: "notification.created", Data: n}
 		for _, sub := range subs {
@@ -141,10 +140,34 @@ func (p *Poller) poll() {
 	}
 }
 
+// ingest records unseen notifications and returns the new ones plus a snapshot
+// of subscribers to deliver to. If the generation changed since the poll began
+// (a notification.clear happened mid-flight), the whole batch is discarded so
+// stale IDs don't get re-marked as seen.
+func (p *Poller) ingest(notifs []Notification, gen uint64) ([]Notification, []chan Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.generation != gen {
+		return nil, nil
+	}
+	var newOnes []Notification
+	for _, n := range notifs {
+		if _, seen := p.seenIDs[n.ID]; !seen {
+			p.seenIDs[n.ID] = struct{}{}
+			newOnes = append(newOnes, n)
+		}
+	}
+	subs := make([]chan Event, len(p.subscribers))
+	copy(subs, p.subscribers)
+	return newOnes, subs
+}
+
 // ResetSeenIDs clears the seen-ID set. Called after notification.clear so that
-// notifications which reappear after a clear ARE emitted again.
+// notifications which reappear after a clear ARE emitted again. Bumping the
+// generation also invalidates any notification.list poll already in flight.
 func (p *Poller) ResetSeenIDs() {
 	p.mu.Lock()
 	p.seenIDs = make(map[string]struct{})
+	p.generation++
 	p.mu.Unlock()
 }
