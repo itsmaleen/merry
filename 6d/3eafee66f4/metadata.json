@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "6d3eafee66f4",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6d/3eafee66f4/0/metadata.json",
+      "transcript": "/6d/3eafee66f4/0/full.jsonl",
+      "compact_transcript": "/6d/3eafee66f4/0/transcript.jsonl",
+      "content_hash": "/6d/3eafee66f4/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 588,
+    "cache_creation_tokens": 6768,
+    "cache_read_tokens": 2680394,
+    "output_tokens": 4943,
+    "api_call_count": 9
+  }
+}
