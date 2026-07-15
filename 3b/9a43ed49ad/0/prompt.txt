@@ -1,0 +1,997 @@
+/loop /efficient-fable Review and then fix the load history feature. It doesn't work well. Should be able to have a good UI/UX + scroll nicely into the past without slowing down app load and loading of workspaces/terminals
+
+once that feature is done, reviewed and merged
+Start a very comprehensive review of the entire app focused on bugs and security. Create issues and then fix them, build tests to make sure fixes are correct + don't break existing features and merge
+
+---
+
+<task-notification>
+<task-id>a28337ec0819bcc6b</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/a28337ec0819bcc6b.output</output-file>
+<status>completed</status>
+<summary>Agent "Security review: iOS app" completed</summary>
+<result>Now I have a thorough view of the entire iOS codebase. Let me compile the security findings.
+
+Based on the full source-level review of all Swift files, Info.plist, and the bridge client, here is the security report:
+
+---
+
+# Security Review: cmux-companion iOS App
+
+---
+
+## Finding 1: Silent Re-Pairing via Deep-Link / QR Code — No Confirmation UI
+
+**File:** `ios/cmux/App/AppState.swift:75–89` and `ios/cmux/App/cmuxApp.swift:19–21`
+
+**Severity:** High
+**Category:** Authentication bypass / credential hijacking
+**Confidence:** 0.95
+
+**Code excerpt:**
+```swift
+// cmuxApp.swift:19-21
+.onOpenURL { url in
+    appState.handlePairingURL(url)
+}
+
+// AppState.swift:75-89
+func handlePairingURL(_ url: URL) {
+    guard url.scheme == "cmux-bridge",
+          url.host == "pair",
+          ...
+    let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost)
+    try? pairingStore.save(credentials)   // immediately overwrites Keychain
+    connect(to: credentials)              // connects to attacker's host
+    isPairingPresented = false
+}
+```
+
+**Description:** Any `cmux-bridge://pair?host=...&amp;port=...&amp;token=...` URL that reaches the app — whether from a malicious QR code, a web page, an iMessage link, an AirDrop file, or another installed app — immediately and silently: (1) overwrites the stored bearer token in Keychain, (2) establishes a WebSocket connection to the attacker-controlled host, and (3) dismisses the pairing screen. The victim receives zero confirmation dialog, zero display of the new host, and no way to compare the incoming credentials against the existing pairing before they are committed. The `PairingView.swift` QR scanner path calls the same `handlePairingURL` with no interstitial either (line 51–52).
+
+**Exploit Scenario:** An attacker running a server on LAN (or even a public IP) generates a valid-looking QR code or a URL of the form `cmux-bridge://pair?host=attacker.lan&amp;port=47821&amp;token=any`. They print this on a poster near the target's desk, send it in a message, embed it on a web page, or display it on a second screen. The victim's phone camera (iOS Universal Links) or any URL-opening action silently re-pairs the app. All subsequent keystrokes, terminal content reads, and `surface.send_text` calls now go to the attacker's host. The attacker also receives a new (attacker-chosen) bearer token which their server accepts.
+
+**Fix:** Add a confirmation alert before committing the new credentials:
+```swift
+func handlePairingURL(_ url: URL) {
+    // ... parse ...
+    // If already paired, show UIAlertController / SwiftUI Alert:
+    // "Pair with &lt;host&gt;:&lt;port&gt;? This will replace your current pairing."
+    // Only on explicit confirmation:
+    try? pairingStore.save(credentials)
+    connect(to: credentials)
+}
+```
+Also display the parsed host and port in the alert so the user can verify they match their Mac. Consider additionally checking that the new host is reachable on the local network before overwriting stored credentials.
+
+---
+
+## Finding 2: Cleartext WebSocket (ws://) Sends Bearer Token and All Terminal Content in the Clear
+
+**File:** `ios/cmux/Connection/BridgeClient.swift:124–128`
+
+**Severity:** High
+**Category:** Credential and data exposure / missing transport encryption
+**Confidence:** 0.95
+
+**Code excerpt:**
+```swift
+let urlString = "ws://\(host):\(credentials.port)/ws"
+guard let url = URL(string: urlString) else { return }
+
+var request = URLRequest(url: url)
+request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
+```
+
+**Description:** The connection is always `ws://` (cleartext). The bearer token is transmitted in an HTTP `Authorization` header during the WebSocket upgrade handshake, and subsequently every command sent to the bridge — including `surface.send_text` carrying keystrokes, passwords, and arbitrary terminal input — travels in plaintext. The Info.plist has no `NSAppTransportSecurity` block at all, which means ATS applies to HTTPS/TLS connections but is simply not relevant here because `URLSessionWebSocketTask` with a `ws://` URL bypasses ATS entirely (ATS governs HTTP/HTTPS; `ws://` is a native WebSocket and ATS does not block it).
+
+**Exploit Scenario:** Any device on the same LAN segment (coffee shop Wi-Fi, shared office network, a compromised router) can passively capture the WebSocket upgrade frame and read the `Authorization: Bearer &lt;token&gt;` header in cleartext. With the token an attacker can connect to the bridge from any host on the network and issue arbitrary terminal commands. Additionally, all terminal output (surfaced via `surface.read_text`) flows back over the same cleartext channel, leaking every password typed, private keys displayed with `cat`, and command output.
+
+**Fix:** Switch to `wss://` and provision a TLS certificate on the bridge (`cmux-bridge`). For a LAN/local tool where a CA-signed cert is impractical, use a self-signed certificate with certificate pinning: generate a keypair on first bridge launch, embed the public key fingerprint in the QR code / pairing URL, and verify it in the iOS `URLSessionDelegate`:
+
+```swift
+// AppState.swift / BridgeClient.swift
+let urlString = "wss://\(host):\(credentials.port)/ws"
+// In URLSession(_:didReceive:completionHandler:), pin against stored fingerprint
+```
+
+At minimum, document the plaintext risk clearly and add a UI warning when connecting over a non-localhost address.
+
+---
+
+## Finding 3: mDNS Auto-Reconnect Trusts Discovered Host Without Token Verification
+
+**File:** `ios/cmux/Connection/BridgeDiscovery.swift:44–58` and `ios/cmux/App/AppState.swift:566–573`
+
+**Severity:** Medium
+**Category:** Authentication bypass
+**Confidence:** 0.85
+
+**Code excerpt:**
+```swift
+// AppState.swift:566-573
+func discovery(_ discovery: BridgeDiscovery, didFind candidates: [PairingCredentials]) {
+    guard connectionStatus == .disconnected,
+          let stored = try? pairingStore.load() else { return }
+    if let match = candidates.first(where: { $0.host == stored.host &amp;&amp; $0.port == stored.port }) {
+        connect(to: PairingCredentials(host: match.host, port: match.port,
+                                       token: stored.token, ...))
+    }
+}
+
+// BridgeDiscovery.swift:52-54 — candidates are built with token: ""
+return PairingCredentials(host: cleanHost, port: svc.port, token: "")
+```
+
+**Description:** `BridgeDiscovery` listens for `_cmux-bridge._tcp.` mDNS advertisements and auto-reconnects when the app is disconnected by matching only on `host` and `port`. An attacker on the LAN can advertise the same mDNS service name with the legitimate host's hostname and port. Because mDNS is unauthenticated on local networks, the comparison `$0.host == stored.host &amp;&amp; $0.port == stored.port` can be satisfied by a spoofed advertisement pointing to the attacker's IP. The stored token is then sent to the attacker's WebSocket server in the Authorization header.
+
+**Exploit Scenario:** Attacker joins the same Wi-Fi and broadcasts `_cmux-bridge._tcp.` with the victim's hostname (or spoofs mDNS responses for that hostname). When the app is disconnected and reconnects, it sends the stored bearer token to the attacker's server and begins forwarding keystrokes.
+
+**Fix:** The matching should additionally verify the resolved IP address matches what was originally paired (store the paired IP alongside the hostname), or rely solely on the token for authenticating the bridge: the connection attempt will fail with an auth error if the token is wrong, but the token is still transmitted in the clear over the unencrypted channel (which ties back to Finding 2). The real fix is wss:// with certificate pinning so that a rogue server cannot receive the token.
+
+---
+
+## Areas Checked and Found Clean
+
+- **Credential storage (PairingStore):** Correctly uses `kSecClassGenericPassword` Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. Token is not stored in UserDefaults or plist. Clean.
+- **Injection / command construction:** The app sends structured JSON-RPC; text and key names are passed as JSON string values, not concatenated into shell commands. No shell command construction found. Clean.
+- **Local notifications / lock-screen leakage:** `scheduleLocalNotification` uses notification title/subtitle/body from `BridgeNotification`. These are cmux activity notifications (e.g., process alerts), not terminal buffer content. The terminal surface content is never placed into a notification payload. Clean.
+- **Pasteboard:** No explicit `UIPasteboard` writes found anywhere in the codebase. Clean.
+- **`print()` logging of secrets:** `print` calls log notification metadata, speech transcripts (voice-to-text), and speech/connection status. The bearer token is never printed. Clean.
+- **URLSession TLS delegate:** `BridgeClient` conforms to `URLSessionWebSocketDelegate` but does not implement `urlSession(_:didReceive:completionHandler:)`, so there is no certificate validation bypass (though wss:// is not used at all — see Finding 2). Clean in the sense that no bypass exists for a scenario that doesn't occur.
+- **QuickActionStore / CommandDictionary persistence:** Stored in `UserDefaults` but contain only command text (not credentials). Acceptable for this data class. Clean.
+- **URL parsing in `handlePairingURL`:** Uses `URLComponents` properly; no path traversal or injection risk in the parsing itself. The vulnerability is the absence of confirmation UI, not a parsing flaw.</result>
+<usage><subagent_tokens>48020</subagent_tokens><tool_uses>23</tool_uses><duration_ms>83340</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ae5d60340ad470710</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/ae5d60340ad470710.output</output-file>
+<status>completed</status>
+<summary>Agent "Bug review: iOS app" completed</summary>
+<result>Now I have all the information I need. Let me compile the full findings.
+
+**Key findings:**
+
+1. **URLSession retain cycle** — `startConnection` creates a new `URLSession` with `delegate: self` (the `BridgeClient`). `URLSession` strongly retains its delegate. On each reconnect attempt, a new session is created and stored as `self.session`, but the old one is never `invalidate()`d. The old session now holds a strong reference to `BridgeClient` and will never release it unless the session itself is finalized — but the session can't finalize because it holds internal references. Over many reconnects this leaks.
+
+2. **`currentSection` crash** — `QuickActionState.currentSection` falls back to `sectionOrder[0]` when the index is out of bounds. If `sectionOrder` is empty (all built-in sections hidden AND no custom actions), this crashes. Same for the `open(with:)` accessing `sectionOrder[0]`.
+
+3. **`cycleSurfaceBackward` stale start index** — when no surface is focused (`focusedSurfaceID == nil`), the fallback is `?? 0`. So `prevIndex = (0 - 1 + count) % count = count - 1`. This cycles to the *last* surface rather than the first. Inconsistent with `cycleSurface()` which uses `?? -1` (causing it to cycle to index 0). This asymmetry means backward from "nothing focused" goes to last while forward from "nothing focused" goes to first — surprising but not a crash. Note `cycleWorkspace` uses `?? -1` consistently.
+
+4. **`handleDisconnect` double-firing** — both `receiveNext`'s `.failure` handler and `didCloseWith` can both call `handleDisconnect`. If the server closes the connection cleanly (sends a close frame), the receive callback fires `.failure` AND `didCloseWith` fires. This schedules two reconnects, doubles the reconnect timer, and sends two `clientDidDisconnect` delegate calls to the main actor.
+
+5. **`MainTabView.sidebarTimer` leak** — The `sidebarTimer` is a `@State` Timer created in `revealSidebar()` but there's no `onDisappear` to invalidate it. If the view is dismissed while the sidebar is showing (e.g., app is foregrounded via URL and the view is reconstructed), the timer fires into a stale closure.
+
+6. **`SpeechInputManager.stop()` called off-MainActor** — `SpeechInputManager` is `@MainActor` but `stop()` is called from within a `Task { @MainActor in ... }` block in `wireVolumeCallbacks`. That is fine. But the closure passed to `recognitionTask(with:)` calls `Task { @MainActor [weak self] in ... }` which is correct — no violation here.
+
+7. **`startContentPolling` duplicate timer on app foreground** — `onReceive(.didBecomeActiveNotification)` calls `startContentPolling()`, which invalidates and recreates the timer. This is intentional and correct (the comment explains it). No bug here.
+
+8. **`QRScannerViewController` delegate retained by output** — `output.setMetadataObjectsDelegate(self, queue: .main)` — `AVCaptureMetadataOutput` retains its delegate weakly per Apple docs, so no cycle. The `captureSession` is owned by `QRScannerViewController`, and `QRScannerViewController` has the `previewLayer` referencing the session. When the VC is dismissed, ARC releases the chain. Clean.
+
+---
+
+Here is the complete bug report:
+
+---
+
+## Bug Findings
+
+### BUG 1 — CRASH: `QuickActionState.currentSection` and `open(with:)` crash on empty `sectionOrder`
+
+**File:** `ios/cmux/Layout/WorkspaceLayoutView.swift`, lines 103 and 114
+
+```swift
+// line 103
+guard sectionOrder.indices.contains(currentSectionIndex) else { return sectionOrder[0] }
+
+// line 114
+selectedIndex = actions.firstIndex(where: { $0.section == sectionOrder[0] }) ?? 0
+```
+
+**Severity:** Crash
+
+**Trigger:** A user hides every built-in action (all of Input, Terminal, Workspace) in Quick Action Settings and has no custom actions, then presses the volume-up double-tap or long-press to open quick actions. `QuickActionBuilder.build` returns an empty list. `sectionOrder` is also empty. Both the fallback path in `currentSection` and the `open(with:)` call do an unconditional subscript `sectionOrder[0]`, causing an index-out-of-range crash. Because `open()` is called before the overlay is shown, the crash occurs even before the overlay renders.
+
+**Fix:** Guard both callsites:
+```swift
+// currentSection
+var currentSection: String {
+    guard !sectionOrder.isEmpty else { return "" }
+    guard sectionOrder.indices.contains(currentSectionIndex) else { return sectionOrder[0] }
+    return sectionOrder[currentSectionIndex]
+}
+
+// open(with:) — add a guard before opening
+func open(with actions: [QuickAction]) {
+    self.actions = actions
+    currentSectionIndex = 0
+    guard !sectionOrder.isEmpty else { return }   // nothing to show
+    selectedIndex = actions.firstIndex(where: { $0.section == sectionOrder[0] }) ?? 0
+    isOpen = true
+    ...
+}
+```
+Also make `currentSectionActions` return `[]` when `currentSection` is empty.
+
+---
+
+### BUG 2 — HIGH: URLSession leaks `BridgeClient` on every reconnect
+
+**File:** `ios/cmux/Connection/BridgeClient.swift`, line 131
+
+```swift
+let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+self.session = session
+```
+
+**Severity:** High (retain cycle / memory leak)
+
+**Trigger:** Every reconnect attempt. `URLSession` strongly retains its delegate (documented behavior — Apple explicitly warns about this in `URLSession.init(configuration:delegate:delegateQueue:)`). When `self.session` is reassigned, the old session is released from the Swift side but the session itself still has internal pending operations and continues to strongly hold `BridgeClient`. The old session is never `invalidate()`d so it never releases the delegate reference. After N reconnect cycles, N-1 old sessions are each strongly retaining `BridgeClient`, creating a retention chain that prevents deallocation.
+
+**Fix:** Invalidate the old session before replacing it:
+```swift
+private func startConnection() {
+    self.session?.invalidateAndCancel()   // releases delegate reference
+    ...
+    let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    self.session = session
+    ...
+}
+```
+Also call `self.session?.invalidateAndCancel()` in `disconnect()`.
+
+---
+
+### BUG 3 — HIGH: `handleDisconnect` called twice on clean server close (double reconnect scheduled)
+
+**File:** `ios/cmux/Connection/BridgeClient.swift`, lines 147 and 272
+
+```swift
+// In receiveNext():
+case .failure:
+    self.handleDisconnect(error: nil)
+
+// In URLSessionWebSocketDelegate:
+func urlSession(_ session:..., didCloseWith closeCode:..., reason:...) {
+    handleDisconnect(error: nil)
+}
+```
+
+**Severity:** High (state machine bug)
+
+**Trigger:** When the server sends a proper WebSocket close frame (normal, going-away, etc.), the receive callback fires `.failure` (the task is cancelled/closed) AND `didCloseWith` fires. Both call `handleDisconnect`. This results in:
+- `clientDidDisconnect` delivered twice to `AppState` (two `connectionStatus = .reconnecting` assignments — harmless in isolation, but indicates double delivery)
+- `scheduleReconnect()` called twice: two `reconnectTask`s are created, the second overwrites the first (so the first becomes uncancellable via `reconnectTask?.cancel()`), and at the scheduled time, `startConnection()` is called twice in parallel, creating two concurrent WebSocket connections
+
+**Fix:** Add a `isDisconnecting` flag or check whether `task == nil` before proceeding:
+```swift
+private func handleDisconnect(error: Error?) {
+    guard task != nil else { return }   // already handled
+    task = nil
+    ...
+}
+```
+Since `receiveNext` and the delegate callback race on the URLSession internal queue (not the main thread), use the existing `completionsLock` or a dedicated flag protected by it to make the guard atomic.
+
+---
+
+### BUG 4 — MEDIUM: `MainTabView.sidebarTimer` never invalidated on view disappear
+
+**File:** `ios/cmux/App/MainTabView.swift`, lines 142–146
+
+```swift
+sidebarTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { _ in
+    Task { @MainActor in
+        dismissSidebar()
+    }
+}
+```
+
+**Severity:** Medium (timer leak, stale state mutation)
+
+**Trigger:** User taps the hamburger button, then the view disappears before 4 seconds elapses (e.g. the app goes to background and gets killed/reconstructed, or a sheet is presented that dismounts `MainTabView`). There is no `.onDisappear` to call `sidebarTimer?.invalidate()`. The timer fires and calls `dismissSidebar()` on a stale (already-deallocated-or-replaced) `MainTabView`. Because it's a value type (struct) this actually means it mutates a captured copy of the `@State` binding — which is a no-op for the live view, but the timer itself is still alive and scheduled on the run loop.
+
+**Fix:** Add:
+```swift
+.onDisappear {
+    sidebarTimer?.invalidate()
+    sidebarTimer = nil
+}
+```
+to `MainTabView.body`.
+
+---
+
+### BUG 5 — MEDIUM: `cycleSurfaceBackward` inconsistent fallback when no surface focused
+
+**File:** `ios/cmux/App/AppState.swift`, lines 167–173
+
+```swift
+func cycleSurfaceBackward() {
+    let list = surfaces
+    guard !list.isEmpty else { return }
+    let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? 0  // &lt;-- fallback 0
+    let prevIndex = (currentIndex - 1 + list.count) % list.count
+    focusSurface(list[prevIndex].id)
+}
+```
+
+Compare with `cycleSurface()` which falls back to `?? -1`, making "forward from nothing" go to index 0. `cycleSurfaceBackward` uses `?? 0`, making "backward from nothing" go to index `count - 1` (the last surface). These are asymmetric in a way that's confusing: volume-down cycles forward to surface 0, then if nothing is focused yet (e.g. right after reconnect), volume-down-backward cycles to the last surface instead of staying at 0.
+
+**Severity:** Medium (UX logic error)
+
+**Fix:** Use `?? -1` and add `list.count` so modulo stays positive, as `cycleSurface` does:
+```swift
+let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
+let prevIndex = (currentIndex - 1 + list.count) % list.count
+```
+When `currentIndex == -1`: `(-1 - 1 + count) % count = (count - 2) % count` — wraps to second-to-last? Actually for `count == 1`, that gives `0 % 1 = 0` (correct). For `count == 2`, `(-1 - 1 + 2) % 2 = 0 % 2 = 0` — backward from nothing goes to 0, which is symmetric with forward. For `count == 3`, `(-1 - 1 + 3) % 3 = 1 % 3 = 1` — backward from nothing goes to 1, forward goes to 0. That's reasonable and consistent. The key is both functions agree on "no current" behavior.
+
+---
+
+### BUG 6 — MEDIUM: `AppState.closeWorkspace` uses stale workspace list in callback
+
+**File:** `ios/cmux/App/AppState.swift`, lines 364–375
+
+```swift
+func closeWorkspace(_ id: String) {
+    send(method: "workspace.close", params: ["workspace_id": id]) { [weak self] _ in
+        self?.lastFocusedSurface.removeValue(forKey: id)
+        self?.refreshWorkspaces()
+        // Select next available workspace
+        if self?.currentWorkspaceID == id {
+            if let next = self?.workspaces.first(where: { $0.id != id }) {
+                self?.selectWorkspace(next.id)
+            }
+        }
+    }
+}
+```
+
+**Severity:** Medium (logic error / stale state)
+
+**Trigger:** The RPC completion fires *before* `refreshWorkspaces` has returned a result (it's async). So `self?.workspaces` at line 370 is the **old** workspace list that still contains the closed workspace. `first(where: { $0.id != id })` then picks the next workspace from the stale list. In practice this usually works (the stale list will have another workspace), but `selectWorkspace` will then immediately trigger `refreshSurfaces` which may operate on the wrong workspace for a brief window. If the closed workspace was the only one, this branch is a no-op, but the UI stays on `currentWorkspaceID = id` pointing to a deleted workspace.
+
+**Fix:** Move the "select next" logic into the `refreshWorkspaces` completion callback:
+```swift
+self?.refreshWorkspaces {
+    if self?.currentWorkspaceID == id,
+       let next = self?.workspaces.first(where: { $0.id != id }) {
+        self?.selectWorkspace(next.id)
+    }
+}
+```
+
+---
+
+### BUG 7 — LOW: `BridgeDiscovery` unused `host`/`port` local variables (dead code / mDNS logic gap)
+
+**File:** `ios/cmux/Connection/BridgeDiscovery.swift`, lines 46–47
+
+```swift
+func netServiceDidResolveAddress(_ sender: NetService) {
+    guard let hostName = sender.hostName else { return }
+    let host = hostName.hasSuffix(".") ? String(hostName.dropLast()) : hostName
+    let port = sender.port
+    // host and port are never used — candidates iterates all discovered services instead
+```
+
+**Severity:** Low (dead code / confusing)
+
+The `host` and `port` of the *resolved* service are computed but unused. The delegate function then builds `candidates` from all `discovered` services — including ones that haven't yet resolved — which means `svc.hostName` can be `nil`, and those are silently dropped by `compactMap`. The intent seems to be to re-check all services each time any one resolves, but the loop relies on `svc.hostName` being set, which only happens after that service's own `netServiceDidResolveAddress` fires. For the common single-service case this is fine, but for multi-service scenarios (multiple bridges on the same network) services that haven't resolved yet are dropped from the candidate list on the first resolution.
+
+---
+
+### BUG 8 — LOW: `VolumeButtonHandler` interruption observer registered with guard but `interruptionObserver` is set after the block
+
+**File:** `ios/cmux/Input/VolumeButtonHandler.swift`, lines 54–68
+
+```swift
+if self.interruptionObserver == nil {
+    self.interruptionObserver = NotificationCenter.default.addObserver(
+        forName: AVAudioSession.interruptionNotification, ...
+    ) { [weak self] notification in
+        ...
+        self?.start()
+    }
+}
+```
+
+**Severity:** Low (observer leak on repeated `start()` calls)
+
+When an interruption ends, the handler calls `self?.start()`. Inside `start()`, `self.interruptionObserver` is already set (from the previous call), so the `if self.interruptionObserver == nil` guard fires — correctly, no double-registration. This part is fine. However, `stop()` sets `interruptionObserver = nil` after removing the observer. If `start()` is called a second time by the *same interruption handler* callback (before `stop()` is called), the guard passes and a second observer is registered, doubling callbacks. This is a very narrow race but real in the "interruption ended → start() → (before that finishes) another interruption ends" scenario.
+
+No fix required unless this causes symptoms in practice; it's a theoretical double-fire.
+
+---
+
+## Areas Checked and Clean
+
+- **Force unwraps:** None found throughout the codebase. All optionals are handled with guard/if let.
+- **Index out-of-range:** Checked all subscripts. The only crash-level case is `sectionOrder[0]` (Bug 1). `cycleSurface`/`cycleWorkspace`/`cyclePane`/`cycleTabInFocusedPane` all guard `!isEmpty`. `cycleTabInFocusedPane` guards `surfaceIDs.count &gt; 1` before using `focusedSurfaceID ?? ""` as a firstIndex target — if not found, `currentIndex = -1`, `nextIndex = 0`, and `surfaceIDs[0]` is safe.
+- **Division by zero:** `normalizedFrame` guards `containerFrame.width &gt; 0, containerFrame.height &gt; 0`. `tileHeight` uses `CGFloat(count)` where `count &gt; 0` is guaranteed by the `hasSecondary` check. Clean.
+- **Timer lifecycle:** `contentPollTimer` is invalidated in `.onDisappear` and recreated in `.onAppear`/foreground notification. `VolumeButtonHandler.stop()` invalidates both pending timers. `sidebarTimer` has the issue noted in Bug 4.
+- **Main-thread violations:** All `URLSession` callbacks hop to `@MainActor` via `Task { @MainActor in ... }` before touching state. `SpeechInputManager` recognition task callback also hops. `BridgeDiscovery` hops via `Task { @MainActor in ... }`. Clean except for the double-fire risk (Bug 3) which is a logic issue, not a threading issue.
+- **SwiftUI `.onChange` loops:** No loop detected. `.onChange(of: appState.focusedSurfaceID)` clears notifications; that write is on `notifications`, not on `focusedSurfaceID`. `.onChange(of: appState.notifications.count)` tracks count changes only. Clean.
+- **Equatable suppressing renders:** `ConnectionStatus` conforms to `Equatable`. `connected(cmuxConnected: true)` vs `connected(cmuxConnected: false)` are different values, so renders do fire on the transition. `Surface`, `Pane`, `Workspace`, `BridgeNotification` are structs without explicit `Equatable` — SwiftUI synthesizes memberwise comparison for them inside `ForEach`. This is correct. No suppressed-render issue.
+- **State mutation during view update:** No direct state mutation inside `body` computed properties. All state changes are in callbacks.
+- **`completions` race:** Protected by `NSLock` on both read and write paths (BridgeClient). Clean.
+- **`historyLoadsInFlight` race:** Only accessed on `@MainActor`. Clean.
+- **Stale completions after disconnect:** `handleDisconnect` calls `completions.removeAll()`. If reconnect fires while an old receive callback is still in flight, the completion is already gone. New RPCs get new IDs. Clean. (The double-disconnect in Bug 3 calls `removeAll()` twice — idempotent, so no corruption.)
+- **`QRScannerView`:** `captureSession` started on background queue as required. Stopped on `viewWillDisappear`. Metadata delegate called on `.main`. No thread violations. `required init?(coder:)` has `fatalError()` which is a crash but is unreachable since this VC is never loaded from a nib/storyboard. Acceptable.
+- **`TerminalTextView` scroll-to-bottom:** Deferred into a `DispatchQueue.main.async` which is inside a `@MainActor` context — this schedules a main-queue block from main queue, a no-op re-entrancy issue but functionally correct (just a double-dispatch, not a bug).
+- **`surfaceContent` dictionary grows without bound:** Not a crash but worth noting: entries for closed surfaces are never removed from `surfaceContent`, `browserURLs`, or `surfaceHasFullHistory`. Over time (many split/close cycles) these dictionaries grow. This is a low-severity memory leak.</result>
+<usage><subagent_tokens>69358</subagent_tokens><tool_uses>39</tool_uses><duration_ms>161825</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a9b2abd679d8d3cb1</task-id>
+<tool-use-id>toolu_01RSsBfPp8BusRTeeSrotwWW</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/a9b2abd679d8d3cb1.output</output-file>
+<status>completed</status>
+<summary>Agent "Security review: Go bridge" completed</summary>
+<result>I now have a complete picture of the codebase. Here is the full security review.
+
+---
+
+## Security Review: `bridge/` Go Code
+
+All `.go` files and both scripts read in full. Each finding was adversarially verified against the actual code before inclusion.
+
+---
+
+### FINDING 1 — Cleartext WebSocket transmits the bearer token over the wire (HIGH)
+
+**File:line:** `bridge/internal/ws/auth.go:14-16`, `bridge/cmd/cmux-bridge/main.go:287-288`
+
+```go
+auth = "Bearer " + r.URL.Query().Get("token")   // token in query param, plaintext
+// ...
+addr := fmt.Sprintf(":%d", cfg.BridgePort)      // ":47821" = 0.0.0.0, no TLS
+```
+
+**Severity:** High
+
+**Attack scenario:** The bridge serves `ws://` only — there is no TLS anywhere in the codebase. When the iOS app connects over LAN (not Tailscale), the full WebSocket upgrade request — including the bearer token in the `Authorization` header or `?token=` query parameter — is transmitted in cleartext. Any host on the same LAN/Wi-Fi segment can capture it with a passive ARP spoof or promiscuous mode capture. Once the token is captured, the attacker has full persistent access to the bridge (the token never rotates). The QR URL also contains the token (`cmux-bridge://pair?...&amp;token=TOKEN`) as plaintext on screen — shoulder-surfable and would be in any screen recording.
+
+**Recommended fix:**
+Add mutual TLS. Generate a self-signed CA + server cert on first run, store in `~/.config/cmux-bridge/`, embed the certificate fingerprint in the QR URL so the iOS app can pin it. Alternatively, use the Tailscale path (which does provide encryption) and make it the strongly-recommended mode for users on untrusted networks. At minimum, add a startup warning when Tailscale is not enabled.
+
+---
+
+### FINDING 2 — Token comparison is not constant-time (LOW-MEDIUM)
+
+**File:line:** `bridge/internal/ws/auth.go:21`
+
+```go
+return provided == token &amp;&amp; provided != ""
+```
+
+**Severity:** Low-Medium
+
+**Attack scenario:** Go's `==` on strings is not guaranteed constant-time; it short-circuits on the first differing byte. Over a local TCP connection the timing oracle is extremely noisy (millisecond-scale network jitter dwarfs byte-comparison time), so a remote LAN attacker needs millions of attempts to extract signal. This is a low-probability attack but it is real against a high-value target with LAN access and no rate limiting (see Finding 4).
+
+**Recommended fix:**
+```go
+import "crypto/subtle"
+return provided != "" &amp;&amp; subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
+```
+
+---
+
+### FINDING 3 — No HTTP server read timeouts; vulnerable to Slowloris-style connection exhaustion (MEDIUM)
+
+**File:line:** `bridge/internal/ws/server.go:39`
+
+```go
+s.httpServer = &amp;http.Server{Handler: mux}
+```
+
+**Severity:** Medium
+
+**Attack scenario:** The `http.Server` has no `ReadHeaderTimeout`, `ReadTimeout`, or `WriteTimeout` set. An unauthenticated attacker on the LAN can open TCP connections to port 47821 and send partial HTTP headers very slowly, keeping each connection open indefinitely. Go's default `http.Server` allocates a goroutine per connection. With enough slow connections the bridge becomes unresponsive. Since the bridge is on `0.0.0.0` (Finding 1), any LAN host can execute this without authentication.
+
+**Recommended fix:**
+```go
+s.httpServer = &amp;http.Server{
+    Handler:           mux,
+    ReadHeaderTimeout: 5 * time.Second,
+    ReadTimeout:       10 * time.Second,
+}
+```
+
+---
+
+### FINDING 4 — No rate limiting or connection cap on auth attempts (MEDIUM)
+
+**File:line:** `bridge/internal/ws/handler.go:49-52`, `bridge/internal/ws/server.go:39`
+
+```go
+if !validateBearer(r, token) {
+    http.Error(w, "Unauthorized", http.StatusUnauthorized)
+    return
+}
+```
+
+**Severity:** Medium
+
+**Attack scenario:** Any LAN host can make unlimited HTTP requests to `/ws` with arbitrary tokens. There is no per-IP throttle, no lockout after N failures, and no maximum connection count. Combined with the 43-character base64url token space (256-bit), brute force is computationally infeasible, but the absence of any rate limiting means the timing oracle in Finding 2 becomes more tractable, and the server is open to the Slowloris variation in Finding 3.
+
+**Recommended fix:** Add a `ReadHeaderTimeout` (fixes the Slowloris angle), and optionally a per-IP rate limiter using `golang.org/x/time/rate` (already transitively available via the Tailscale dependency). Log repeated auth failures.
+
+---
+
+### FINDING 5 — Origin check disabled; browser-based CSRF possible if token is leaked (LOW-MEDIUM)
+
+**File:line:** `bridge/internal/ws/handler.go:54-56`
+
+```go
+conn, err := websocket.Accept(w, r, &amp;websocket.AcceptOptions{
+    InsecureSkipVerify: true, // LAN only; origins vary
+})
+```
+
+**Severity:** Low-Medium
+
+**Attack scenario:** `InsecureSkipVerify: true` disables the `coder/websocket` library's `Origin` header enforcement. The library's comment explicitly warns this opens the server to CSRF attacks. Concretely: if a malicious web page is open in a browser on the same Mac (or any LAN host with a browser), it can use the browser's `WebSocket` API to connect to `ws://192.168.x.x:47821/ws?token=TOKEN` from a cross-origin page — but only if it already has the token. The threat is real if the token is ever visible in browser history (e.g., if the user visits a URL that includes the token, or if the token is copied into a browser address bar). Combined with Finding 1 (cleartext), a LAN attacker who sniffed the token could then embed a WebSocket connection in a page served to the victim's browser.
+
+**Recommended fix:** Replace `InsecureSkipVerify: true` with an explicit `OriginPatterns` allowlist of the iOS app's custom scheme, or require the `Authorization` header only (which browser `WebSocket` API cannot set, unlike query params). At a minimum, reject connections that provide the token via `?token=` query param from a browser Origin that doesn't match the host.
+
+---
+
+### FINDING 6 — cmux socket password stored plaintext in config.json (LOW)
+
+**File:line:** `bridge/cmd/cmux-bridge/main.go:76-84`, `bridge/internal/pair/qr.go` (prompt)
+
+```go
+// config.json (0600) at ~/.config/cmux-bridge/config.json:
+{"socket_password": "&lt;plaintext&gt;", ...}
+```
+
+**Severity:** Low
+
+**Attack scenario:** The cmux socket password is stored as plaintext JSON in `~/.config/cmux-bridge/config.json`. The file permissions are `0600` (correct). However, any process running as the same user (e.g., a malicious npm package, a compromised terminal plugin) can read the file and obtain the password to authenticate directly to the cmux Unix socket, bypassing the bridge's bearer-token auth entirely. This is a local privilege concern, not a remote attack.
+
+**Recommended fix:** Store the password in the macOS Keychain via `security add-generic-password` rather than a plaintext config file. The existing code already reads the password interactively; writing it to the Keychain instead is straightforward with `golang.org/x/crypto/ssh/terminal` + `os/exec` wrapping `security`.
+
+**Additional note (observed in live config):** The actual stored password on disk is the ESC character (`\u001b`). This happened because `fmt.Scanln` was used to read the password and the user appears to have pressed Escape. `fmt.Scanln` silently accepted the escape character as a non-empty string. The bridge then stored and sends `\u001b` as the socket password. Consider switching to `term.ReadPassword` (which suppresses echo and handles escape properly) and explicitly rejecting non-printable characters.
+
+---
+
+### FINDING 7 — Unbounded Unix socket response line read (LOW)
+
+**File:line:** `bridge/internal/socket/client.go:102`
+
+```go
+line, err := c.reader.ReadString('\n')
+```
+
+**Severity:** Low
+
+**Attack scenario:** `bufio.NewReader` with default 4096-byte internal buffer calls `ReadString('\n')`, which grows without bound until a newline is found or an error occurs. If the cmux Unix socket returns a response with no newline (e.g., a very large JSON object, a corrupted response, or a compromised cmux process), this allocates unbounded memory in the bridge process. The 10-second deadline on the connection (`SetDeadline`) bounds the time window but not the allocation size within that window. This is only exploitable by a compromised or malicious cmux process (local threat), not by a remote WebSocket client (the method and params are JSON-serialized by the bridge before sending, so remote clients cannot inject raw newlines into the socket stream — verified: Go's `json.Marshal` escapes `\n` as `\u000a`/`\\n`).
+
+**Recommended fix:** Use `bufio.NewReaderSize(conn, 4*1024*1024)` with a size cap, or read into an `io.LimitedReader` before parsing. Since the cmux socket is trusted-local, this is low severity.
+
+---
+
+### FINDING 8 — Log file world-readable; could capture diagnostic output with sensitive content (LOW)
+
+**File:line:** `scripts/install-bridge.sh:47-48`
+
+```xml
+&lt;key&gt;StandardOutPath&lt;/key&gt;
+&lt;string&gt;/tmp/cmux-bridge.log&lt;/string&gt;
+```
+
+**Severity:** Low
+
+**Observed:** `/tmp/cmux-bridge.log` has permissions `-rw-r--r--` (confirmed on disk). Any local user on the Mac can read the daemon's stdout/stderr. Currently the daemon does not log the bearer token or the cmux password in daemon mode (verified: the token is only printed in `--pair` mode which runs interactively, not as the LaunchAgent). However, this is one future `log.Printf` away from a credential leak.
+
+**Recommended fix:** Change the LaunchAgent plist to write logs to `~/Library/Logs/cmux-bridge.log` (user-owned, not world-readable) or pipe through `syslog`. Add a policy comment in the code that explicitly prohibits logging tokens or passwords.
+
+---
+
+## Areas Checked and Found Clean
+
+- **Token entropy:** 256 bits from `crypto/rand`, encoded as base64url (43 chars). Cryptographically adequate.
+- **Token file permissions:** `0600`, config dir `0700`. Correct.
+- **Newline injection into Unix socket:** Verified clean. Go's `json.Marshal` escapes `\n` in both `method` and all string params to `\n` (JSON escape), so a WebSocket client cannot inject a second JSON-RPC line into the socket stream.
+- **Path traversal:** The socket path comes from a user-owned file (`~/Library/Application Support/cmux/last-socket-path`) not from remote input. No remote client controls the socket path.
+- **WebSocket message size:** `coder/websocket` enforces a default 32,768-byte read limit per message. Confirmed in library source. `wsjson.Read` uses `c.Reader()` which enforces this limit. No unbounded WebSocket message allocation.
+- **Goroutine leaks per connection:** The read-loop goroutine exits on `ctx` cancellation or `wsjson.Read` error. `poll.Unsubscribe` correctly removes the subscriber. `Broadcast` uses non-blocking sends. No leak identified.
+- **Concurrent socket client misuse:** The single `socket.Client` is protected by a `sync.Mutex` that covers both the write and the `ReadString` read, making the request-response cycle atomic. Multiple concurrent WebSocket clients serialize correctly; no response cross-talk.
+- **mDNS data leakage:** TXT records expose `version=1` and the machine hostname — both low-sensitivity. The bearer token is not included.
+- **ID generation for RPC requests:** `randomHex(8)` uses `crypto/rand`. Adequate for request correlation, not a security property.
+- **Tailscale path:** When Tailscale is enabled, the `tsnet.Server` handles encryption at the transport layer. The bearer token is still required for auth on top of Tailscale, which is correct defense-in-depth. The Tailscale hostname is not secret.</result>
+<usage><subagent_tokens>47369</subagent_tokens><tool_uses>59</tool_uses><duration_ms>279864</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>ab7c6eb16ede12f91</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/ab7c6eb16ede12f91.output</output-file>
+<status>completed</status>
+<summary>Agent "Bug review: Go bridge" completed</summary>
+<result>Here is the full correctness review.
+
+---
+
+## `go vet` / `go build` results
+
+Both are clean. `go build ./...` and `go vet ./...` exit 0 with no output. The race-instrumented build (`go build -race ./...`) also compiles without error, though the race condition below would only be caught at runtime with `-race`.
+
+---
+
+## Findings
+
+### 1. DATA RACE — `cmuxConnectedFlag` read from WS goroutine, written from reconnect goroutine (CRITICAL)
+
+**File:** `cmd/cmux-bridge/main.go`, lines 208, 232, 233, 252, 266, 322
+
+```go
+// main.go:208 — declared on the stack, no synchronization
+cmuxConnectedFlag := false
+
+// main.go:220 — goroutine A: reconnect loop writes it
+go func() {
+    ...
+    cmuxConnectedFlag = false   // line 233, 266
+    cmuxConnectedFlag = true    // line 252
+}()
+
+// main.go:322 — goroutine B: every new WS connection reads it via closure
+server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnectedFlag })
+```
+
+The closure `func() bool { return cmuxConnectedFlag }` is called from `handleClient` (line 70 of handler.go) in each HTTP handler goroutine spawned by `net/http.Server.Serve`. That is a concurrent read from a goroutine that did not write it. Meanwhile the reconnect goroutine writes it without any lock. This is a textbook data race on a plain `bool` variable.
+
+**Scenario:** iOS client connects → `handleClient` reads `cmuxConnectedFlag` via closure → simultaneously the reconnect goroutine writes `cmuxConnectedFlag = true`. The Go memory model gives no guarantee; the race detector will flag it.
+
+**Fix:** Replace `cmuxConnectedFlag bool` with `var cmuxConnected atomic.Bool` (from `sync/atomic`) and use `.Store(true/false)` / `.Load()`. The closure becomes `func() bool { return cmuxConnected.Load() }`.
+
+---
+
+### 2. DEADLOCK WINDOW — `Send` holds mutex while blocking on network I/O, so `Connect` called by the reconnect loop starves until the 10 s deadline fires (MEDIUM)
+
+**File:** `socket/client.go`, lines 74–128
+
+```go
+func (c *Client) Send(...) (json.RawMessage, error) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    ...
+    _ = c.conn.SetDeadline(time.Now().Add(10 * time.Second))
+    // blocks up to 10s holding the lock:
+    line, err := c.reader.ReadString('\n')
+    ...
+}
+```
+
+`Connect` also acquires `c.mu`. If the poller calls `Send("notification.list")` (1-second tick) and the cmux socket hangs (e.g., under a slow scrollback read returning lots of data), the mutex is held for up to 10 seconds. During those 10 s, the reconnect goroutine's `cmuxClient.Connect()` is blocked waiting for the same mutex — and the ping goroutine's `cmuxClient.Send("system.ping")` is also blocked. This is not a true deadlock (it resolves when the deadline fires), but it causes a 10 s head-of-line stall on all socket callers and can mask connection loss for up to `(10s send timeout) + (5s ping interval)`.
+
+**Severity note:** For the stated concern about "10 s deadline behavior on slow big scrollback reads" — this is the mechanism. If `surface.read_text` returns a large payload, the `ReadString('\n')` call holds the mutex for up to 10 seconds, serializing every other caller. The poller will miss ticks and the ping loop will appear frozen.
+
+**Fix:** Separate the read path from the mutex or switch to a non-blocking pipeline (one goroutine owns the conn and processes request/response pairs via a queue). The simplest safe fix that preserves the serial design: keep the mutex but increase the deadline or make it configurable per-method. A more complete fix uses a request channel + dedicated reader goroutine.
+
+---
+
+### 3. LOGIC BUG / NOTIFICATION DUPLICATION — `ResetSeenIDs` race with in-flight `poll()` (LOW-MEDIUM)
+
+**File:** `poller/poller.go`, lines 106–148; `ws/handler.go`, lines 139–140
+
+The flow is:
+1. iOS sends `notification.clear` → `proxyCommand` calls `client.Send("notification.clear")` (holds `socket.Client.mu`, sends to cmux, gets ack).
+2. After `Send` returns, `poll.ResetSeenIDs()` is called (acquires `poller.mu`, replaces `seenIDs` with a new empty map).
+3. Meanwhile, the poller goroutine could have called `client.Send("notification.list")` before step 1 (it was blocked on the socket mutex), got a result back, and is now sitting at `p.mu.Lock()` in `poll()` ready to populate the new empty `seenIDs` with stale pre-clear notification IDs.
+
+**Scenario:** Poller calls `notification.list`, blocked waiting for socket mutex (which WS handler holds for `notification.clear`). WS handler completes, calls `ResetSeenIDs()` (empties the map). Now the poller acquires `poller.mu` and adds all the old IDs back from its stale `notification.list` response into `seenIDs`, silently suppressing the "re-emit after clear" behavior the code intends.
+
+**Fix:** The simplest fix is a generation counter in the poller: `ResetSeenIDs` increments the generation; `poll()` records the generation before calling `Send` and discards the result if the generation changed during the RPC call.
+
+---
+
+### 4. `Unsubscribe` channel comparison: receive-only `&lt;-chan` vs bidirectional `chan` (LOW / Go-version risk)
+
+**File:** `poller/poller.go`, lines 62–70
+
+```go
+// subscribers is []chan Event (bidirectional)
+subscribers []chan Event
+
+// Unsubscribe takes &lt;-chan Event (receive-only)
+func (p *Poller) Unsubscribe(ch &lt;-chan Event) {
+    for i, sub := range p.subscribers {
+        if sub == ch {  // comparing chan Event == &lt;-chan Event
+```
+
+In Go, a `chan T` is implicitly convertible to `&lt;-chan T`, and channel identity is based on the underlying pointer, so the comparison works correctly today. However, the type mismatch is confusing and the implicit conversion means `sub == ch` compares a `chan Event` (promoted to `&lt;-chan Event`) to the passed-in `&lt;-chan Event`. This is fine in current Go but feels fragile. Consider storing `[]chan Event` and taking `chan Event` in `Unsubscribe`, or always returning `chan Event` from `Subscribe`.
+
+---
+
+### 5. `notification.clear` comment says "re-appearing notifications won't get pushed again" — but the comment in the code says the opposite (DOCUMENTATION BUG)
+
+**File:** `poller/poller.go`, lines 144–146
+
+```go
+// ResetSeenIDs clears the seen-ID set. Called after notification.clear so the
+// poller doesn't re-emit notifications that reappear after a clear.
+```
+
+The comment says "doesn't re-emit" but the intent (and the WS handler comment at handler.go:137) says the opposite — reset so "re-appearing notifications *do* get pushed again." The implementation (assigning a fresh empty map) correctly implements the re-emit behavior. The docstring is backward and will mislead future maintainers.
+
+---
+
+### 6. `Send`: `c.conn = nil` on write error leaves `c.reader` pointing at a closed connection (LOW)
+
+**File:** `socket/client.go`, lines 97–99
+
+```go
+if _, err := fmt.Fprintf(c.conn, "%s\n", payload); err != nil {
+    c.conn = nil          // conn set to nil
+    return nil, fmt.Errorf("write: %w", err)
+    // c.reader is NOT set to nil here
+}
+```
+
+If a subsequent `Connect()` is called before another `Send`, `c.reader` is replaced in `Connect` (line 56), so this is benign in the reconnect loop. But if someone calls `Send` again before `Connect` (the nil-check at line 77 guards `c.conn == nil`, which is nil, so it returns early), the stale reader is never reached. Still, inconsistent nil-ing is a maintenance hazard. The read-error path (lines 104–105) does nil both, so matching that pattern for the write-error path is cleaner.
+
+---
+
+### 7. XDG path change (uncommitted) — correct but check ordering priority
+
+**File:** `socket/client.go`, lines 147–152 (local diff)
+
+```go
+// XDG state directory (cmux v2+)
+xdgState := filepath.Join(home, ".local", "state", "cmux",
+    fmt.Sprintf("cmux-%d.sock", os.Getuid()))
+if _, err := os.Stat(xdgState); err == nil {
+    return xdgState
+}
+// Stable default (legacy Application Support)
+stable := filepath.Join(appSupport, "cmux.sock")
+```
+
+The new XDG path is probed *after* `last-socket-path` (primary) and *before* the legacy `cmux.sock` fallback. That priority order is correct. One observation: if both the XDG socket and the legacy `cmux.sock` exist simultaneously (e.g., user ran both v1 and v2 of cmux), the XDG path wins, which matches the "cmux v2+" intent. No correctness bug.
+
+---
+
+### 8. Token comparison uses `==` not `hmac.Equal` (SECURITY / LOW in LAN context)
+
+**File:** `ws/auth.go`, line 21
+
+```go
+return provided == token &amp;&amp; provided != ""
+```
+
+`==` on strings is not constant-time, so a remote attacker on the LAN could theoretically time the comparison to brute-force the token byte-by-byte. Given this is a 256-bit token on a LAN-only server, the practical risk is essentially zero — timing over TCP is too noisy. Flagged for completeness; use `subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1` if you want defense-in-depth.
+
+---
+
+### 9. `tailscaleHost` and `host` values are not URL-encoded in the QR URL (LOW)
+
+**File:** `pair/qr.go`, line 51
+
+```go
+url := fmt.Sprintf("cmux-bridge://pair?host=%s&amp;port=%d&amp;token=%s", host, port, token)
+if tailscaleHost != "" {
+    url += "&amp;tailscale_host=" + tailscaleHost
+}
+```
+
+`host` is either a raw IPv4 address (safe) or the result of `os.Hostname()` / Tailscale's DNS name. Tailscale DNS names are safe ASCII. The token uses `base64.RawURLEncoding` (no `+`, no `/`, no `=` — URL-safe). In practice this is fine, but if `tailscaleHost` ever contains a `.` or `-` that's fine; if it were to contain `&amp;` or `=` the QR URL would be malformed. `url.QueryEscape` on each value would be defensive.
+
+---
+
+## Areas checked and found clean
+
+- **Socket Client mutex coverage:** All accesses to `c.conn` and `c.reader` are under `c.mu`. No unprotected reads.
+- **JSON-RPC ID collision between concurrent requests:** Not possible — `Send` holds `c.mu` for the full write+read cycle, serializing all callers. There is no multiplexing; there is no interleaving of request/response pairs.
+- **Poller seenIDs / subscribers under lock:** All accesses to `p.seenIDs` and `p.subscribers` are under `p.mu`.
+- **Channel close panics:** The poller's `Unsubscribe` deliberately does not close the channel (correct; avoids send-on-closed-channel panic from the broadcast loops).
+- **`incoming` channel close:** Correctly closed by the read goroutine via `defer close(incoming)`, and the `select` in the main loop handles the `ok == false` case.
+- **Goroutine leaks on WS disconnect:** The read goroutine exits when `wsjson.Read` returns an error (which happens when `ctx` is cancelled or the conn closes). `defer poll.Unsubscribe(events)` fires on `handleClient` return. No leak.
+- **Double-close of `stopPoller`:** The channel is created once and closed once in the `ctx.Done()` goroutine. Clean.
+- **`http.Server.Shutdown` during `Serve`:** Uses `context.Background()` for the shutdown context — correct, avoids an already-cancelled context interfering with graceful drain.
+- **`bufio.Reader` data buffering across reconnect:** `Connect` always replaces `c.reader` with a fresh `bufio.NewReader`, so no stale buffered data from a previous connection leaks into the next one.
+- **`authenticate` deadline cleared by defer:** Uses `defer func() { _ = conn.SetDeadline(time.Time{}) }()` — correct.
+- **mDNS shutdown:** Returns a `stop func()` that is deferred — no leak.
+
+---
+
+## Summary by severity
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | **Critical** | `main.go:208,233,252,266,322` | Data race on `cmuxConnectedFlag` (plain bool, concurrent read+write across goroutines) |
+| 2 | **Medium** | `socket/client.go:74–128` | Mutex held during 10 s network read; starves all other callers including the reconnect loop |
+| 3 | **Low-Medium** | `poller/poller.go:106–148` | TOCTOU: stale `notification.list` response repopulates `seenIDs` after `ResetSeenIDs` |
+| 4 | **Low** | `poller/poller.go:62–70` | `Unsubscribe` param type mismatch (`&lt;-chan` vs `chan`) — harmless today, fragile |
+| 5 | **Low** | `poller/poller.go:144` | `ResetSeenIDs` docstring says opposite of actual intent |
+| 6 | **Low** | `socket/client.go:98` | Write-error path nils `c.conn` but not `c.reader` (read-error path does both) |
+| 7 | **Note** | `socket/client.go:147–152` | XDG path addition: correct, priority order is right |
+| 8 | **Info** | `ws/auth.go:21` | Non-constant-time token comparison (negligible practical risk on LAN) |
+| 9 | **Info** | `pair/qr.go:51` | `tailscaleHost` not URL-escaped in QR URL |</result>
+<usage><subagent_tokens>38957</subagent_tokens><tool_uses>56</tool_uses><duration_ms>283552</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a47b29e3bb68493e5</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/a47b29e3bb68493e5.output</output-file>
+<status>completed</status>
+<summary>Agent "Review scripts and config" completed</summary>
+<result>Here is the full report, organized by area.
+
+---
+
+## Findings
+
+---
+
+### 1. CRITICAL — `NSLocalNetworkUsageDescription` and `NSBonjourServices` missing from Info.plist / project.yml
+
+**File:** `ios/cmux/Info.plist` (no line), `ios/project.yml` (no line)
+**Impact:** iOS 14+ requires both keys for any app that initiates LAN connections or uses Bonjour/mDNS. Without `NSLocalNetworkUsageDescription`, iOS silently denies local network access. Without `NSBonjourServices: ["_cmux-bridge._tcp"]`, the OS denies the `NetServiceBrowser` browse even if the privacy alert is approved. The app currently uses `NetServiceBrowser.searchForServices(ofType: "_cmux-bridge._tcp.", inDomain: "local.")` in `BridgeDiscovery.swift:15`. Auto-discovery will silently fail on any real device running iOS 14+.
+**Fix:** Add to `ios/project.yml` under `info.properties`:
+```yaml
+NSLocalNetworkUsageDescription: "Used to discover cmux-bridge on the local network."
+NSBonjourServices:
+  - _cmux-bridge._tcp
+```
+Then regenerate `Info.plist` (or add directly to it). Also run `xcodegen` or manually sync `Info.plist`.
+
+---
+
+### 2. HIGH — `xcuserstate` and `xcschememanagement.plist` committed to git; `.gitignore` rule won't un-track them
+
+**Files:**
+- `ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate` — tracked
+- `ios/cmux.xcodeproj/xcuserdata/marlin.xcuserdatad/xcschemes/xcschememanagement.plist` — tracked
+
+The pending `.gitignore` change (unstaged) adds `xcuserdata/` and `.DS_Store`, but gitignore rules don't apply to already-tracked files. These files will continue to accumulate binary diffs in the history (the xcuserstate is already showing as modified in `git status`), and they expose developer-specific workspace layout state and scheme ordering.
+**Fix:**
+```bash
+git rm --cached "ios/cmux.xcodeproj/project.xcworkspace/xcuserdata/marlin.xcuserdatad/UserInterfaceState.xcuserstate"
+git rm --cached "ios/cmux.xcodeproj/xcuserdata/marlin.xcuserdatad/xcschemes/xcschememanagement.plist"
+# Then commit
+```
+Make sure the pending `.gitignore` changes are also committed.
+
+---
+
+### 3. HIGH — `.DS_Store` files committed to git; `gitignore` rule will not un-track them
+
+**Files tracked:**
+- `.DS_Store`
+- `bridge/.DS_Store`
+- `ios/.DS_Store`
+
+Same root cause as above: the pattern `.DS_Store` was added to `.gitignore` in a pending (unstaged) change, but all three are already tracked.
+**Fix:**
+```bash
+git rm --cached .DS_Store bridge/.DS_Store ios/.DS_Store
+```
+
+---
+
+### 4. HIGH — `ios/build/` not in `.gitignore`
+
+**File:** `.gitignore` (no entry for `ios/build/`)
+**Impact:** `ios/build/` (containing compiled `.app`, `.o`, precompiled modules, entitlements, derived data) shows as `??` in `git status`. It is not tracked, but it is not ignored. Anyone doing `git add .` would stage ~87,000 build artifacts including entitlement binaries, DerivedSources, and compiled Swift modules. The `ios/build/` tree is currently 200 MB+ on disk.
+**Fix:** Add `ios/build/` to `.gitignore`.
+
+---
+
+### 5. MEDIUM — Protocol drift: four RPC methods used in iOS have no entry in `shared/protocol.md`
+
+**File:** `shared/protocol.md` (missing methods), `ios/cmux/App/AppState.swift`
+
+The iOS client calls these methods that are not documented:
+
+| Method | Location | Usage |
+|---|---|---|
+| `surface.read_text` | `AppState.swift:210,267` | Terminal content polling |
+| `workspace.close` | `AppState.swift:365` | Workspace deletion |
+| `pane.focus` | `AppState.swift:150` | Pane focus |
+| `pane.list` | `AppState.swift:471` | Pane listing |
+
+**Fix:** Add entries for these four methods under `shared/protocol.md`'s `### Supported Methods` section with their param shapes. At minimum `surface.read_text` and `workspace.close` need full documentation since they're actively used.
+
+---
+
+### 6. MEDIUM — `notification.cleared` push event is documented but never emitted by the bridge
+
+**Files:** `shared/protocol.md:38–47`, `bridge/internal/ws/handler.go` (no broadcast), `ios/cmux/Connection/BridgeClient.swift:193`
+
+`shared/protocol.md` specifies a `notification.cleared` server → client push event. The iOS client handles it at `BridgeClient.swift:193` (`case "notification.cleared": return .notificationCleared`). The bridge never sends this event — `notification.clear` is a client command that resets the seen-ID set internally but broadcasts nothing. The `.notificationCleared` handler in iOS is dead code.
+**Fix (choose one):** Either remove the `notification.cleared` push event from `protocol.md` and the dead case from `BridgeClient.swift`, or implement it by having `proxyCommand` in `handler.go` broadcast a `notification.cleared` event after a successful `notification.clear` command (similar to how `ResetSeenIDs` is called at `handler.go:139`).
+
+---
+
+### 7. MEDIUM — `tailscale.com` marked `// indirect` in `go.mod` but is a direct import
+
+**File:** `bridge/go.mod:72`
+`tailscale.com v1.96.5 // indirect` — but `bridge/cmd/cmux-bridge/main.go:22` directly imports `tailscale.com/tsnet`. Running `go mod tidy` would move it to the direct `require` block. This is a correctness issue in the module graph (tools that analyze dependencies, security scanners like `govulncheck`) may misclassify it.
+**Fix:** `cd bridge &amp;&amp; go mod tidy`
+
+---
+
+### 8. MEDIUM — README/TODO stale: Phase 3 (Tailscale) is fully implemented but listed as "Planned"
+
+**Files:** `README.md:174`, `TODO.md:69–74`
+
+`README.md` Phase table: `| 3 | Tailscale embed (tsnet) for remote access | Planned |`
+`TODO.md` Phase 3 block has all items unchecked.
+
+Tailscale is fully implemented: `tsnet` is a dependency, `--tailscale` flag exists, `startTailscaleForPairing` and Tailscale listener in `runDaemon` are shipped. The README also has a full Tailscale usage section (lines 104–123), contradicting the "Planned" status in the table.
+**Fix:** Mark Phase 3 as Done in the table and check the TODO.md items.
+
+---
+
+### 9. LOW — `go.mod` declares `go 1.26.1` but local toolchain is `go1.23.5`
+
+**File:** `bridge/go.mod:3`
+`go 1.26.1` is not a released Go version (latest stable as of July 2026 is 1.24.x). This will cause `go: go.mod file indicates that this module needs go &gt;= 1.26.1` for contributors without a matching toolchain (behavior depends on `GOTOOLCHAIN` env var). Without a `toolchain` directive the module is not pinned to a specific download. The repo builds locally only because `GOTOOLCHAIN` is unset and 1.23.5 has a compatibility grace.
+**Fix:** Correct the `go` directive to the actual minimum required version (likely `go 1.22` or `go 1.23` given the features used), or add a `toolchain go1.23.5` line.
+
+---
+
+### 10. LOW — Bearer token comparison is not constant-time
+
+**File:** `bridge/internal/ws/auth.go:21`
+```go
+return provided == token &amp;&amp; provided != ""
+```
+Plain string `==` is susceptible to timing side channels. On a local LAN this is low-severity (an attacker would need LAN access to probe timing), but it's easy to fix.
+**Fix:** Replace with `subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1` from `crypto/subtle`.
+
+---
+
+### 11. LOW — `install-bridge.sh --tailscale` flag is undocumented in README
+
+**File:** `scripts/install-bridge.sh:7`, `README.md`
+`install-bridge.sh` accepts `--tailscale` as `$1` to embed `--tailscale` into the LaunchAgent `ProgramArguments`. This is never mentioned in the README's Tailscale section, which only shows how to run `cmux-bridge --tailscale` manually.
+**Fix:** Add a note to the Tailscale section: `sudo ./scripts/install-bridge.sh --tailscale`.
+
+---
+
+### 12. LOW — `DEVELOPMENT_TEAM = W7SDNRPA36` hardcoded in `project.pbxproj`
+
+**File:** `ios/cmux.xcodeproj/project.pbxproj:416`
+`project.yml` explicitly sets `DEVELOPMENT_TEAM: ""`, but the committed `project.pbxproj` has a hardcoded Apple Team ID (`W7SDNRPA36`). Any contributor who opens the project without re-running `xcodegen` will sign with your team ID, which fails silently if they don't have access to that team. Not a secret (team IDs are embedded in distributed binaries), but it blocks other contributors from building.
+**Fix:** Run `xcodegen generate` to regenerate `project.pbxproj` from `project.yml`, which will set `DEVELOPMENT_TEAM = ""` consistently, then commit the result.
+
+---
+
+## Areas Checked and Clean
+
+- **QR / pairing token security:** Token is 256-bit, written `0600`, not logged in daemon mode. LaunchAgent does not invoke `--pair`, so the token URL is never written to the world-readable `/tmp/cmux-bridge.log`. Terminal display by design.
+- **Config and token file permissions:** `~/.config/cmux-bridge/` created `0700`; `token` and `config.json` written `0600`. Correct.
+- **Secrets in tracked files:** No API keys, tokens, passwords, or `.env` files tracked. `config.json` (which stores `socket_password`) is in the `// indirect` config dir, not committed.
+- **`bridge/cmux-bridge` binary:** Correctly gitignored (first line of `.gitignore`), not tracked.
+- **`build.sh`:** Correct `set -euo pipefail`, resolves `SCRIPT_DIR` portably, no privilege escalation inside the script. The `sudo` is correctly applied at the call site in README.
+- **`ios/build/` artifacts:** Not tracked (only untracked/unignored).
+- **`.entire/` tooling:** `.entire/.gitignore` correctly excludes `tmp/`, `logs/`, `metadata/`. Only `settings.json` (non-sensitive) and `.gitignore` itself are tracked.
+- **`.claude/settings.local.json`:** Tracked, contains only permission allow-list entries, no secrets.
+- **Protocol: methods documented but not used in iOS** — `notification.list` and `system.ping` are used internally by the bridge (poller and daemon ping loop), not meant to be called from iOS. No drift issue there.</result>
+<usage><subagent_tokens>74355</subagent_tokens><tool_uses>118</tool_uses><duration_ms>365515</duration_ms></usage>
+</task-notification>
+
+---
+
+/loop /efficient-fable Review and then fix the load history feature. It doesn't work well. Should be able to have a good UI/UX + scroll nicely into the past without slowing down app load and loading of workspaces/terminals
+
+once that feature is done, reviewed and merged
+Start a very comprehensive review of the entire app focused on bugs and security. Create issues and then fix them, build tests to make sure fixes are correct + don't break existing features and merge

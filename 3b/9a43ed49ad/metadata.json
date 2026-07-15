@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "3b9a43ed49ad",
+  "strategy": "manual-commit",
+  "branch": "fix/bounded-followups",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/3b/9a43ed49ad/0/metadata.json",
+      "transcript": "/3b/9a43ed49ad/0/full.jsonl",
+      "compact_transcript": "/3b/9a43ed49ad/0/transcript.jsonl",
+      "content_hash": "/3b/9a43ed49ad/0/content_hash.txt",
+      "prompt": "/3b/9a43ed49ad/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12913,
+    "cache_creation_tokens": 285512,
+    "cache_read_tokens": 14375638,
+    "output_tokens": 98380,
+    "api_call_count": 107
+  }
+}
