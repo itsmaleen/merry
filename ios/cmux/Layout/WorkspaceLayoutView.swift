@@ -179,7 +179,6 @@ struct WorkspaceLayoutView: View {
     @State private var isEditingTranscript = false
     @State private var editingText = ""
     @State private var contentPollTimer: Timer?
-    @State private var loadingHistory: Set<String> = []
     // True while the remote-keyboard compose bar is focused; collapses the
     // layout to just the focused terminal so it owns the whole screen.
     @State private var keyboardActive = false
@@ -503,9 +502,6 @@ struct WorkspaceLayoutView: View {
             contentScale: contentScale,
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
-            hasFullHistory: appState.surfaceHasFullHistory.contains(surface.id),
-            isLoadingHistory: loadingHistory.contains(surface.id),
-            onLoadHistory: { loadHistory(for: surface.id) }
         )
         .id(surface.id)
         .transition(.asymmetric(
@@ -680,9 +676,6 @@ struct WorkspaceLayoutView: View {
                         proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                // Drop stale loading indicators; loaded history itself lives in
-                // AppState keyed by surface ID, so it survives workspace switches.
-                loadingHistory.removeAll()
             }
         }
     }
@@ -705,14 +698,6 @@ struct WorkspaceLayoutView: View {
     // MARK: - Content polling
 
     @State private var pollCycleCount = 0
-
-    private func loadHistory(for surfaceID: String) {
-        guard !loadingHistory.contains(surfaceID) else { return }
-        loadingHistory.insert(surfaceID)
-        appState.loadSurfaceHistory(surfaceID) { _ in
-            loadingHistory.remove(surfaceID)
-        }
-    }
 
     private func startContentPolling() {
         // Tear down any existing timer first — onAppear/foreground can fire more
@@ -744,9 +729,11 @@ struct WorkspaceLayoutView: View {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
         } else {
-            // Always a 50-line tail; AppState splices it onto stored history
-            // for surfaces that have loaded their full scrollback.
-            appState.readSurfaceText(surface.id)
+            // Focused surface: request a deep window so its scrollback is present
+            // to scroll through. Background surfaces: a shallow, cheap preview.
+            let lines = surface.id == appState.focusedSurfaceID
+                ? AppState.focusedHistoryLines : 50
+            appState.readSurfaceText(surface.id, lines: lines)
         }
     }
 

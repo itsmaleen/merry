@@ -116,10 +116,13 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
 - `surface.create` — `{"type":"terminal"}` (or "browser", creates in focused pane)
 - `surface.split` — `{"direction":"right","surface_id":"..."}` (direction: left/right/up/down)
 - `surface.close` — `{"surface_id":"..."}`
-- `surface.read_text` — `{"surface_id":"...","lines":50}` for a tail, or
-  `{"surface_id":"...","scrollback":true}` for the full scrollback. Optional
-  `workspace_id`. Returns `{"text":"..."}`. Used by the iOS live-view polling
-  and load-history features.
+- `surface.read_text` — `{"surface_id":"...","lines":N}` returns the last N rows
+  **including terminal scrollback** (so a large N yields history directly);
+  `{"scrollback":true}` returns the full scrollback. Optional `workspace_id`.
+  Returns `{"text":"...","base64":"...", ...}`. Full-screen TUIs (e.g.
+  claude-code) repaint a fixed viewport and keep little/no terminal scrollback,
+  so for those it returns roughly the visible screen regardless of N. Used by
+  the iOS live-view + scrollback rendering.
 
 **Browsers:**
 - `browser.url.get` — `{"surface_id":"..."}` → `{"url":"..."}` (browser surfaces)
