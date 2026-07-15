@@ -1,0 +1,43 @@
+so I've noticed a few issues with this app
+- We need to rework the UI especially in portrait mode because it's janky
+- should have a way to pull up a keyboard to type into a terminal whenever and not just on edit
+- look to fix inefficiencies because noticing weird bugs sometimes where sometimes need to return manually
+- should be able to access links + copy text that is showing on the terminal output
+
+help come up with a plan to address these issues
+
+---
+
+/loop build everything and make sure to test
+
+---
+
+/loop build everything and make sure to test
+
+---
+
+How do I get the QR code to scan from cmux to connect ios app?
+
+---
+
+no it's fine I already have it setup. We need to fix a few things
+1. There's no portrait mode which we'll need (need to make sure the UI works for portrait mode
+2. No way to make the keyboard go away which we need
+
+---
+
+great this seems to have worked, can we think of a better UI experience for keyboard show and hide.
+When keyboard is showing, we only need to keep the one main terminal that is in focus and can hide the others
+the keyboard hide button feels awkwardly placed at the moment
+
+---
+
+Seeing both the new button to hide keyboard (good) and the old floating circle button (don't need that anymore)
+
+---
+
+the landscape version of keyboard pulled up hides the terminal because of the keyboard size, any ideas on how to fix?
+
+---
+
+great let's commit these changes, open a PR, review, fix, merge
