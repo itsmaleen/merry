@@ -9,6 +9,9 @@ struct TerminalTextView: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
     let textOpacity: Double
+    /// Fired (throttled) when the user scrolls near the top of the content —
+    /// the hook for loading older history on demand.
+    var onScrolledNearTop: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -29,11 +32,13 @@ struct TerminalTextView: UIViewRepresentable {
         tv.autocapitalizationType = .none
         tv.attributedText = attributed()
         context.coordinator.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
+        context.coordinator.onScrolledNearTop = onScrolledNearTop
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
         let coord = context.coordinator
+        coord.onScrolledNearTop = onScrolledNearTop
         // Compare against what we last applied, NOT tv.attributedText: with
         // dataDetectorTypes the view injects link attributes into its own
         // attributedText, so reading it back never equals a freshly built plain
@@ -46,10 +51,28 @@ struct TerminalTextView: UIViewRepresentable {
         // yank the text out from under the user mid-copy); reapplies once cleared.
         if tv.selectedRange.length > 0 { return }
 
+        // A history load prepends content above the viewport while the user is
+        // reading scrollback. Detect it (old text is a strict suffix of the new)
+        // so we can keep the same lines on screen instead of letting them jump.
+        let oldText = coord.lastText ?? ""
+        let isPrepend = !coord.autoScroll && !oldText.isEmpty
+            && text.count > oldText.count && text.hasSuffix(oldText)
+        let oldHeight = tv.contentSize.height
+        let oldOffset = tv.contentOffset
+
         tv.attributedText = attributed()
         coord.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
         if coord.autoScroll {
             scrollToBottom(tv)
+        } else if isPrepend {
+            // Layout synchronously so contentSize reflects the prepended text,
+            // then shift the offset by exactly the added height — the viewport
+            // stays anchored on the text the user was reading.
+            tv.layoutIfNeeded()
+            let delta = tv.contentSize.height - oldHeight
+            if delta > 0 {
+                tv.setContentOffset(CGPoint(x: oldOffset.x, y: oldOffset.y + delta), animated: false)
+            }
         }
     }
 
@@ -84,6 +107,8 @@ struct TerminalTextView: UIViewRepresentable {
         /// True while the user is at (or near) the bottom; false once they
         /// scroll up to read scrollback.
         var autoScroll = true
+        var onScrolledNearTop: (() -> Void)?
+        private var lastNearTopFire: TimeInterval = 0
 
         // Last values actually applied to the text view, for change detection.
         private(set) var lastText: String?
@@ -100,6 +125,23 @@ struct TerminalTextView: UIViewRepresentable {
             let threshold: CGFloat = 24
             let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
             autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
+
+            // Near-top fires only for user-driven scrolls (programmatic
+            // setContentOffset lands here too), at most once a second. When the
+            // content fits the viewport there's no top to scroll to, so require
+            // a deliberate pull-down bounce instead (alwaysBounceVertical is on).
+            let nearTop = maxOffset > 0
+                ? scrollView.contentOffset.y < 120
+                : scrollView.contentOffset.y < -30
+            guard let onScrolledNearTop,
+                  scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating,
+                  nearTop
+            else { return }
+            let now = Date().timeIntervalSinceReferenceDate
+            if now - lastNearTopFire > 1.0 {
+                lastNearTopFire = now
+                onScrolledNearTop()
+            }
         }
     }
 }

@@ -107,44 +107,38 @@ struct PaneCardView: View {
 
     private var terminalContentView: some View {
         // UITextView-backed so output is selectable (copy) and URLs are tappable.
+        // Scrolling near the top of a focused card loads older history on demand.
         TerminalTextView(
             text: terminalText,
             fontSize: (isFocused ? 9 : 7) * contentScale,
-            textOpacity: isFocused ? 0.85 : 0.5
+            textOpacity: isFocused ? 0.85 : 0.5,
+            onScrolledNearTop: (isFocused && !hasFullHistory && !isLoadingHistory)
+                ? { onLoadHistory?() } : nil
         )
-        // Floating "Load history" chip on focused cards, over the scrolling text.
         .overlay(alignment: .top) {
-            if isFocused && !hasFullHistory {
-                loadHistoryButton
+            if isLoadingHistory {
+                loadingHistoryPill
                     .padding(.top, 4)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.15), value: isLoadingHistory)
     }
 
-    private var loadHistoryButton: some View {
-        Button {
-            onLoadHistory?()
-        } label: {
-            HStack(spacing: 6) {
-                if isLoadingHistory {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .tint(.white.opacity(0.4))
-                } else {
-                    Image(systemName: "arrow.up.circle")
-                        .font(.system(size: 10))
-                }
-                Text(isLoadingHistory ? "Loading…" : "Load history")
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-            }
-            .foregroundStyle(.white.opacity(0.5))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(
-                Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
-            )
+    private var loadingHistoryPill: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .scaleEffect(0.5)
+                .tint(.white.opacity(0.4))
+            Text("Loading history…")
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
         }
-        .disabled(isLoadingHistory)
+        .foregroundStyle(.white.opacity(0.5))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(
+            Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+        )
     }
 
     // MARK: - Title bar
