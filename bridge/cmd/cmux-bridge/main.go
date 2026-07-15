@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -205,7 +206,7 @@ func runDaemon(dir string, cfg config) {
 	defer cancel()
 
 	cmuxClient := socket.NewClient(cfg.SocketPath, cfg.SocketPassword)
-	cmuxConnectedFlag := false
+	var cmuxConnected atomic.Bool
 
 	poll := poller.New(cmuxClient, time.Duration(cfg.PollIntervalMs)*time.Millisecond)
 
@@ -229,8 +230,8 @@ func runDaemon(dir string, cfg config) {
 			err := cmuxClient.Connect()
 			if err != nil {
 				log.Printf("cmux: connect error: %v (retry in %s)", err, backoff)
-				if cmuxConnectedFlag {
-					cmuxConnectedFlag = false
+				if cmuxConnected.Load() {
+					cmuxConnected.Store(false)
 					poll.Broadcast(poller.Event{
 						Type: "cmux.disconnected",
 						Data: map[string]any{"reason": "socket_unavailable"},
@@ -249,7 +250,7 @@ func runDaemon(dir string, cfg config) {
 
 			log.Printf("cmux: connected")
 			backoff = time.Second
-			cmuxConnectedFlag = true
+			cmuxConnected.Store(true)
 			poll.Broadcast(poller.Event{
 				Type: "cmux.connected",
 				Data: map[string]any{"bridge_version": ws.BridgeVersion()},
@@ -263,7 +264,7 @@ func runDaemon(dir string, cfg config) {
 				case <-time.After(5 * time.Second):
 					if _, err := cmuxClient.Send("system.ping", nil); err != nil {
 						log.Printf("cmux: connection lost: %v", err)
-						cmuxConnectedFlag = false
+						cmuxConnected.Store(false)
 						poll.Broadcast(poller.Event{
 							Type: "cmux.disconnected",
 							Data: map[string]any{"reason": "socket_unavailable"},
@@ -319,7 +320,7 @@ func runDaemon(dir string, cfg config) {
 	}
 
 	// Start WebSocket server on all listeners
-	server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnectedFlag })
+	server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnected.Load() })
 	if err := server.Serve(ctx, listeners...); err != nil {
 		log.Fatalf("ws server: %v", err)
 	}

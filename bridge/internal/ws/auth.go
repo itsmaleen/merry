@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
@@ -18,5 +19,5 @@ func validateBearer(r *http.Request, token string) bool {
 		return false
 	}
 	provided := strings.TrimPrefix(auth, "Bearer ")
-	return provided == token && provided != ""
+	return provided != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1
 }

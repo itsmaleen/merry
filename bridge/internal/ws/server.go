@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
@@ -36,7 +37,11 @@ func NewServer(
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.wsHandler)
 
-	s.httpServer = &http.Server{Handler: mux}
+	s.httpServer = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+	}
 	return s
 }
 

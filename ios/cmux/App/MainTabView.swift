@@ -63,11 +63,33 @@ struct MainTabView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
+        .onDisappear {
+            // Otherwise the auto-dismiss timer fires into a torn-down view.
+            sidebarTimer?.invalidate()
+            sidebarTimer = nil
+        }
         .overlay(alignment: .top) {
             ConnectionStatusBar()
         }
         .sheet(isPresented: $appState.isPairingPresented) {
             PairingView()
+        }
+        .alert(
+            "Replace pairing?",
+            isPresented: Binding(
+                get: { appState.pendingPairing != nil },
+                set: { if !$0 { appState.cancelPendingPairing() } }
+            ),
+            presenting: appState.pendingPairing
+        ) { pending in
+            Button("Pair with \(pending.host):\(pending.port)", role: .destructive) {
+                appState.confirmPendingPairing()
+            }
+            Button("Cancel", role: .cancel) {
+                appState.cancelPendingPairing()
+            }
+        } message: { pending in
+            Text("This will disconnect from your current bridge and send all input to \(pending.host):\(pending.port). Only continue if you initiated this pairing.")
         }
     }
 

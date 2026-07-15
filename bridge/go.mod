@@ -6,6 +6,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/hashicorp/mdns v1.0.6
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	tailscale.com v1.96.5
 )
 
 require (
@@ -69,5 +70,4 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	gvisor.dev/gvisor v0.0.0-20260224225140-573d5e7127a8 // indirect
-	tailscale.com v1.96.5 // indirect
 )

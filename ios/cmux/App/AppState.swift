@@ -72,6 +72,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Pairing
 
+    // A parsed pairing request awaiting the user's confirmation because it would
+    // REPLACE an existing pairing (a silent re-pair from a hostile QR/deep-link
+    // would otherwise redirect all keystrokes to an attacker's host).
+    @Published var pendingPairing: PairingCredentials?
+
     func handlePairingURL(_ url: URL) {
         guard url.scheme == "cmux-bridge",
               url.host == "pair",
@@ -84,9 +89,32 @@ final class AppState: ObservableObject {
 
         let tailscaleHost = components.queryItems?.first(where: { $0.name == "tailscale_host" })?.value
         let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost)
+
+        // First-time pairing (or re-pairing the exact same host) is committed
+        // immediately. Any change to an existing pairing requires confirmation.
+        if let existing = try? pairingStore.load(),
+           existing.host != host || existing.port != port || existing.token != token {
+            pendingPairing = credentials
+            return
+        }
+        commitPairing(credentials)
+    }
+
+    /// Applies a pairing the user has confirmed (or that needed no confirmation).
+    func commitPairing(_ credentials: PairingCredentials) {
         try? pairingStore.save(credentials)
         connect(to: credentials)
         isPairingPresented = false
+        pendingPairing = nil
+    }
+
+    func confirmPendingPairing() {
+        guard let pending = pendingPairing else { return }
+        commitPairing(pending)
+    }
+
+    func cancelPendingPairing() {
+        pendingPairing = nil
     }
 
     func unpair() {
@@ -167,7 +195,9 @@ final class AppState: ObservableObject {
     func cycleSurfaceBackward() {
         let list = surfaces
         guard !list.isEmpty else { return }
-        let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? 0
+        // Match cycleSurface's "nothing focused" fallback (-1) so forward and
+        // backward agree on where cycling starts from an unfocused state.
+        let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
         let prevIndex = (currentIndex - 1 + list.count) % list.count
         focusSurface(list[prevIndex].id)
     }
@@ -364,11 +394,12 @@ final class AppState: ObservableObject {
     func closeWorkspace(_ id: String) {
         send(method: "workspace.close", params: ["workspace_id": id]) { [weak self] _ in
             self?.lastFocusedSurface.removeValue(forKey: id)
-            self?.refreshWorkspaces()
-            // Select next available workspace
-            if self?.currentWorkspaceID == id {
-                if let next = self?.workspaces.first(where: { $0.id != id }) {
-                    self?.selectWorkspace(next.id)
+            // Select the next workspace only after the list is refreshed —
+            // otherwise `workspaces` still contains the just-closed one.
+            self?.refreshWorkspaces {
+                guard let self, self.currentWorkspaceID == id else { return }
+                if let next = self.workspaces.first(where: { $0.id != id }) {
+                    self.selectWorkspace(next.id)
                 }
             }
         }
