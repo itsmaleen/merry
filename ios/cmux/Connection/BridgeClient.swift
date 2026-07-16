@@ -139,6 +139,9 @@ final class BridgeClient: NSObject {
         let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         self.session = session
         let task = session.webSocketTask(with: request)
+        // The default receive limit (1 MiB) can be exceeded by large payloads
+        // like claude session transcripts; raise it so those frames aren't dropped.
+        task.maximumMessageSize = 8 * 1024 * 1024
         completionsLock.lock()
         self.task = task
         completionsLock.unlock()

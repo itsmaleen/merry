@@ -162,8 +162,27 @@ type jsonlLine struct {
 	} `json:"message"`
 }
 
+// maxRenderBytes bounds the rendered transcript so a long session can't produce
+// a payload that blows past WebSocket message-size limits or bogs the client's
+// text view. The tail (most recent conversation) is kept.
+const maxRenderBytes = 128 * 1024
+
+// capTail trims s to at most maxRenderBytes, keeping the end and starting at a
+// line boundary so a message isn't cut mid-line.
+func capTail(s string) string {
+	if len(s) <= maxRenderBytes {
+		return s
+	}
+	s = s[len(s)-maxRenderBytes:]
+	if i := strings.IndexByte(s, '\n'); i >= 0 && i+1 < len(s) {
+		s = s[i+1:]
+	}
+	return s
+}
+
 // renderJSONL parses raw JSONL data and returns the rendered transcript.
-// Only the last maxMessages user/assistant messages are included.
+// Only the last maxMessages user/assistant messages are included, and the
+// result is byte-capped to the most recent maxRenderBytes.
 func renderJSONL(data []byte, maxMessages int) string {
 	type msg struct {
 		role string
@@ -211,7 +230,7 @@ func renderJSONL(data []byte, maxMessages int) string {
 		sb.WriteString(m.text)
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return capTail(sb.String())
 }
 
 // extractContent converts a raw JSON content field (string or block array)
