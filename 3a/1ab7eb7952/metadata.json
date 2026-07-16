@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "3a1ab7eb7952",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "scripts/install-bridge.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3a/1ab7eb7952/0/metadata.json",
+      "transcript": "/3a/1ab7eb7952/0/full.jsonl",
+      "compact_transcript": "/3a/1ab7eb7952/0/transcript.jsonl",
+      "content_hash": "/3a/1ab7eb7952/0/content_hash.txt",
+      "prompt": "/3a/1ab7eb7952/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19051,
+    "cache_creation_tokens": 1027619,
+    "cache_read_tokens": 60577490,
+    "output_tokens": 296737,
+    "api_call_count": 246
+  }
+}
