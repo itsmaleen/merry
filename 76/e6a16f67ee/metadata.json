@@ -4,8 +4,9 @@
   "checkpoint_id": "76e6a16f67ee",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
+    "ios/cmux/App/AppState.swift",
     "ios/cmux/Layout/PaneCardView.swift",
     "ios/cmux/Layout/WorkspaceLayoutView.swift"
   ],
@@ -16,13 +17,20 @@
       "compact_transcript": "/76/e6a16f67ee/0/transcript.jsonl",
       "content_hash": "/76/e6a16f67ee/0/content_hash.txt",
       "prompt": "/76/e6a16f67ee/0/prompt.txt"
+    },
+    {
+      "metadata": "/76/e6a16f67ee/1/metadata.json",
+      "transcript": "/76/e6a16f67ee/1/full.jsonl",
+      "compact_transcript": "/76/e6a16f67ee/1/transcript.jsonl",
+      "content_hash": "/76/e6a16f67ee/1/content_hash.txt",
+      "prompt": "/76/e6a16f67ee/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 28196,
-    "cache_creation_tokens": 1129607,
-    "cache_read_tokens": 101217713,
-    "output_tokens": 369189,
-    "api_call_count": 323
+    "input_tokens": 37254,
+    "cache_creation_tokens": 1435294,
+    "cache_read_tokens": 114332639,
+    "output_tokens": 474513,
+    "api_call_count": 432
   }
 }
