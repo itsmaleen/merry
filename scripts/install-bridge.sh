@@ -61,6 +61,11 @@ EOF
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load "$PLIST_PATH"
 
+# Force a restart so a rebuilt binary actually takes over. `load` alone can
+# leave a previously-running daemon in place (KeepAlive), so the new binary
+# never runs — kickstart -k kills the old instance and starts the new one.
+launchctl kickstart -k "gui/$(id -u)/${PLIST_LABEL}" 2>/dev/null || true
+
 echo ""
 echo "cmux-bridge installed and started."
 echo "Logs: tail -f $LOG_PATH"
