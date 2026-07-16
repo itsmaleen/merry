@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "78067a0eee5b",
+  "strategy": "manual-commit",
+  "branch": "feat/claude-transcript-history",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/78/067a0eee5b/0/metadata.json",
+      "transcript": "/78/067a0eee5b/0/full.jsonl",
+      "compact_transcript": "/78/067a0eee5b/0/transcript.jsonl",
+      "content_hash": "/78/067a0eee5b/0/content_hash.txt",
+      "prompt": "/78/067a0eee5b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18472,
+    "cache_creation_tokens": 1002837,
+    "cache_read_tokens": 52279970,
+    "output_tokens": 275041,
+    "api_call_count": 228
+  }
+}
