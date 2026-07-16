@@ -728,12 +728,26 @@ struct WorkspaceLayoutView: View {
     private func fetchContent(for surface: Surface) {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
+            return
+        }
+        let focused = surface.id == appState.focusedSurfaceID
+        if appState.isKnownNonClaudeSurface(surface.id) {
+            // Terminal surface: deep read when focused (scrollback), cheap preview otherwise.
+            appState.readSurfaceText(surface.id, lines: focused ? AppState.focusedHistoryLines : 50)
+        } else if focused {
+            if appState.isKnownClaudeSurface(surface.id) {
+                // Transcript pulls can be large; refresh every 3rd cycle (~9s).
+                // Focus change already triggers an immediate fetch.
+                if pollCycleCount % 3 == 0 {
+                    appState.readClaudeTranscript(surface.id, fallbackLines: AppState.focusedHistoryLines)
+                }
+            } else {
+                // Not yet classified — probe (classifies + falls back if needed).
+                appState.readClaudeTranscript(surface.id, fallbackLines: AppState.focusedHistoryLines)
+            }
         } else {
-            // Focused surface: request a deep window so its scrollback is present
-            // to scroll through. Background surfaces: a shallow, cheap preview.
-            let lines = surface.id == appState.focusedSurfaceID
-                ? AppState.focusedHistoryLines : 50
-            appState.readSurfaceText(surface.id, lines: lines)
+            // Background, not yet known to be claude: cheap viewport preview.
+            appState.readSurfaceText(surface.id, lines: 50)
         }
     }
 
