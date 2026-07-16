@@ -43,15 +43,7 @@ struct PaneCardView: View {
 
                 // Body area
                 ZStack(alignment: .topLeading) {
-                    if isTranscribing && !transcript.isEmpty {
-                        Text(transcript)
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.8))
-                            .lineLimit(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .padding(.top, 8)
-                    } else if isBrowser {
+                    if isBrowser {
                         VStack(spacing: 8) {
                             Image(systemName: "globe")
                                 .font(.system(size: isFocused ? 28 : 16))
@@ -75,7 +67,7 @@ struct PaneCardView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if !terminalText.isEmpty {
                         terminalContentView
-                    } else if !isBrowser {
+                    } else {
                         // Loading state for terminals before content arrives
                         VStack(spacing: 10) {
                             ProgressView()
@@ -86,6 +78,24 @@ struct PaneCardView: View {
                                 .foregroundStyle(.white.opacity(0.2))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    // Live speech transcript OVERLAYS the content while recording.
+                    // It must not be a sibling branch of `terminalContentView`:
+                    // that view is a UITextView (UIViewRepresentable), and
+                    // swapping it out mid-recording leaves its UIKit layer on
+                    // screen so the transcript never appears. Overlaying keeps the
+                    // terminal mounted and paints the transcript on top.
+                    if isTranscribing && !transcript.isEmpty {
+                        Text(transcript)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.9))
+                            .lineLimit(4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial.opacity(0.9))
+                            .environment(\.colorScheme, .dark)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
