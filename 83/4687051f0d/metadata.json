@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "834687051f0d",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Connection/BridgeClient.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/83/4687051f0d/0/metadata.json",
+      "transcript": "/83/4687051f0d/0/full.jsonl",
+      "compact_transcript": "/83/4687051f0d/0/transcript.jsonl",
+      "content_hash": "/83/4687051f0d/0/content_hash.txt",
+      "prompt": "/83/4687051f0d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19043,
+    "cache_creation_tokens": 1021296,
+    "cache_read_tokens": 58695551,
+    "output_tokens": 290889,
+    "api_call_count": 242
+  }
+}
