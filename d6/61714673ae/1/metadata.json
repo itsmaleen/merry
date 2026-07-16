@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "d661714673ae",
+  "session_id": "fd6307cd-7201-4724-aa00-b41dbc09a732",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-16T22:15:43.841715Z",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "README.md",
+    "scripts/install-bridge.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8[1m]",
+  "turn_id": "ca1a2ef970c9",
+  "token_usage": {
+    "input_tokens": 9060,
+    "cache_creation_tokens": 306554,
+    "cache_read_tokens": 13320968,
+    "output_tokens": 105734,
+    "api_call_count": 110
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-16T22:15:43.783989Z",
+    "agent_lines": 125,
+    "agent_removed": 16,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 125,
+    "total_lines_changed": 141,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
