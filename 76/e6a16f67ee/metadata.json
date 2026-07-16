@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "76e6a16f67ee",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/76/e6a16f67ee/0/metadata.json",
+      "transcript": "/76/e6a16f67ee/0/full.jsonl",
+      "compact_transcript": "/76/e6a16f67ee/0/transcript.jsonl",
+      "content_hash": "/76/e6a16f67ee/0/content_hash.txt",
+      "prompt": "/76/e6a16f67ee/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 28196,
+    "cache_creation_tokens": 1129607,
+    "cache_read_tokens": 101217713,
+    "output_tokens": 369189,
+    "api_call_count": 323
+  }
+}

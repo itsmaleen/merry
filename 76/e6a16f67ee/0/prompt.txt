@@ -1,0 +1,223 @@
+At some point we had a version that was able to scroll up to load the Claude code history when and why did we lose it. Also noticing that the record feature now is not showing the transcript as speech to text is happening
+
+---
+
+/efficient-fable 
+- Drive claude's own scroll
+- and yes when I start recording I see the red "REC" indicator and in the Xcode console I see [Speech] transcript: … lines
+
+---
+
+tried scrolling up to load but nothing happens, I think that UI/UX is broken
+
+---
+
+right now the UX is off because 1) the claude transcript doesn't show as nicely as just showing the cmux version 2) it shows like mid transcript
+
+so let's instead go back to showing what we did before (showing the cmux content) and then have an on scroll to the top i.e. load history open up a window that takes up whole screen that allows us to scroll through the transcript like we currently can. Can close the window to go back to the original view.
+
+---
+
+/loop /efficient-fable 
+a few things to fix mostly on improve UI/UX on portrait mode
+- swipes are too sensitive as in scrolling triggers swipe left/right terminal switch
+- pull up for history should only show once we scroll all the way up and follow nice UX pattern around scrolling up past a bit to trigger it
+- on load, make sure to have scrolled down as in show the bottom most content. Because of window size on screen theres a bit more content that can be shown and it seems like we're starting from the top instead the bottom
+
+---
+
+/efficient-fable commit changes, start a PR, review, fix and then merge
+
+---
+
+<task-notification>
+<task-id>a6a40a3b69552df53</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/e8fe016f-1d39-47ef-a1a8-c11b33dc33d0/tasks/a6a40a3b69552df53.output</output-file>
+<status>completed</status>
+<summary>Agent "Review bridge claude.transcript" completed</summary>
+<result>All tests pass, `go vet` is clean. Here are all findings, grounded in the actual code:
+
+---
+
+## Findings
+
+### FINDING 1 — PATH TRAVERSAL via `checkpoint_id` (HIGH)
+
+**File:** `bridge/internal/claude/transcript.go:101`
+
+**Trigger:** `filepath.Join` calls `filepath.Clean` internally. If `checkpoint_id` contains `../` sequences, Clean resolves them against the literal `*` component before the pattern ever reaches `Glob`. The `*` is stripped out by the `..` resolution and the pattern becomes a concrete path outside `~/.claude/projects`.
+
+Verified with actual Go:
+```
+filepath.Join("/home/user/.claude/projects", "*", "../../../etc/passwd.jsonl")
+// → "/home/user/etc/passwd.jsonl"  (no wildcard, stat'd directly by Glob)
+
+filepath.Join("/home/user/.claude/projects", "*", "../../../../etc/passwd.jsonl")
+// → "/home/etc/passwd.jsonl"
+```
+
+A `checkpoint_id` of `"../../../etc/passwd"` causes `Glob` to stat and return `/home/user/etc/passwd.jsonl` if it exists. With enough `../` the path can reach any file on the filesystem that ends in `.jsonl` — but since the attacker controls the suffix via the value appended before `.jsonl`, any file at a path reachable from `~` can be targeted.
+
+**Severity:** High (defense-in-depth basis; cmux is trusted-local, but a compromised cmux socket or a bug in cmux's session metadata could turn this into an information-disclosure channel for any `.jsonl` file accessible to the bridge process).
+
+**Fix** — validate `checkpoint_id` at the top of `resolveTranscriptPath`, before constructing the pattern:
+
+```go
+// Reject anything that isn't a plain filename component (no separators, no ..)
+if strings.ContainsAny(checkpointID, "/\\") || checkpointID == ".." || checkpointID == "." {
+    return "", fmt.Errorf("invalid checkpoint_id")
+}
+```
+
+Or, more strictly, enforce a UUID/hex-only shape with a regexp:
+```go
+var sessionIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+if !sessionIDRe.MatchString(checkpointID) {
+    return "", fmt.Errorf("checkpoint_id format invalid")
+}
+```
+
+Additionally, after Glob, verify the returned path is actually inside `projectsDir`:
+```go
+if !strings.HasPrefix(filepath.Clean(matches[0])+string(filepath.Separator), projectsDir+string(filepath.Separator)) {
+    return "", fmt.Errorf("resolved path escapes projects directory")
+}
+```
+
+---
+
+### FINDING 2 — GLOB WILDCARD INJECTION via `checkpoint_id` (MEDIUM)
+
+**File:** `bridge/internal/claude/transcript.go:101`
+
+**Trigger:** `checkpoint_id = "*"` produces pattern `projectsDir/*/*.jsonl`, which `filepath.Glob` expands to every `.jsonl` across every project directory. `matches[0]` returns the first (alphabetically) match — effectively a cross-session data leak. `checkpoint_id = "?"` or `checkpoint_id = "[abc]xyz"` also inject into the glob pattern.
+
+This is a separate issue from path traversal: there's no `..` involved, just special glob metacharacters (`*`, `?`, `[...]`).
+
+**Severity:** Medium (cross-session data disclosure within `~/.claude/projects`).
+
+**Fix:** The same UUID/no-separator validation above also closes this, since UUID characters are `[0-9a-f-]` and contain none of `*?[`.
+
+---
+
+### FINDING 3 — NO FILE SIZE GUARD BEFORE `os.ReadFile` (MEDIUM)
+
+**File:** `bridge/internal/claude/transcript.go:69`
+
+**Trigger:** `info.Size()` is available from the preceding `os.Stat` (line 56) but is only used for cache invalidation. There is no check of the form `if info.Size() &gt; maxFileBytes { ... }` before `os.ReadFile`. A transcript file of several hundred MB (common for a long Claude Code session) is read entirely into memory. `renderJSONL` then additionally does `string(data)` (another copy) and `strings.Split` (a `[]string` view into that copy), potentially holding 2–3x the file size in working memory before `capTail` trims the rendered output to 128 KB.
+
+**Severity:** Medium DoS (affects the bridge process; not externally triggered — requires a large transcript on disk).
+
+**Fix:** Add a size cap between `Stat` and `ReadFile`:
+
+```go
+const maxTranscriptFileBytes = 32 * 1024 * 1024 // 32 MB
+
+if info.Size() &gt; maxTranscriptFileBytes {
+    // Read only the tail 32 MB — Claude session files grow forward,
+    // so the end is the current conversation.
+    f, err := os.Open(transcriptPath)
+    if err != nil {
+        return "", true, sessionID, err
+    }
+    defer f.Close()
+    tail := make([]byte, maxTranscriptFileBytes)
+    n, _ := f.ReadAt(tail, info.Size()-maxTranscriptFileBytes)
+    data = tail[:n]
+} else {
+    data, err = os.ReadFile(transcriptPath)
+    ...
+}
+```
+
+Or more simply: `os.ReadFile` → `readFileTail(path, 32MB)` unconditionally.
+
+---
+
+### FINDING 4 — NO UPPER BOUND ON CLIENT-SUPPLIED `max_messages` (LOW)
+
+**File:** `bridge/internal/ws/handler.go:175–176`
+
+**Trigger:** A WebSocket client sends `{"max_messages": 10000000}`. The handler accepts any `v &gt; 0` without a cap. `renderJSONL` will then collect up to 10M messages into the `messages []msg` slice before slicing it. This is bounded by the actual line count in the file, but combined with a large transcript file (finding 3), a single request could drive significant CPU and memory usage.
+
+**Severity:** Low (authenticated WebSocket clients only; local context).
+
+**Fix:**
+```go
+const maxAllowedMessages = 2000
+if v, ok := cmd.Params["max_messages"].(float64); ok &amp;&amp; v &gt; 0 {
+    maxMessages = int(v)
+    if maxMessages &gt; maxAllowedMessages {
+        maxMessages = maxAllowedMessages
+    }
+}
+```
+
+---
+
+### FINDING 5 — TOCTOU between `os.Stat` and `os.ReadFile` (LOW / INFORMATIONAL)
+
+**File:** `bridge/internal/claude/transcript.go:56–69`
+
+**Trigger:** The file could change between `os.Stat` (line 56) and `os.ReadFile` (line 69). In that case the bridge reads the new content but stores a `cacheEntry` with the old `modTime`/`size` from the pre-change stat. The next request will re-stat, see a mismatch, and re-read correctly. So this does **not** cause permanent cache poisoning or data loss — it just means one cache round might store a `(new content, old metadata)` entry that gets invalidated on the next hit.
+
+**Severity:** Low / informational. No fix strictly required, but if desired, re-stat after ReadFile and use those values for the cache entry.
+
+---
+
+### FINDING 6 — `line.Type` vs `line.Message.Role` mismatch in display header (LOW / COSMETIC)
+
+**File:** `bridge/internal/claude/transcript.go:218–224`
+
+**Trigger:** The loop filter at line 202 allows only `line.Type == "user"` or `"assistant"` to proceed. But the display header is derived from `line.Message.Role`, not `line.Type`. If a JSONL line has `type:"user"` but `message.role:""` (or an unexpected value), the header renders as `"⏺ Claude"` instead of `"› You"`. This is cosmetically wrong but not a security or correctness issue in normal operation.
+
+**Severity:** Low cosmetic. Fix: derive the header from `line.Type` (which you've already validated) rather than `line.Message.Role`, or add an explicit fallback:
+```go
+if line.Type == "user" {
+    header = "› You"
+} else {
+    header = "⏺ Claude"
+}
+// (use line.Type, not m.role)
+```
+
+---
+
+### FINDING 7 — `supported=true, text=""` on all-malformed-JSONL is ambiguous (LOW / INFORMATIONAL)
+
+**File:** `bridge/internal/claude/transcript.go:49–51` and `renderJSONL`
+
+**Trigger:** If every line of an existing transcript file fails JSON unmarshal, `renderJSONL` returns `""`. `Render` returns `("", true, sessionID, nil)`, and the handler sends `{supported:true, text:"", session_id:"&lt;id&gt;"}`. A client cannot distinguish this from "session exists but no messages yet." Not a bug per the spec, but worth noting in documentation/protocol contract.
+
+---
+
+## Concurrency: Clean
+
+`sync.Map` is used correctly. The `*cacheEntry` is written once at construction and never mutated after `Store`, so concurrent reads after a `Load` are race-free. The -race detector confirmed this with `go test -race ./...`. Two goroutines racing on the same path both call `ReadFile` + `renderJSONL` redundantly, but both `Store` the same result (last writer wins, both values are equivalent). No actual data race.
+
+---
+
+## Test / Vet Results
+
+```
+go test ./...   — all packages PASS (fresh run, no cache)
+go vet ./...    — clean, no output
+go test -race ./internal/claude/...  — PASS
+go test -race ./...  — all PASS
+```
+
+---
+
+## Checked and Clean
+
+- `encodeCWD`: path separators (`/`) are replaced with `-`; `../` in a cwd cannot traverse outside `projectsDir`. Safe.
+- `latestJSONL`: uses `os.ReadDir` + `e.Info()`, stays within the passed `dir`. Safe.
+- `capTail` edge cases: no-newline case returns the tail unchanged (correct); trailing-newline-only case doesn't truncate to empty (correct).
+- `maxMessages=0`: intentionally bypasses truncation (unlimited); the `v &gt; 0` guard in the handler makes this explicit.
+- Surface-not-found: `resumeBinding` stays `nil` → `Render` returns `supported=false` → handler returns `OK:true, supported:false`. Correct per spec.
+- `workspace_id` forwarding: correctly passed through to `surface.list` only when present; not injected if absent.
+- `http.Server` timeout fields (`ReadHeaderTimeout`, `ReadTimeout`) are set in `server.go`. WebSocket upgrade happens before `ReadTimeout` applies, so the WS connection isn't affected.
+- `InsecureSkipVerify: true` in `websocket.Accept`: this disables Origin checking, which is intentional for LAN use and documented in the comment.</result>
+<usage><subagent_tokens>42151</subagent_tokens><tool_uses>26</tool_uses><duration_ms>255851</duration_ms></usage>
+</task-notification>
