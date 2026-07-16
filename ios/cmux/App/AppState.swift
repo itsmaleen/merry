@@ -22,6 +22,9 @@ final class AppState: ObservableObject {
     // history viewer (kept separate from surfaceContent, which mirrors the live
     // terminal). Keyed by surface ID.
     @Published var claudeTranscript: [String: String] = [:]
+    // The session id the bridge resolved each surface's transcript to, keyed by
+    // surface ID. Surfaced in the history viewer for diagnosing wrong-session reports.
+    @Published var claudeTranscriptSession: [String: String] = [:]
     @Published var claudeTranscriptLoading: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
@@ -275,6 +278,13 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.claudeTranscriptLoading.remove(surfaceID)
             let text = (result["text"] as? String).map(Self.trimTerminalText) ?? ""
+            let sessionID = result["session_id"] as? String ?? ""
+            // Diagnostic: the surface we asked for vs the session the bridge
+            // resolved it to. If these ever look mismatched, this line names the
+            // exact ids to chase (the bridge maps surface → resume_binding →
+            // <checkpoint_id>.jsonl and echoes the resolved session_id back).
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(text.count) chars)")
+            self.claudeTranscriptSession[surfaceID] = sessionID
             self.claudeTranscript[surfaceID] = text
         }
     }

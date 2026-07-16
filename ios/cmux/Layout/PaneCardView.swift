@@ -246,6 +246,14 @@ struct TranscriptSheetView: View {
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.4))
                     .lineLimit(1)
+                // Diagnostic: the session the bridge resolved this surface to.
+                // Lets a "wrong session" report name the exact session at a glance.
+                if let session = appState.claudeTranscriptSession[target.id], !session.isEmpty {
+                    Text("session \(session.prefix(8))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .lineLimit(1)
+                }
             }
             Spacer()
             Button { appState.loadClaudeTranscript(target.id) } label: {

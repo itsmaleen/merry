@@ -508,7 +508,16 @@ struct WorkspaceLayoutView: View {
             browserURL: appState.browserURLs[surface.id] ?? "",
             canOpenHistory: surface.isClaudeAgent,
             onOpenHistory: {
-                appState.presentedHistory = HistoryTarget(id: surface.id, title: surface.title)
+                // Resolve the CURRENTLY focused surface at fire time rather than
+                // capturing this card's `surface`. During a cycle transition the
+                // outgoing focused card stays mounted (and keeps firing scroll
+                // callbacks) for the animation's duration, so a captured id would
+                // open history for the surface you just left. Reading live focus
+                // guarantees history always matches what's on screen.
+                let focused = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
+                    ?? surface
+                guard focused.isClaudeAgent else { return }
+                appState.presentedHistory = HistoryTarget(id: focused.id, title: focused.title)
             }
         )
         .id(surface.id)
