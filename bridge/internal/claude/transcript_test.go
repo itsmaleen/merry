@@ -2,6 +2,8 @@ package claude
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -251,5 +253,71 @@ func TestCapTail(t *testing.T) {
 	}
 	if strings.HasPrefix(got, "ine ") || got[0] == 'x' {
 		t.Fatalf("capTail did not start at a line boundary: %q", got[:20])
+	}
+}
+
+func TestResolveRejectsMaliciousCheckpointID(t *testing.T) {
+	home := t.TempDir()
+	projects := filepath.Join(home, ".claude", "projects", "-proj")
+	if err := os.MkdirAll(projects, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	validID := "dc47b9c2-97b1-4709-8aad-9396b2d7c37c"
+	if err := os.WriteFile(filepath.Join(projects, validID+".jsonl"),
+		[]byte(`{"type":"user","message":{"role":"user","content":"hi"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A secret file outside ~/.claude/projects that traversal might target.
+	secret := filepath.Join(home, "secret.jsonl")
+	if err := os.WriteFile(secret, []byte(`{"type":"user","message":{"role":"user","content":"SECRET"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Resolver{home: home}
+
+	// Valid UUID resolves.
+	if _, supported, sid, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": validID}, 100); err != nil || !supported || sid != validID {
+		t.Fatalf("valid id: supported=%v sid=%q err=%v", supported, sid, err)
+	}
+
+	// Malicious values must NOT resolve to any file (fall through to "" → text empty).
+	for _, bad := range []string{
+		"../../secret",
+		"../../../../../../etc/passwd",
+		"*",
+		"?",
+		"[a-z]",
+		"..",
+		validID + "/../../secret",
+	} {
+		text, supported, _, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": bad}, 100)
+		if err != nil {
+			t.Fatalf("bad id %q returned error %v (should quietly not resolve)", bad, err)
+		}
+		if strings.Contains(text, "SECRET") {
+			t.Fatalf("bad id %q LEAKED the out-of-tree file", bad)
+		}
+		_ = supported
+	}
+}
+
+func TestReadTail(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.txt")
+	content := []byte(strings.Repeat("A", 100) + "TAILMARKER")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// size <= max → full read
+	full, err := readTail(path, int64(len(content)), 1<<20)
+	if err != nil || string(full) != string(content) {
+		t.Fatalf("full read: %v", err)
+	}
+	// size > max → only the tail
+	tail, err := readTail(path, int64(len(content)), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tail) != 20 || !strings.HasSuffix(string(tail), "TAILMARKER") {
+		t.Fatalf("tail read = %q, want last 20 bytes ending TAILMARKER", string(tail))
 	}
 }

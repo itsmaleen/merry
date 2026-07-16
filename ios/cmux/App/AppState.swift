@@ -264,6 +264,13 @@ final class AppState: ObservableObject {
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
+        // Safety net: BridgeClient drops pending completions on disconnect
+        // without calling them, so clear the loading flag on a timeout too —
+        // otherwise the viewer's spinner would hang forever. Both paths do an
+        // idempotent remove, so the race is harmless.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            self?.claudeTranscriptLoading.remove(surfaceID)
+        }
         send(method: "claude.transcript", params: params) { [weak self] result in
             guard let self else { return }
             self.claudeTranscriptLoading.remove(surfaceID)
@@ -481,6 +488,9 @@ extension AppState: BridgeClientDelegate {
 
     func clientDidDisconnect(_ client: BridgeClient, error: Error?) {
         connectionStatus = .reconnecting
+        // In-flight transcript RPCs will never complete now; clear their loading
+        // flags so the history viewer doesn't hang on a spinner.
+        claudeTranscriptLoading.removeAll()
     }
 
     func clientDidReceiveMessage(_ client: BridgeClient, message: BridgeMessage) {

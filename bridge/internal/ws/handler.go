@@ -174,6 +174,9 @@ func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver 
 	maxMessages := 200
 	if v, ok := cmd.Params["max_messages"].(float64); ok && v > 0 {
 		maxMessages = int(v)
+		if maxMessages > 2000 {
+			maxMessages = 2000 // bound client-supplied work
+		}
 	}
 
 	text, supported, sessionID, err := resolver.Render(resumeBinding, maxMessages)

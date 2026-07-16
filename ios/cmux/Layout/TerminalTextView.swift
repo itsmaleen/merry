@@ -139,11 +139,17 @@ struct TerminalTextView: UIViewRepresentable {
             let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
             autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
 
-            // Report reaching the top so the history hint appears only then.
-            let nowAtTop = scrollView.contentOffset.y <= 4
-            if nowAtTop != atTop {
-                atTop = nowAtTop
-                onTopStateChanged?(nowAtTop)
+            // Report reaching the top so the history hint appears only then —
+            // but only for USER-driven scrolls. A programmatic setContentOffset
+            // (e.g. the prepend anchor) also lands here synchronously inside
+            // updateUIView; mutating SwiftUI @State from there is a "modifying
+            // state during view update" violation.
+            if scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating {
+                let nowAtTop = scrollView.contentOffset.y <= 4
+                if nowAtTop != atTop {
+                    atTop = nowAtTop
+                    onTopStateChanged?(nowAtTop)
+                }
             }
 
             // Trigger history on a deliberate over-scroll PAST the top — a

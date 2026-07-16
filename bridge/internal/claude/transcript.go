@@ -4,10 +4,22 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
+
+// sessionIDPattern matches a Claude session UUID. checkpoint_id comes from
+// cmux's surface metadata and is interpolated into a filesystem glob, so it is
+// validated to this shape first — otherwise `../` or glob metacharacters
+// (`*`, `?`, `[`) could escape ~/.claude/projects or match unintended files.
+var sessionIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// maxTranscriptFileBytes bounds how much of a transcript file is read into
+// memory. Claude session files grow forward, so for a larger file only the
+// tail (most recent conversation) is read.
+const maxTranscriptFileBytes = 32 * 1024 * 1024
 
 // cacheEntry holds an already-rendered transcript with its file identity.
 type cacheEntry struct {
@@ -66,7 +78,7 @@ func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (text s
 		}
 	}
 
-	data, err := os.ReadFile(transcriptPath)
+	data, err := readTail(transcriptPath, info.Size(), maxTranscriptFileBytes)
 	if err != nil {
 		return "", true, sessionID, err
 	}
@@ -93,13 +105,16 @@ func (r *Resolver) resolveTranscriptPath(rb map[string]any) (string, error) {
 	projectsDir := filepath.Join(r.home, ".claude", "projects")
 
 	// Strategy 1: the checkpoint_id names the surface's exact session file.
-	if checkpointID, _ := rb["checkpoint_id"].(string); checkpointID != "" {
+	// Only accept a well-formed session UUID — it's interpolated into a glob,
+	// so `../` or `*?[` in a malformed value must never reach the filesystem.
+	if checkpointID, _ := rb["checkpoint_id"].(string); sessionIDPattern.MatchString(checkpointID) {
 		pattern := filepath.Join(projectsDir, "*", checkpointID+".jsonl")
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			return "", err
 		}
-		if len(matches) > 0 {
+		// Defense in depth: the match must resolve inside projectsDir.
+		if len(matches) > 0 && isWithin(projectsDir, matches[0]) {
 			return matches[0], nil
 		}
 	}
@@ -114,6 +129,36 @@ func (r *Resolver) resolveTranscriptPath(rb map[string]any) (string, error) {
 	}
 
 	return "", nil
+}
+
+// readTail reads at most maxBytes from the end of the file at path. Claude
+// session files grow forward, so the tail is the most recent conversation and
+// this bounds memory for very large sessions. A partial first line (from
+// cutting mid-line) is harmless — renderJSONL skips unparseable lines.
+func readTail(path string, size, maxBytes int64) ([]byte, error) {
+	if size <= maxBytes {
+		return os.ReadFile(path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	buf := make([]byte, maxBytes)
+	n, err := f.ReadAt(buf, size-maxBytes)
+	if err != nil && n == 0 {
+		return nil, err
+	}
+	return buf[:n], nil
+}
+
+// isWithin reports whether path is inside dir (or equal to it).
+func isWithin(dir, path string) bool {
+	rel, err := filepath.Rel(dir, filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // encodeCWD converts an absolute cwd path to the Claude project directory name.
@@ -185,8 +230,8 @@ func capTail(s string) string {
 // result is byte-capped to the most recent maxRenderBytes.
 func renderJSONL(data []byte, maxMessages int) string {
 	type msg struct {
-		role string
-		text string
+		isUser bool
+		text   string
 	}
 
 	var messages []msg
@@ -206,7 +251,9 @@ func renderJSONL(data []byte, maxMessages int) string {
 		if strings.TrimSpace(text) == "" {
 			continue
 		}
-		messages = append(messages, msg{role: line.Message.Role, text: text})
+		// Header comes from the validated line.Type, not message.role, which
+		// can be absent/unexpected on some events.
+		messages = append(messages, msg{isUser: line.Type == "user", text: text})
 	}
 
 	// Keep only the last maxMessages.
@@ -216,11 +263,9 @@ func renderJSONL(data []byte, maxMessages int) string {
 
 	var sb strings.Builder
 	for i, m := range messages {
-		var header string
-		if m.role == "user" {
+		header := "⏺ Claude"
+		if m.isUser {
 			header = "› You"
-		} else {
-			header = "⏺ Claude"
 		}
 		if i > 0 {
 			sb.WriteByte('\n')
