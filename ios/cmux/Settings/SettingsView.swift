@@ -15,6 +15,33 @@ struct SettingsView: View {
                     if let creds = credentials {
                         LabeledContent("Host", value: creds.host)
                         LabeledContent("Port", value: "\(creds.port)")
+
+                        // Remote-access clarity: a pairing without a tailnet host
+                        // only works on the same Wi-Fi and otherwise sits on
+                        // "reconnecting". Make that state obvious and actionable.
+                        if let ts = creds.tailscaleHost, !ts.isEmpty {
+                            LabeledContent {
+                                Label("On", systemImage: "checkmark.circle.fill")
+                                    .labelStyle(.iconOnly)
+                                    .foregroundStyle(.green)
+                            } label: {
+                                Text("Remote access")
+                            }
+                            Text("Tailnet: \(ts)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            LabeledContent {
+                                Label("Off", systemImage: "exclamationmark.triangle.fill")
+                                    .labelStyle(.iconOnly)
+                                    .foregroundStyle(.orange)
+                            } label: {
+                                Text("Remote access")
+                            }
+                            Text("This pairing is LAN-only, so the app can't connect off Wi-Fi. To enable remote access, run `cmux-bridge --pair --tailscale` on your Mac and scan the new QR with “Pair new device”.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
