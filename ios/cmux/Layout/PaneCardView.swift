@@ -10,6 +10,10 @@ struct PaneCardView: View {
     var contentScale: CGFloat = 1.0
     var isBrowser: Bool = false
     var browserURL: String = ""
+    /// When true, scrolling to the top of a focused card opens conversation
+    /// history (claude agent surfaces).
+    var canOpenHistory: Bool = false
+    var onOpenHistory: (() -> Void)?
     @State private var notificationPulse = false
 
     var body: some View {
@@ -113,13 +117,33 @@ struct PaneCardView: View {
 
     private var terminalContentView: some View {
         // UITextView-backed so output is selectable (copy) and URLs are tappable.
-        // For the focused surface the polled text already includes scrollback,
-        // so scrolling up just works — no on-demand loading needed.
+        // On a focused claude card, pulling to the top opens the conversation
+        // history viewer (the terminal itself only shows claude's live viewport).
         TerminalTextView(
             text: terminalText,
             fontSize: (isFocused ? 9 : 7) * contentScale,
-            textOpacity: isFocused ? 0.85 : 0.5
+            textOpacity: isFocused ? 0.85 : 0.5,
+            onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil
         )
+        .overlay(alignment: .top) {
+            if isFocused && canOpenHistory {
+                historyHint.padding(.top, 4)
+            }
+        }
+    }
+
+    private var historyHint: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 8, weight: .semibold))
+            Text("pull for history")
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+        }
+        .foregroundStyle(.white.opacity(0.45))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
+        .allowsHitTesting(false)
     }
 
     // MARK: - Title bar
@@ -174,5 +198,82 @@ struct PaneCardView: View {
         if hasNotification { return Color.orange.opacity(0.6) }
         if isFocused { return Color.white.opacity(0.5) }
         return Color.white.opacity(0.08)
+    }
+}
+
+/// Identifies which surface's conversation history to present full-screen.
+struct HistoryTarget: Identifiable, Equatable {
+    let id: String
+    let title: String
+}
+
+/// Full-screen viewer for a claude surface's conversation transcript. Loads on
+/// appear, opens pinned to the latest exchange, scroll up for older history.
+struct TranscriptSheetView: View {
+    @EnvironmentObject var appState: AppState
+    let target: HistoryTarget
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                Divider().overlay(Color.white.opacity(0.1))
+                body(for: appState.claudeTranscript[target.id] ?? "")
+            }
+        }
+        .onAppear {
+            if appState.claudeTranscript[target.id] == nil {
+                appState.loadClaudeTranscript(target.id)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Conversation history")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Text(target.title)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button { appState.loadClaudeTranscript(target.id) } label: {
+                Image(systemName: "arrow.clockwise").font(.system(size: 15))
+            }
+            .tint(.white.opacity(0.6))
+            .disabled(appState.claudeTranscriptLoading.contains(target.id))
+            Button { appState.presentedHistory = nil } label: {
+                Image(systemName: "xmark.circle.fill").font(.system(size: 22))
+            }
+            .tint(.white.opacity(0.5))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func body(for text: String) -> some View {
+        if text.isEmpty {
+            VStack(spacing: 10) {
+                if appState.claudeTranscriptLoading.contains(target.id) {
+                    ProgressView().tint(.white.opacity(0.4))
+                    Text("Loading history…")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.3))
+                } else {
+                    Text("No conversation history")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            TerminalTextView(text: text, fontSize: 12.5, textOpacity: 0.9)
+                .padding(.horizontal, 4)
+        }
     }
 }

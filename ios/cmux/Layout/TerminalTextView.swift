@@ -9,6 +9,9 @@ struct TerminalTextView: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
     let textOpacity: Double
+    /// Fired (throttled) when the user scrolls to / pulls past the top — the
+    /// hook for opening the conversation-history viewer.
+    var onScrolledToTop: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -29,11 +32,13 @@ struct TerminalTextView: UIViewRepresentable {
         tv.autocapitalizationType = .none
         tv.attributedText = attributed()
         context.coordinator.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
+        context.coordinator.onScrolledToTop = onScrolledToTop
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
         let coord = context.coordinator
+        coord.onScrolledToTop = onScrolledToTop
         // Compare against what we last applied, NOT tv.attributedText: with
         // dataDetectorTypes the view injects link attributes into its own
         // attributedText, so reading it back never equals a freshly built plain
@@ -102,6 +107,8 @@ struct TerminalTextView: UIViewRepresentable {
         /// True while the user is at (or near) the bottom; false once they
         /// scroll up to read scrollback.
         var autoScroll = true
+        var onScrolledToTop: (() -> Void)?
+        private var lastTopFire: TimeInterval = 0
 
         // Last values actually applied to the text view, for change detection.
         private(set) var lastText: String?
@@ -118,6 +125,22 @@ struct TerminalTextView: UIViewRepresentable {
             let threshold: CGFloat = 24
             let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
             autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
+
+            // Fire the top hook on a deliberate user pull-to-top. When the
+            // content is short (a claude viewport barely fills the card) there's
+            // no room to scroll up, so accept a pull-down bounce (offset < -40).
+            guard let onScrolledToTop,
+                  scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
+            else { return }
+            let atTop = maxOffset > 0
+                ? scrollView.contentOffset.y < 8
+                : scrollView.contentOffset.y < -40
+            guard atTop else { return }
+            let now = Date().timeIntervalSinceReferenceDate
+            if now - lastTopFire > 1.5 {
+                lastTopFire = now
+                onScrolledToTop()
+            }
         }
     }
 }

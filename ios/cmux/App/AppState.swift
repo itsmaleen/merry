@@ -18,15 +18,13 @@ final class AppState: ObservableObject {
     @Published var browserURLs: [String: String] = [:]
 
     private var lastFocusedSurface: [String: String] = [:]
-    // Classification cache: claude-agent surfaces get their history from the
-    // claude session transcript (the terminal only shows a 24-row viewport);
-    // everything else reads terminal text. A surface starts unknown and is
-    // classified on first probe.
-    private var claudeSurfaces: Set<String> = []
-    private var nonClaudeSurfaces: Set<String> = []
-
-    func isKnownClaudeSurface(_ id: String) -> Bool { claudeSurfaces.contains(id) }
-    func isKnownNonClaudeSurface(_ id: String) -> Bool { nonClaudeSurfaces.contains(id) }
+    // Claude conversation transcripts, loaded on demand for the full-screen
+    // history viewer (kept separate from surfaceContent, which mirrors the live
+    // terminal). Keyed by surface ID.
+    @Published var claudeTranscript: [String: String] = [:]
+    @Published var claudeTranscriptLoading: Set<String> = []
+    // Non-nil while the full-screen conversation-history viewer is presented.
+    @Published var presentedHistory: HistoryTarget?
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -157,15 +155,10 @@ final class AppState: ObservableObject {
         if let wsID = currentWorkspaceID {
             lastFocusedSurface[wsID] = id
         }
-        // Immediately populate the newly focused surface so its history is there
-        // to scroll through right away. Claude surfaces get their transcript;
-        // everything else a deep terminal read (the probe auto-falls back).
+        // Immediately deep-read the newly focused surface so its content is
+        // there right away instead of waiting for the next poll.
         if surfaces.first(where: { $0.id == id })?.isBrowser != true {
-            if isKnownNonClaudeSurface(id) {
-                readSurfaceText(id, lines: Self.focusedHistoryLines)
-            } else {
-                readClaudeTranscript(id, fallbackLines: Self.focusedHistoryLines)
-            }
+            readSurfaceText(id, lines: Self.focusedHistoryLines)
         }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
@@ -260,33 +253,22 @@ final class AppState: ObservableObject {
     /// stalls the socket or an attributed string UITextView can't lay out.
     static let focusedHistoryLines = 1500
 
-    /// Fetches a claude surface's conversation history from its session
-    /// transcript (via the bridge's `claude.transcript`). Claude runs as a
-    /// full-screen TUI, so its terminal exposes no scrollback — the transcript
-    /// is the real history. If the surface isn't a claude agent, classifies it
-    /// as such and falls back to a normal terminal read.
-    func readClaudeTranscript(_ surfaceID: String, fallbackLines: Int) {
-        var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 200]
+    /// Loads a claude surface's conversation history from its session transcript
+    /// (via the bridge's `claude.transcript`) into `claudeTranscript`, for the
+    /// full-screen history viewer. Claude runs as a full-screen TUI whose
+    /// terminal exposes no scrollback, so the transcript is the real history.
+    func loadClaudeTranscript(_ surfaceID: String) {
+        guard !claudeTranscriptLoading.contains(surfaceID) else { return }
+        claudeTranscriptLoading.insert(surfaceID)
+        var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 300]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
         send(method: "claude.transcript", params: params) { [weak self] result in
             guard let self else { return }
-            let supported = result["supported"] as? Bool ?? false
-            guard supported else {
-                self.nonClaudeSurfaces.insert(surfaceID)
-                self.claudeSurfaces.remove(surfaceID)
-                self.readSurfaceText(surfaceID, lines: fallbackLines)
-                return
-            }
-            self.claudeSurfaces.insert(surfaceID)
-            self.nonClaudeSurfaces.remove(surfaceID)
-            if let text = result["text"] as? String, !text.isEmpty {
-                let content = Self.capHistoryLines(Self.trimTerminalText(text))
-                if self.surfaceContent[surfaceID] != content {
-                    self.surfaceContent[surfaceID] = content
-                }
-            }
+            self.claudeTranscriptLoading.remove(surfaceID)
+            let text = (result["text"] as? String).map(Self.trimTerminalText) ?? ""
+            self.claudeTranscript[surfaceID] = text
         }
     }
 
@@ -575,8 +557,12 @@ struct Surface: Identifiable {
     let type: String
     let workspaceID: String?
     let isFocused: Bool
+    /// Agent kind from cmux's resume_binding (e.g. "claude"), when this surface
+    /// is running an agent. Used to offer conversation-transcript history.
+    let agentKind: String?
 
     var isBrowser: Bool { type == "browser" }
+    var isClaudeAgent: Bool { agentKind == "claude" }
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
@@ -585,6 +571,7 @@ struct Surface: Identifiable {
         self.title = (dict["title"] as? String) ?? self.type
         self.workspaceID = dict["workspace_id"] as? String
         self.isFocused = dict["is_focused"] as? Bool ?? false
+        self.agentKind = (dict["resume_binding"] as? [String: Any])?["kind"] as? String
     }
 }
 

@@ -240,6 +240,10 @@ struct WorkspaceLayoutView: View {
                 }
             }
         }
+        .fullScreenCover(item: $appState.presentedHistory) { target in
+            TranscriptSheetView(target: target)
+                .environmentObject(appState)
+        }
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: quickAction.isOpen)
         .onChange(of: appState.notifications.count) { oldCount, newCount in
             if newCount > oldCount {
@@ -502,6 +506,10 @@ struct WorkspaceLayoutView: View {
             contentScale: contentScale,
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
+            canOpenHistory: surface.isClaudeAgent,
+            onOpenHistory: {
+                appState.presentedHistory = HistoryTarget(id: surface.id, title: surface.title)
+            }
         )
         .id(surface.id)
         .transition(.asymmetric(
@@ -728,26 +736,13 @@ struct WorkspaceLayoutView: View {
     private func fetchContent(for surface: Surface) {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
-            return
-        }
-        let focused = surface.id == appState.focusedSurfaceID
-        if appState.isKnownNonClaudeSurface(surface.id) {
-            // Terminal surface: deep read when focused (scrollback), cheap preview otherwise.
-            appState.readSurfaceText(surface.id, lines: focused ? AppState.focusedHistoryLines : 50)
-        } else if focused {
-            if appState.isKnownClaudeSurface(surface.id) {
-                // Transcript pulls can be large; refresh every 3rd cycle (~9s).
-                // Focus change already triggers an immediate fetch.
-                if pollCycleCount % 3 == 0 {
-                    appState.readClaudeTranscript(surface.id, fallbackLines: AppState.focusedHistoryLines)
-                }
-            } else {
-                // Not yet classified — probe (classifies + falls back if needed).
-                appState.readClaudeTranscript(surface.id, fallbackLines: AppState.focusedHistoryLines)
-            }
         } else {
-            // Background, not yet known to be claude: cheap viewport preview.
-            appState.readSurfaceText(surface.id, lines: 50)
+            // Live terminal mirror: deep read when focused (scrollback for plain
+            // shells), cheap preview otherwise. Claude conversation history is a
+            // separate on-demand full-screen viewer, not this inline content.
+            let lines = surface.id == appState.focusedSurfaceID
+                ? AppState.focusedHistoryLines : 50
+            appState.readSurfaceText(surface.id, lines: lines)
         }
     }
 
