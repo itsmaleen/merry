@@ -1,0 +1,21 @@
+There's some issue around scroll up to load history as in the Claude transcript. It’s consistently using the wrong session and showing incorrect transcript
+
+---
+
+looks like I can't connect to cmux without being on the same wifi, why isn't tailscale setup?
+
+---
+
+it's not working, stuck on reconnecting
+
+---
+
+it's not working, stuck on reconnecting
+
+---
+
+yes make it clearer, looks like it works now
+
+---
+
+commit as a few separate commits

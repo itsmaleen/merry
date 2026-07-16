@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "d37087675159",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "bridge/internal/pair/qr.go",
+    "ios/cmux/Settings/SettingsView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d3/7087675159/0/metadata.json",
+      "transcript": "/d3/7087675159/0/full.jsonl",
+      "compact_transcript": "/d3/7087675159/0/transcript.jsonl",
+      "content_hash": "/d3/7087675159/0/content_hash.txt",
+      "prompt": "/d3/7087675159/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9062,
+    "cache_creation_tokens": 307005,
+    "cache_read_tokens": 13527877,
+    "output_tokens": 106077,
+    "api_call_count": 111
+  }
+}
