@@ -7,6 +7,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
@@ -45,6 +46,7 @@ func handleClient(
 	poll *poller.Poller,
 	cmuxClient *socket.Client,
 	cmuxConnected func() bool,
+	resolver *claude.Resolver,
 ) {
 	if !validateBearer(r, token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -113,11 +115,88 @@ func handleClient(
 			if !ok {
 				return
 			}
-			resp := proxyCommand(cmd, cmuxClient, poll)
+			var resp commandResponse
+			if cmd.Method == "claude.transcript" {
+				resp = handleClaudeTranscript(cmd, cmuxClient, resolver)
+			} else {
+				resp = proxyCommand(cmd, cmuxClient, poll)
+			}
 			if err := wsjson.Write(ctx, conn, resp); err != nil {
 				return
 			}
 		}
+	}
+}
+
+func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver *claude.Resolver) commandResponse {
+	surfaceID, _ := cmd.Params["surface_id"].(string)
+
+	// Build surface.list params, forwarding workspace_id if provided.
+	listParams := map[string]any{}
+	if wsID, ok := cmd.Params["workspace_id"]; ok {
+		listParams["workspace_id"] = wsID
+	}
+
+	listResult, err := client.Send("surface.list", listParams)
+	if err != nil {
+		return commandResponse{
+			ID: cmd.ID,
+			OK: false,
+			Error: &rpcError{
+				Code:    "transcript_error",
+				Message: err.Error(),
+			},
+		}
+	}
+
+	var listPayload struct {
+		Surfaces []map[string]any `json:"surfaces"`
+	}
+	if err := json.Unmarshal(listResult, &listPayload); err != nil {
+		return commandResponse{
+			ID: cmd.ID,
+			OK: false,
+			Error: &rpcError{
+				Code:    "transcript_error",
+				Message: "parse surface.list: " + err.Error(),
+			},
+		}
+	}
+
+	var resumeBinding map[string]any
+	for _, s := range listPayload.Surfaces {
+		if id, _ := s["id"].(string); id == surfaceID {
+			resumeBinding, _ = s["resume_binding"].(map[string]any)
+			break
+		}
+	}
+
+	maxMessages := 200
+	if v, ok := cmd.Params["max_messages"].(float64); ok && v > 0 {
+		maxMessages = int(v)
+	}
+
+	text, supported, sessionID, err := resolver.Render(resumeBinding, maxMessages)
+	if err != nil {
+		return commandResponse{
+			ID: cmd.ID,
+			OK: false,
+			Error: &rpcError{
+				Code:    "transcript_error",
+				Message: err.Error(),
+			},
+		}
+	}
+
+	result, _ := json.Marshal(map[string]any{
+		"supported":  supported,
+		"text":       text,
+		"session_id": sessionID,
+	})
+	return commandResponse{
+		ID:     cmd.ID,
+		OK:     true,
+		Result: json.RawMessage(result),
 	}
 }
 
