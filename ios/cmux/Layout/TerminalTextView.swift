@@ -9,9 +9,12 @@ struct TerminalTextView: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
     let textOpacity: Double
-    /// Fired (throttled) when the user scrolls to / pulls past the top — the
-    /// hook for opening the conversation-history viewer.
+    /// Fired (throttled) when the user deliberately over-scrolls past the top
+    /// (a rubber-band pull) — the hook for opening the conversation-history viewer.
     var onScrolledToTop: (() -> Void)? = nil
+    /// Reports whether the content is scrolled to its top, so callers can show a
+    /// "pull for history" affordance only when it's actually reachable.
+    var onTopStateChanged: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -33,12 +36,20 @@ struct TerminalTextView: UIViewRepresentable {
         tv.attributedText = attributed()
         context.coordinator.recordApplied(text: text, fontSize: fontSize, opacity: textOpacity)
         context.coordinator.onScrolledToTop = onScrolledToTop
+        context.coordinator.onTopStateChanged = onTopStateChanged
+        // Content is often already present at creation (cached surfaceContent);
+        // updateUIView would then early-return without scrolling, leaving the
+        // view pinned to the TOP. Scroll to the bottom so the latest output shows.
+        if !text.isEmpty {
+            scrollToBottom(tv)
+        }
         return tv
     }
 
     func updateUIView(_ tv: UITextView, context: Context) {
         let coord = context.coordinator
         coord.onScrolledToTop = onScrolledToTop
+        coord.onTopStateChanged = onTopStateChanged
         // Compare against what we last applied, NOT tv.attributedText: with
         // dataDetectorTypes the view injects link attributes into its own
         // attributedText, so reading it back never equals a freshly built plain
@@ -108,7 +119,9 @@ struct TerminalTextView: UIViewRepresentable {
         /// scroll up to read scrollback.
         var autoScroll = true
         var onScrolledToTop: (() -> Void)?
+        var onTopStateChanged: ((Bool) -> Void)?
         private var lastTopFire: TimeInterval = 0
+        private var atTop = false
 
         // Last values actually applied to the text view, for change detection.
         private(set) var lastText: String?
@@ -126,16 +139,19 @@ struct TerminalTextView: UIViewRepresentable {
             let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
             autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
 
-            // Fire the top hook on a deliberate user pull-to-top. When the
-            // content is short (a claude viewport barely fills the card) there's
-            // no room to scroll up, so accept a pull-down bounce (offset < -40).
+            // Report reaching the top so the history hint appears only then.
+            let nowAtTop = scrollView.contentOffset.y <= 4
+            if nowAtTop != atTop {
+                atTop = nowAtTop
+                onTopStateChanged?(nowAtTop)
+            }
+
+            // Trigger history on a deliberate over-scroll PAST the top — a
+            // rubber-band pull (offset well negative), not just reaching the top.
             guard let onScrolledToTop,
-                  scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
+                  scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating,
+                  scrollView.contentOffset.y < -70
             else { return }
-            let atTop = maxOffset > 0
-                ? scrollView.contentOffset.y < 8
-                : scrollView.contentOffset.y < -40
-            guard atTop else { return }
             let now = Date().timeIntervalSinceReferenceDate
             if now - lastTopFire > 1.5 {
                 lastTopFire = now

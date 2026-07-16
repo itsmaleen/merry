@@ -15,6 +15,7 @@ struct PaneCardView: View {
     var canOpenHistory: Bool = false
     var onOpenHistory: (() -> Void)?
     @State private var notificationPulse = false
+    @State private var terminalAtTop = false
 
     var body: some View {
         ZStack {
@@ -123,23 +124,29 @@ struct PaneCardView: View {
             text: terminalText,
             fontSize: (isFocused ? 9 : 7) * contentScale,
             textOpacity: isFocused ? 0.85 : 0.5,
-            onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil
+            onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil,
+            onTopStateChanged: (isFocused && canOpenHistory) ? { terminalAtTop = $0 } : nil
         )
         .overlay(alignment: .top) {
-            if isFocused && canOpenHistory {
-                historyHint.padding(.top, 4)
+            // Only surface the affordance once the user is at the top; a further
+            // pull-up past the top opens history.
+            if isFocused && canOpenHistory && terminalAtTop {
+                historyHint
+                    .padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: terminalAtTop)
     }
 
     private var historyHint: some View {
         HStack(spacing: 5) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 8, weight: .semibold))
-            Text("pull for history")
+            Text("pull up for history")
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
         }
-        .foregroundStyle(.white.opacity(0.45))
+        .foregroundStyle(.white.opacity(0.5))
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))

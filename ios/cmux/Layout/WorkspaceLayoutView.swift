@@ -523,19 +523,26 @@ struct WorkspaceLayoutView: View {
             DragGesture(minimumDistance: 50)
                 .onEnded { value in
                     guard !quickAction.isOpen else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    // Only act on a clearly horizontal swipe. Vertical/diagonal
+                    // drags are terminal scrolling — a scroll must never switch
+                    // surfaces. Require real horizontal travel AND horizontal
+                    // dominance over vertical.
+                    guard abs(dx) > 60, abs(dx) > abs(dy) * 1.8 else { return }
                     if speechManager.isRecording {
-                        // Swipe while recording opens transcript editor
+                        // Horizontal swipe while recording opens transcript editor
                         editingText = speechManager.stop()
                         volumeHandler.clearSpeechState()
                         isEditingTranscript = true
                         return
                     }
-                    if value.translation.width < -50 {
+                    if dx < 0 {
                         cycleDirection = .trailing
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             appState.cycleSurface()
                         }
-                    } else if value.translation.width > 50 {
+                    } else {
                         cycleDirection = .leading
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             appState.cycleSurfaceBackward()
