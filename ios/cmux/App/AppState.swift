@@ -18,6 +18,15 @@ final class AppState: ObservableObject {
     @Published var browserURLs: [String: String] = [:]
 
     private var lastFocusedSurface: [String: String] = [:]
+    // Classification cache: claude-agent surfaces get their history from the
+    // claude session transcript (the terminal only shows a 24-row viewport);
+    // everything else reads terminal text. A surface starts unknown and is
+    // classified on first probe.
+    private var claudeSurfaces: Set<String> = []
+    private var nonClaudeSurfaces: Set<String> = []
+
+    func isKnownClaudeSurface(_ id: String) -> Bool { claudeSurfaces.contains(id) }
+    func isKnownNonClaudeSurface(_ id: String) -> Bool { nonClaudeSurfaces.contains(id) }
     private let pairingStore = PairingStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -148,11 +157,15 @@ final class AppState: ObservableObject {
         if let wsID = currentWorkspaceID {
             lastFocusedSurface[wsID] = id
         }
-        // Immediately deep-read the newly focused surface so its scrollback is
-        // there to scroll through right away, instead of showing the shallow
-        // preview until the next 3s poll upgrades it.
+        // Immediately populate the newly focused surface so its history is there
+        // to scroll through right away. Claude surfaces get their transcript;
+        // everything else a deep terminal read (the probe auto-falls back).
         if surfaces.first(where: { $0.id == id })?.isBrowser != true {
-            readSurfaceText(id, lines: Self.focusedHistoryLines)
+            if isKnownNonClaudeSurface(id) {
+                readSurfaceText(id, lines: Self.focusedHistoryLines)
+            } else {
+                readClaudeTranscript(id, fallbackLines: Self.focusedHistoryLines)
+            }
         }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
@@ -246,6 +259,36 @@ final class AppState: ObservableObject {
     /// back through, bounded so a huge scrollback can't produce a payload that
     /// stalls the socket or an attributed string UITextView can't lay out.
     static let focusedHistoryLines = 1500
+
+    /// Fetches a claude surface's conversation history from its session
+    /// transcript (via the bridge's `claude.transcript`). Claude runs as a
+    /// full-screen TUI, so its terminal exposes no scrollback — the transcript
+    /// is the real history. If the surface isn't a claude agent, classifies it
+    /// as such and falls back to a normal terminal read.
+    func readClaudeTranscript(_ surfaceID: String, fallbackLines: Int) {
+        var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 200]
+        if let wsID = currentWorkspaceID {
+            params["workspace_id"] = wsID
+        }
+        send(method: "claude.transcript", params: params) { [weak self] result in
+            guard let self else { return }
+            let supported = result["supported"] as? Bool ?? false
+            guard supported else {
+                self.nonClaudeSurfaces.insert(surfaceID)
+                self.claudeSurfaces.remove(surfaceID)
+                self.readSurfaceText(surfaceID, lines: fallbackLines)
+                return
+            }
+            self.claudeSurfaces.insert(surfaceID)
+            self.nonClaudeSurfaces.remove(surfaceID)
+            if let text = result["text"] as? String, !text.isEmpty {
+                let content = Self.capHistoryLines(Self.trimTerminalText(text))
+                if self.surfaceContent[surfaceID] != content {
+                    self.surfaceContent[surfaceID] = content
+                }
+            }
+        }
+    }
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
     nonisolated private static func trimTerminalText(_ text: String) -> String {
