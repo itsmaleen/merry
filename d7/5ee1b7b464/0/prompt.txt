@@ -1,0 +1,17 @@
+At some point we had a version that was able to scroll up to load the Claude code history when and why did we lose it. Also noticing that the record feature now is not showing the transcript as speech to text is happening
+
+---
+
+/efficient-fable 
+- Drive claude's own scroll
+- and yes when I start recording I see the red "REC" indicator and in the Xcode console I see [Speech] transcript: … lines
+
+---
+
+tried scrolling up to load but nothing happens, I think that UI/UX is broken
+
+---
+
+right now the UX is off because 1) the claude transcript doesn't show as nicely as just showing the cmux version 2) it shows like mid transcript
+
+so let's instead go back to showing what we did before (showing the cmux content) and then have an on scroll to the top i.e. load history open up a window that takes up whole screen that allows us to scroll through the transcript like we currently can. Can close the window to go back to the original view.
