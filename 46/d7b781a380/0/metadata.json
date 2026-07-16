@@ -1,0 +1,219 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "46d7b781a380",
+  "session_id": "7c942a60-99ca-4360-90d7-b2e0cc03964b",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-16T03:46:59.336966Z",
+  "branch": "review/claude-history-ux-hardening",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "bridge/internal/claude/transcript.go",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/TerminalTextView.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "554092cc45fd",
+  "token_usage": {
+    "input_tokens": 28059,
+    "cache_creation_tokens": 1125142,
+    "cache_read_tokens": 98911826,
+    "output_tokens": 366163,
+    "api_call_count": 319
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-loop-2026-07-15T04:12:29.569741Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "ce4d2cd2428c",
+      "timestamp": "2026-07-15T04:12:29.569741Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-loop-2026-07-15T05:10:01.208683Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "3f031a29e31f",
+      "timestamp": "2026-07-15T05:10:01.208683Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-loop-2026-07-15T14:31:12.508353Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "bc321b110147",
+      "timestamp": "2026-07-15T14:31:12.508353Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-efficient-fable-2026-07-15T23:56:19.652809Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "efficient-fable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "13c1200073f8",
+      "timestamp": "2026-07-15T23:56:19.652809Z",
+      "native": {
+        "command": "/efficient-fable"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/efficient-fable",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-loop-2026-07-16T02:36:21.629841Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "fed354d28296",
+      "timestamp": "2026-07-16T02:36:21.629841Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-efficient-fable-2026-07-16T03:36:19.762958Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "efficient-fable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "b56101690f45",
+      "timestamp": "2026-07-16T03:36:19.762958Z",
+      "native": {
+        "command": "/efficient-fable"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/efficient-fable",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_014oFPxdNyQGM5itCm9sCmeE",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "efficient-fable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "554092cc45fd",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 23,
+        "end": 24,
+        "entry_ids": [
+          "8c7d5a08-f031-4aca-87bd-09dc08104606"
+        ],
+        "tool_use_id": "toolu_014oFPxdNyQGM5itCm9sCmeE"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_014oFPxdNyQGM5itCm9sCmeE"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: efficient-fable",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-16T03:46:59.154594Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 132,
+    "human_modified": 15,
+    "human_removed": 0,
+    "total_committed": 132,
+    "total_lines_changed": 147,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 16,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 15
+      }
+    }
+  ]
+}
