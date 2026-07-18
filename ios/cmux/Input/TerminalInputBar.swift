@@ -39,6 +39,8 @@ struct TerminalInputBar: View {
         let action: KeyAction
         // Lowercase aliases the compose field can filter on as you type.
         let terms: [String]
+        // Space gets a wider chip so it reads as a spacebar.
+        var isWide: Bool = false
         var id: String { label }
     }
 
@@ -47,7 +49,7 @@ struct TerminalInputBar: View {
     private let controlKeys: [ControlKey] = [
         ControlKey(label: "esc", action: .key("Escape"), terms: ["esc", "escape"]),
         ControlKey(label: "⏎",   action: .key("enter"),  terms: ["enter", "return", "cr"]),
-        ControlKey(label: "␣",   action: .text(" "),     terms: ["space", "spacebar", "spc"]),
+        ControlKey(label: "␣",   action: .text(" "),     terms: ["space", "spacebar", "spc"], isWide: true),
         ControlKey(label: "⇥",   action: .key("Tab"),    terms: ["tab"]),
         ControlKey(label: "⌃C",  action: .key("ctrl+c"), terms: ["ctrl+c", "ctrlc", "^c", "interrupt"]),
         ControlKey(label: "⌃D",  action: .key("ctrl+d"), terms: ["ctrl+d", "ctrld", "^d", "eof"]),
@@ -264,8 +266,7 @@ struct TerminalInputBar: View {
             Text(ck.label)
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.75))
-                // The spacebar reads as a spacebar: a wider chip.
-                .frame(minWidth: ck.label == "␣" ? 72 : 34)
+                .frame(minWidth: ck.isWide ? 72 : 34)
                 .padding(.vertical, 6)
                 .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.08)))
         }
