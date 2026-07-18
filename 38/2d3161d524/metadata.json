@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "382d3161d524",
+  "strategy": "manual-commit",
+  "branch": "feat/keyboard-input-options",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Input/TerminalInputBar.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/38/2d3161d524/0/metadata.json",
+      "transcript": "/38/2d3161d524/0/full.jsonl",
+      "compact_transcript": "/38/2d3161d524/0/transcript.jsonl",
+      "content_hash": "/38/2d3161d524/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 361,
+    "cache_creation_tokens": 17520,
+    "cache_read_tokens": 585905,
+    "output_tokens": 6988,
+    "api_call_count": 10
+  }
+}

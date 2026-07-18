@@ -1,0 +1,73 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "382d3161d524",
+  "session_id": "fa685640-0e5e-4f4f-8288-8274f42ffe70",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-18T18:25:17.96133Z",
+  "branch": "feat/keyboard-input-options",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Input/TerminalInputBar.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8[1m]",
+  "turn_id": "9b77f1a4c7eb",
+  "checkpoint_transcript_start": 91,
+  "transcript_lines_at_start": 91,
+  "token_usage": {
+    "input_tokens": 361,
+    "cache_creation_tokens": 17520,
+    "cache_read_tokens": 585905,
+    "output_tokens": 6988,
+    "api_call_count": 10
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_018weuMCVxFEFXsd9P8mSKhH",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "code-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9b77f1a4c7eb",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 98,
+        "end": 99,
+        "entry_ids": [
+          "cac38c3f-ae0c-46f7-8800-c8b9ee1b8be8"
+        ],
+        "tool_use_id": "toolu_018weuMCVxFEFXsd9P8mSKhH"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_018weuMCVxFEFXsd9P8mSKhH"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: code-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-18T18:25:17.948631Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 1,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 1,
+    "total_lines_changed": 4,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
