@@ -1,0 +1,3 @@
+We should add input options from the popup to the keyboard options and need to include spacebar
+
+Should also allow for someway to type and filtering of these options
