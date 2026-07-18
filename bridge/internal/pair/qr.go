@@ -67,6 +67,18 @@ func PrintQR(host string, port int, token string, tailscaleHost string) error {
 	fmt.Println(art)
 	fmt.Printf("URL: %s\n\n", url)
 
+	// Make the remote-access state unmistakable — pairing without a tailnet host
+	// is the #1 reason the phone works on Wi-Fi but is stuck "reconnecting" off it.
+	if tailscaleHost != "" {
+		fmt.Printf("✓ Remote access: this pairing includes tailnet host %q,\n", tailscaleHost)
+		fmt.Println("  so the phone can reach the bridge off Wi-Fi (needs Tailscale on the phone).")
+	} else {
+		fmt.Println("⚠ LAN ONLY: this pairing has NO Tailscale host — the phone will only")
+		fmt.Println("  connect on the same Wi-Fi and will show \"reconnecting\" elsewhere.")
+		fmt.Println("  For remote access, re-run:  cmux-bridge --pair --tailscale")
+	}
+	fmt.Println()
+
 	return nil
 }
 

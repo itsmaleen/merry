@@ -32,11 +32,19 @@ go build -o cmux-bridge ./cmd/cmux-bridge
 sudo mv cmux-bridge /usr/local/bin/
 ```
 
-Or use the install script (builds + sets up LaunchAgent for auto-start on login):
+Or use the install script (builds + sets up LaunchAgent for auto-start on login).
+Run it **as your normal user, not with `sudo`** — it installs a per-user
+LaunchAgent, and it will ask for sudo only if `/usr/local/bin` needs it:
 
 ```bash
-sudo ./scripts/install-bridge.sh
+./scripts/install-bridge.sh            # LAN only
+./scripts/install-bridge.sh --tailscale  # LAN + remote access (recommended)
 ```
+
+The script hard-kills any previous bridge process and waits for the port to free
+before starting the freshly-built binary, then verifies it's listening (and, with
+`--tailscale`, that the tailnet listener came up). This avoids a stale daemon
+silently keeping the old binary alive — see [Troubleshooting](#troubleshooting).
 
 ### 2. First-time pairing
 
@@ -69,6 +77,28 @@ If you used `install-bridge.sh`, the LaunchAgent starts it automatically on logi
 - **iOS shows "reconnecting"** — make sure `cmux-bridge` is running and cmux is open
 - **Bridge shows "cannot connect to cmux socket"** — make sure cmux is running with socket control enabled, then re-pair with `cmux-bridge --pair`
 - **Need to re-pair** — run `cmux-bridge --pair` again and scan the new QR code from the iOS app (Settings > Pair new device)
+- **Rebuilt the bridge but nothing changed / Tailscale never starts** — a stale
+  daemon may still be holding the port. The bridge binds LAN **before** starting
+  the Tailscale listener and treats a LAN bind failure as fatal, so a leftover
+  process on `:47821` makes the new binary exit with
+  `lan listen :47821: bind: address already in use` *before* Tailscale ever
+  comes up. `launchctl unload`/`kickstart -k` do **not** kill a process that has
+  reparented to launchd (PPID 1). Fix it by hard-killing every instance, then
+  reinstalling:
+
+  ```bash
+  pkill -f /usr/local/bin/cmux-bridge
+  lsof -nP -iTCP:47821 -sTCP:LISTEN     # should print nothing
+  ./scripts/install-bridge.sh --tailscale
+  ```
+
+  Confirm both listeners are up:
+
+  ```bash
+  grep -E "ws: listening|tailscale: listening" ~/Library/Logs/cmux-bridge.log | tail -2
+  # ws: listening on :47821 (LAN)
+  # tailscale: listening on cmux-bridge.<tailnet>.ts.net:47821
+  ```
 
 ## Usage
 
@@ -117,13 +147,32 @@ cmux-bridge --tailscale
 ```
 
 On first `--tailscale` run, a browser opens for Tailscale OAuth login (one-time).
-The bridge joins your tailnet as `cmux-bridge.your-tailnet.ts.net`.
+The bridge joins your tailnet as `cmux-bridge.your-tailnet.ts.net` (an embedded
+[`tsnet`](https://tailscale.com/kb/1244/tsnet) node, independent of the system
+Tailscale app on the Mac).
 
 **Prerequisites**: Tailscale app installed on your iPhone, logged into the same tailnet.
 
-The iOS app automatically tries LAN first, then falls back to the tailnet address if LAN is unreachable. No config changes needed on the phone after pairing.
+The iOS app tries LAN first, then falls back to the tailnet address if LAN is
+unreachable — but **only if the pairing QR included the tailnet hostname**. That
+hostname is embedded at pair time, so if you first paired without Tailscale (or
+before enabling it), the phone has no tailnet address and can only reach the
+bridge on Wi‑Fi. **Re-pair with `--tailscale` to fix remote access:**
 
-You can also set `"tailscale": true` in `~/.config/cmux-bridge/config.json` to always enable it.
+```bash
+cmux-bridge --pair --tailscale   # regenerates the QR with the .ts.net host
+```
+
+then re-scan from the iOS app (Settings > Pair new device). No other phone-side
+config is needed.
+
+You can also set `"tailscale": true` in `~/.config/cmux-bridge/config.json` to
+always enable it (so `cmux-bridge` alone runs with the tailnet listener).
+
+> Note: `cmux-bridge --pair` and the running daemon share the same tsnet state
+> dir. If pairing complains the state is locked, stop the daemon first
+> (`launchctl unload ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist`),
+> pair, then reinstall with `./scripts/install-bridge.sh --tailscale`.
 
 ## Logs and debugging
 
@@ -134,9 +183,13 @@ tail -f ~/Library/Logs/cmux-bridge.log
 # Re-pair (regenerates QR)
 cmux-bridge --pair
 
-# Restart bridge (if installed as LaunchAgent)
-launchctl unload ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist
-launchctl load ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist
+# Restart bridge (if installed as LaunchAgent). Re-running the install script is
+# the reliable way — it also clears any stale/orphaned instance holding the port:
+./scripts/install-bridge.sh --tailscale
+
+# Manual restart (note: this does NOT kill a process reparented to launchd — if
+# the port stays busy, `pkill -f /usr/local/bin/cmux-bridge` first):
+launchctl kickstart -k "gui/$(id -u)/com.itsmaleen.cmux-bridge"
 ```
 
 ## Project structure

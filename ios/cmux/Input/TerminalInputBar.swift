@@ -26,11 +26,53 @@ struct TerminalInputBar: View {
     @Environment(\.verticalSizeClass) private var vSizeClass
     private var isCompact: Bool { vSizeClass == .compact }
 
-    // Label, key-name sent to the bridge (matches SendTextView conventions).
-    private let controlKeys: [(String, String)] = [
-        ("esc", "Escape"), ("⌃C", "ctrl+c"), ("⌃D", "ctrl+d"),
-        ("⇥", "Tab"), ("↑", "Up"), ("↓", "Down"), ("←", "Left"), ("→", "Right"),
+    // A control chip either fires a named key via the bridge (`surface.send_key`,
+    // matching SendTextView conventions) or injects literal text. cmux has no
+    // key-name for the spacebar, so Space is sent as a literal " ".
+    private enum KeyAction {
+        case key(String)
+        case text(String)
+    }
+
+    private struct ControlKey: Identifiable {
+        let label: String
+        let action: KeyAction
+        // Lowercase aliases the compose field can filter on as you type.
+        let terms: [String]
+        // Space gets a wider chip so it reads as a spacebar.
+        var isWide: Bool = false
+        var id: String { label }
+    }
+
+    // Merged from the quick-actions "Input" section so the remote keyboard is a
+    // superset of the popup — plus a spacebar the popup never had.
+    private let controlKeys: [ControlKey] = [
+        ControlKey(label: "esc", action: .key("Escape"), terms: ["esc", "escape"]),
+        ControlKey(label: "⏎",   action: .key("enter"),  terms: ["enter", "return", "cr"]),
+        ControlKey(label: "␣",   action: .text(" "),     terms: ["space", "spacebar", "spc"], isWide: true),
+        ControlKey(label: "⇥",   action: .key("Tab"),    terms: ["tab"]),
+        ControlKey(label: "⌃C",  action: .key("ctrl+c"), terms: ["ctrl+c", "ctrlc", "^c", "interrupt"]),
+        ControlKey(label: "⌃D",  action: .key("ctrl+d"), terms: ["ctrl+d", "ctrld", "^d", "eof"]),
+        ControlKey(label: "⌃Z",  action: .key("ctrl+z"), terms: ["ctrl+z", "ctrlz", "^z", "suspend"]),
+        ControlKey(label: "⌃L",  action: .key("ctrl+l"), terms: ["ctrl+l", "ctrll", "^l", "clear"]),
+        ControlKey(label: "↑",   action: .key("Up"),     terms: ["up", "arrow"]),
+        ControlKey(label: "↓",   action: .key("Down"),   terms: ["down", "arrow"]),
+        ControlKey(label: "←",   action: .key("Left"),   terms: ["left", "arrow"]),
+        ControlKey(label: "→",   action: .key("Right"),  terms: ["right", "arrow"]),
     ]
+
+    // The word being typed in the compose field doubles as a live filter for the
+    // control chips (mirrors how command suggestions filter). If the word matches
+    // no key it isn't a key query — a normal command — so we fall back to the full
+    // row and keep navigation keys reachable while composing.
+    private var filteredControlKeys: [ControlKey] {
+        let q = currentWord.lowercased()
+        guard !q.isEmpty else { return controlKeys }
+        let matches = controlKeys.filter { ck in
+            ck.label.lowercased().hasPrefix(q) || ck.terms.contains { $0.hasPrefix(q) }
+        }
+        return matches.isEmpty ? controlKeys : matches
+    }
 
     var body: some View {
         VStack(spacing: isCompact ? 4 : 6) {
@@ -176,8 +218,8 @@ struct TerminalInputBar: View {
     private var controlKeyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(controlKeys, id: \.1) { label, key in
-                    controlChip(label: label, key: key)
+                ForEach(filteredControlKeys) { ck in
+                    controlChip(ck)
                 }
             }
             .padding(.horizontal, 2)
@@ -195,8 +237,8 @@ struct TerminalInputBar: View {
                 ForEach(commandDict.suggestions(for: currentWord), id: \.self) { cmd in
                     suggestionChip(cmd)
                 }
-                ForEach(controlKeys, id: \.1) { label, key in
-                    controlChip(label: label, key: key)
+                ForEach(filteredControlKeys) { ck in
+                    controlChip(ck)
                 }
             }
             .padding(.horizontal, 2)
@@ -217,16 +259,23 @@ struct TerminalInputBar: View {
         }
     }
 
-    private func controlChip(label: String, key: String) -> some View {
+    private func controlChip(_ ck: ControlKey) -> some View {
         Button {
-            onSendKey(key)
+            fire(ck)
         } label: {
-            Text(label)
+            Text(ck.label)
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.75))
-                .frame(minWidth: 34)
+                .frame(minWidth: ck.isWide ? 72 : 34)
                 .padding(.vertical, 6)
                 .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.08)))
+        }
+    }
+
+    private func fire(_ ck: ControlKey) {
+        switch ck.action {
+        case .key(let key):   onSendKey(key)
+        case .text(let text): onSendText(text)
         }
     }
 
