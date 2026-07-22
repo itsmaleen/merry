@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "df53a30bc8e4",
+  "strategy": "manual-commit",
+  "branch": "feat/notification-nav-and-fixes",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/Layout/TerminalTextView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/df/53a30bc8e4/0/metadata.json",
+      "transcript": "/df/53a30bc8e4/0/full.jsonl",
+      "compact_transcript": "/df/53a30bc8e4/0/transcript.jsonl",
+      "content_hash": "/df/53a30bc8e4/0/content_hash.txt",
+      "prompt": "/df/53a30bc8e4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 764,
+    "cache_creation_tokens": 35367,
+    "cache_read_tokens": 1080608,
+    "output_tokens": 23423,
+    "api_call_count": 9
+  }
+}
