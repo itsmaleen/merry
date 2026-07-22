@@ -3,7 +3,9 @@ package socket
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -150,5 +152,125 @@ func TestSendNotConnected(t *testing.T) {
 	c := NewClient("/nonexistent/path.sock", "")
 	if _, err := c.Send("x", nil); err == nil {
 		t.Fatal("expected 'not connected' error before Connect")
+	}
+}
+
+func TestDetectSocketPath(t *testing.T) {
+	const uid = 501
+
+	// mkSocket creates a stand-in for a live socket. detectSocketPath only
+	// os.Stat's the path, so a regular file is indistinguishable from a real
+	// unix socket here — and it avoids the ~104-char sun_path limit that a real
+	// socket under t.TempDir() could blow.
+	mkSocket := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writePointer := func(t *testing.T, path, target string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(target+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	xdgDir := func(home string) string { return filepath.Join(home, ".local", "state", "cmux") }
+	appDir := func(home string) string { return filepath.Join(home, "Library", "Application Support", "cmux") }
+
+	tests := []struct {
+		name string
+		// setup populates the fake home tree and returns the path we expect
+		// detectSocketPath to resolve to.
+		setup func(t *testing.T, home string) string
+	}{
+		{
+			name: "xdg pointer to live socket (the Mac mini case)",
+			setup: func(t *testing.T, home string) string {
+				sock := filepath.Join(xdgDir(home), "cmux.sock")
+				mkSocket(t, sock)
+				writePointer(t, filepath.Join(xdgDir(home), "last-socket-path"), sock)
+				return sock
+			},
+		},
+		{
+			name: "app support pointer to live uid-suffixed socket",
+			setup: func(t *testing.T, home string) string {
+				sock := filepath.Join(xdgDir(home), fmt.Sprintf("cmux-%d.sock", uid))
+				mkSocket(t, sock)
+				writePointer(t, filepath.Join(appDir(home), "last-socket-path"), sock)
+				return sock
+			},
+		},
+		{
+			name: "live socket beats a stale pointer",
+			setup: func(t *testing.T, home string) string {
+				// XDG pointer names a socket that doesn't exist...
+				writePointer(t, filepath.Join(xdgDir(home), "last-socket-path"), filepath.Join(xdgDir(home), "gone.sock"))
+				// ...while the App Support pointer names a live one.
+				sock := filepath.Join(appDir(home), "cmux.sock")
+				mkSocket(t, sock)
+				writePointer(t, filepath.Join(appDir(home), "last-socket-path"), sock)
+				return sock
+			},
+		},
+		{
+			name: "no pointer, plain cmux.sock in xdg",
+			setup: func(t *testing.T, home string) string {
+				sock := filepath.Join(xdgDir(home), "cmux.sock")
+				mkSocket(t, sock)
+				return sock
+			},
+		},
+		{
+			name: "no pointer, uid-suffixed preferred over plain",
+			setup: func(t *testing.T, home string) string {
+				suffixed := filepath.Join(xdgDir(home), fmt.Sprintf("cmux-%d.sock", uid))
+				mkSocket(t, suffixed)
+				mkSocket(t, filepath.Join(xdgDir(home), "cmux.sock"))
+				return suffixed
+			},
+		},
+		{
+			name: "stale pointer, no live socket, returns pointer not /tmp",
+			setup: func(t *testing.T, home string) string {
+				target := filepath.Join(xdgDir(home), "cmux.sock") // referenced but never created
+				writePointer(t, filepath.Join(xdgDir(home), "last-socket-path"), target)
+				return target
+			},
+		},
+		{
+			name: "nothing present falls back to /tmp",
+			setup: func(t *testing.T, home string) string {
+				return "/tmp/cmux.sock"
+			},
+		},
+		{
+			name: "xdg pointer preferred over app support pointer",
+			setup: func(t *testing.T, home string) string {
+				xdgSock := filepath.Join(xdgDir(home), "cmux.sock")
+				appSock := filepath.Join(appDir(home), "cmux.sock")
+				mkSocket(t, xdgSock)
+				mkSocket(t, appSock)
+				writePointer(t, filepath.Join(xdgDir(home), "last-socket-path"), xdgSock)
+				writePointer(t, filepath.Join(appDir(home), "last-socket-path"), appSock)
+				return xdgSock
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			want := tt.setup(t, home)
+			if got := detectSocketPath(home, uid); got != want {
+				t.Fatalf("detectSocketPath = %q, want %q", got, want)
+			}
+		})
 	}
 }

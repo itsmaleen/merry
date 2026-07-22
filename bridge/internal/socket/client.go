@@ -146,7 +146,13 @@ func DetectSocketPath() string {
 	if err != nil {
 		return "/tmp/cmux.sock"
 	}
+	return detectSocketPath(home, os.Getuid())
+}
 
+// detectSocketPath is the pure core of DetectSocketPath, parameterised on home
+// and uid so it can be tested against a temporary directory tree. It reads only
+// the filesystem (via os.ReadFile/os.Stat) and returns the resolved socket path.
+func detectSocketPath(home string, uid int) string {
 	appSupport := filepath.Join(home, "Library", "Application Support", "cmux")
 	xdgState := filepath.Join(home, ".local", "state", "cmux")
 
@@ -178,7 +184,7 @@ func DetectSocketPath() string {
 	// Secondary: probe known socket locations directly, covering both the
 	// uid-suffixed and plain socket names in each directory.
 	for _, candidate := range []string{
-		filepath.Join(xdgState, fmt.Sprintf("cmux-%d.sock", os.Getuid())),
+		filepath.Join(xdgState, fmt.Sprintf("cmux-%d.sock", uid)),
 		filepath.Join(xdgState, "cmux.sock"),
 		filepath.Join(appSupport, "cmux.sock"),
 	} {
