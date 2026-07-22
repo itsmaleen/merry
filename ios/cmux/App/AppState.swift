@@ -659,12 +659,19 @@ struct BridgeNotification: Identifiable, Decodable {
 
 struct Workspace: Identifiable {
     let id: String
-    let name: String
+    /// The display title cmux computes for the workspace (custom title, else the
+    /// active conversation topic, else the working directory) — matches what the
+    /// cmux UI shows. Falls back through older fields, then the id.
+    let title: String
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
         self.id = id
-        self.name = (dict["name"] as? String) ?? id
+        let computed = (dict["title"] as? String)?.trimmingCharacters(in: .whitespaces)
+        self.title = (computed?.isEmpty == false ? computed : nil)
+            ?? (dict["custom_title"] as? String)
+            ?? (dict["name"] as? String)
+            ?? id
     }
 }
 

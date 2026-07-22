@@ -650,11 +650,13 @@ struct WorkspaceLayoutView: View {
     // MARK: - Workspace pills
 
     private func workspaceLabel(for ws: Workspace, at index: Int) -> String {
-        let name = ws.name
-        if name == ws.id || name.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
+        let title = ws.title
+        // Only fall back to a positional label if cmux gave us nothing usable
+        // (title collapsed to the raw UUID id).
+        if title == ws.id || title.allSatisfy({ $0.isHexDigit || $0 == "-" }) {
             return "Workspace \(index + 1)"
         }
-        return name
+        return title
     }
 
     private func workspaceHasNotification(_ ws: Workspace) -> Bool {
