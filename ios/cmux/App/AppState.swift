@@ -93,7 +93,9 @@ final class AppState: ObservableObject {
         }
         focusSurface(surfaceID)
         // That surface is now on screen, so its pending notifications are stale.
-        notifications.removeAll { $0.surfaceID == surfaceID }
+        if notifications.contains(where: { $0.surfaceID == surfaceID }) {
+            notifications.removeAll { $0.surfaceID == surfaceID }
+        }
     }
 
     /// The bridge whose session is (or should be) active.
@@ -395,12 +397,18 @@ final class AppState: ObservableObject {
             params["workspace_id"] = wsID
         }
         send(method: "surface.read_text", params: params) { [weak self] result in
-            guard let self, let text = result["text"] as? String else { return }
-            let content = Self.capHistoryLines(Self.trimTerminalText(text))
-            // Diff before assigning: a no-op write to a @Published dictionary
-            // still fires objectWillChange every poll.
-            if self.surfaceContent[surfaceID] != content {
-                self.surfaceContent[surfaceID] = content
+            guard self != nil, let text = result["text"] as? String else { return }
+            // Trim/cap off the main actor: a deep focused read is thousands of
+            // lines, and doing that inline stalls whatever animation (keyboard,
+            // card resize) happens to be in flight when the poll lands.
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let content = Self.capHistoryLines(Self.trimTerminalText(text))
+                await MainActor.run {
+                    // Diff before assigning: a no-op write to a @Published
+                    // dictionary still fires objectWillChange every poll.
+                    guard let self, self.surfaceContent[surfaceID] != content else { return }
+                    self.surfaceContent[surfaceID] = content
+                }
             }
         }
     }
@@ -431,25 +439,40 @@ final class AppState: ObservableObject {
         send(method: "claude.transcript", params: params) { [weak self] result in
             guard let self else { return }
             self.claudeTranscriptLoading.remove(surfaceID)
-            let text = (result["text"] as? String).map(Self.trimTerminalText) ?? ""
+            let raw = result["text"] as? String ?? ""
             let sessionID = result["session_id"] as? String ?? ""
             // Diagnostic: the surface we asked for vs the session the bridge
             // resolved it to. If these ever look mismatched, this line names the
             // exact ids to chase (the bridge maps surface → resume_binding →
             // <checkpoint_id>.jsonl and echoes the resolved session_id back).
-            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(text.count) chars)")
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)")
             self.claudeTranscriptSession[surfaceID] = sessionID
-            self.claudeTranscript[surfaceID] = text
+            // Trim off the main actor — transcripts can be hundreds of messages,
+            // and this runs every time the history viewer opens.
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let text = Self.trimTerminalText(raw)
+                await MainActor.run {
+                    guard let self, self.claudeTranscript[surfaceID] != text else { return }
+                    self.claudeTranscript[surfaceID] = text
+                }
+            }
         }
     }
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
+    /// Plain character ops, no regex — this runs over thousands of lines per
+    /// poll, and a per-line NSRegularExpression here dominated the poll cost.
     nonisolated private static func trimTerminalText(_ text: String) -> String {
-        text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
-            .joined(separator: "\n")
-            .replacingOccurrences(of: "\\n+$", with: "", options: .regularExpression)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for i in lines.indices {
+            while let last = lines[i].last, last.isWhitespace {
+                lines[i].removeLast()
+            }
+        }
+        while lines.last?.isEmpty == true {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Bound history so a very long session doesn't produce an attributed
@@ -533,12 +556,14 @@ final class AppState: ObservableObject {
         }
         send(method: "workspace.list", params: [:]) { [weak self] result in
             if let list = result["workspaces"] as? [[String: Any]] {
-                self?.workspaces = list.compactMap(Workspace.init)
+                self?.setIfChanged(\.workspaces, to: list.compactMap(Workspace.init), by: Workspace.sameContent)
             }
             step()
         }
         send(method: "workspace.current", params: [:]) { [weak self] result in
-            if let id = result["id"] as? String { self?.currentWorkspaceID = id }
+            if let id = result["id"] as? String, id != self?.currentWorkspaceID {
+                self?.currentWorkspaceID = id
+            }
             step()
         }
     }
@@ -550,7 +575,7 @@ final class AppState: ObservableObject {
         }
         send(method: "surface.list", params: params) { [weak self] result in
             if let list = result["surfaces"] as? [[String: Any]] {
-                self?.surfaces = list.compactMap(Surface.init)
+                self?.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
                 // Validate remembered surface still exists
                 if let localID = self?.localFocusedSurfaceID,
                    self?.surfaces.contains(where: { $0.id == localID }) == false {
@@ -572,7 +597,7 @@ final class AppState: ObservableObject {
         send(method: "surface.list", params: params) { [weak self] result in
             guard let self else { return }
             if let list = result["surfaces"] as? [[String: Any]] {
-                self.surfaces = list.compactMap(Surface.init)
+                self.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
                 if let newSurface = self.surfaces.first(where: { !previousIDs.contains($0.id) }) {
                     self.focusSurface(newSurface.id)
                 } else if self.focusedSurfaceID == nil, let first = self.surfaces.first {
@@ -589,7 +614,7 @@ final class AppState: ObservableObject {
         }
         send(method: "pane.list", params: params) { [weak self] result in
             if let list = result["panes"] as? [[String: Any]] {
-                self?.panes = list.compactMap(Pane.init)
+                self?.setIfChanged(\.panes, to: list.compactMap(Pane.init), by: Pane.sameContent)
             }
         }
     }
@@ -624,11 +649,32 @@ final class AppState: ObservableObject {
     }
 
     func clearNotificationsForFocusedSurface() {
-        guard let focusedID = focusedSurfaceID else { return }
+        // Guard before mutating: this runs on delayed timers after every focus
+        // change, and removeAll on a @Published array fires objectWillChange
+        // even when nothing matches.
+        guard let focusedID = focusedSurfaceID,
+              notifications.contains(where: { $0.surfaceID == focusedID }) else { return }
         notifications.removeAll { $0.surfaceID == focusedID }
     }
 
     // MARK: - Private helpers
+
+    /// Assigns a @Published list only when its content actually changed.
+    /// The refresh RPCs re-fetch on every connect/foreground/focus change and
+    /// usually return identical lists; an unconditional assign would fire
+    /// objectWillChange each time and re-render every view observing AppState.
+    /// Comparison is via an explicit closure, NOT Equatable conformance — these
+    /// structs are SwiftUI view parameters, and conforming them to Equatable
+    /// has caused missed re-renders here before.
+    private func setIfChanged<T>(
+        _ keyPath: ReferenceWritableKeyPath<AppState, [T]>, to value: [T],
+        by same: (T, T) -> Bool
+    ) {
+        let current = self[keyPath: keyPath]
+        if current.count != value.count || !zip(current, value).allSatisfy(same) {
+            self[keyPath: keyPath] = value
+        }
+    }
 
     private func send(
         method: String,
@@ -735,6 +781,11 @@ struct Workspace: Identifiable {
             ?? (dict["name"] as? String)
             ?? id
     }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Workspace, _ b: Workspace) -> Bool {
+        a.id == b.id && a.title == b.title
+    }
 }
 
 struct Surface: Identifiable {
@@ -758,6 +809,13 @@ struct Surface: Identifiable {
         self.workspaceID = dict["workspace_id"] as? String
         self.isFocused = dict["is_focused"] as? Bool ?? false
         self.agentKind = (dict["resume_binding"] as? [String: Any])?["kind"] as? String
+    }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Surface, _ b: Surface) -> Bool {
+        a.id == b.id && a.title == b.title && a.type == b.type
+            && a.workspaceID == b.workspaceID && a.isFocused == b.isFocused
+            && a.agentKind == b.agentKind
     }
 }
 
@@ -806,6 +864,13 @@ struct Pane: Identifiable {
         surfaceIDs = dict["surface_ids"] as? [String] ?? []
         focusedSurfaceID = dict["focused_surface_id"] as? String
         isFocused = dict["is_focused"] as? Bool ?? false
+    }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Pane, _ b: Pane) -> Bool {
+        a.id == b.id && a.pixelFrame == b.pixelFrame
+            && a.containerFrame == b.containerFrame && a.surfaceIDs == b.surfaceIDs
+            && a.focusedSurfaceID == b.focusedSurfaceID && a.isFocused == b.isFocused
     }
 }
 
