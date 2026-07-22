@@ -8,8 +8,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -152,13 +154,17 @@ func runPair(dir string, cfg config) {
 	// "successfully" and then sit on "reconnecting" off Wi-Fi.
 	var tailscaleHost string
 	if cfg.Tailscale {
+		// The background daemon holds the tsnet state directory open, which would
+		// block our pairing tsnet. Pause it for the duration and bring it back as
+		// soon as we've read the hostname (tsnet state is released by then), so a
+		// failure here can't leave the daemon down and the phone reconnecting.
+		restore := pauseDaemonForPairing()
 		tailscaleHost = startTailscaleForPairing(dir, cfg)
+		restore()
 		if tailscaleHost == "" {
-			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n"+
-				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n"+
-				"If the background bridge daemon is running it holds the tsnet state — stop it first:\n"+
-				"  launchctl bootout gui/$(id -u)/%s\n"+
-				"Refusing to print a LAN-only QR that would silently drop remote access.", launchdLabel)
+			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n" +
+				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n" +
+				"Refusing to print a LAN-only QR that would silently drop remote access.")
 		}
 	}
 
@@ -167,9 +173,52 @@ func runPair(dir string, cfg config) {
 	}
 }
 
-// launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh;
-// referenced in the pairing hint so users can stop the daemon before pairing.
+// launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh.
 const launchdLabel = "com.itsmaleen.cmux-bridge"
+
+// pauseDaemonForPairing stops the launchd-managed bridge daemon so it releases
+// the tsnet state directory during --tailscale pairing, returning a function
+// that restarts it. It is a no-op on non-macOS or when the daemon isn't managed
+// by launchd (e.g. run by hand), and the returned restore is safe to call once.
+func pauseDaemonForPairing() (restore func()) {
+	noop := func() {}
+	if runtime.GOOS != "darwin" {
+		return noop
+	}
+	uid := os.Getuid()
+	target := fmt.Sprintf("gui/%d/%s", uid, launchdLabel)
+
+	// Only touch the daemon if launchd currently knows about it.
+	if err := exec.Command("launchctl", "print", target).Run(); err != nil {
+		return noop
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return noop
+	}
+	plist := filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")
+
+	if err := exec.Command("launchctl", "bootout", target).Run(); err != nil {
+		log.Printf("warning: could not pause the bridge daemon for pairing: %v", err)
+		return noop
+	}
+	fmt.Println("Paused the background bridge daemon for pairing.")
+	// Give launchd a moment to tear the process down and free the tsnet lock.
+	time.Sleep(500 * time.Millisecond)
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			domain := fmt.Sprintf("gui/%d", uid)
+			if err := exec.Command("launchctl", "bootstrap", domain, plist).Run(); err != nil {
+				log.Printf("warning: could not restart the bridge daemon: %v\n"+
+					"restart it manually with: launchctl bootstrap %s %s", err, domain, plist)
+				return
+			}
+			fmt.Println("Restarted the background bridge daemon.")
+		})
+	}
+}
 
 // startTailscaleForPairing starts a tsnet server to discover the tailnet
 // hostname. If the node isn't authenticated yet it surfaces the interactive
