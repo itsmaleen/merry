@@ -1,0 +1,5 @@
+why is it trying to add lan only when I used cmux-bridge --pair --tailscale
+
+---
+
+make the fix but also check now because I did the fix and got QR code saying remote access would work but stuck on reconnecting

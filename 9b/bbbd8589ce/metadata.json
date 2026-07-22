@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "9bbbbd8589ce",
+  "strategy": "manual-commit",
+  "branch": "fix/pair-tailscale-no-silent-lan",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "bridge/cmd/cmux-bridge/main.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9b/bbbd8589ce/0/metadata.json",
+      "transcript": "/9b/bbbd8589ce/0/full.jsonl",
+      "compact_transcript": "/9b/bbbd8589ce/0/transcript.jsonl",
+      "content_hash": "/9b/bbbd8589ce/0/content_hash.txt",
+      "prompt": "/9b/bbbd8589ce/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5160,
+    "cache_creation_tokens": 22540,
+    "cache_read_tokens": 2630437,
+    "output_tokens": 18474,
+    "api_call_count": 12
+  }
+}
