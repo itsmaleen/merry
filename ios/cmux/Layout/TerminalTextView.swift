@@ -9,6 +9,11 @@ struct TerminalTextView: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
     let textOpacity: Double
+    /// When true, links are detected ourselves and trailing markdown/punctuation
+    /// is trimmed (e.g. `**url**` → `url`). Used by the transcript viewer, whose
+    /// text is raw markdown. Left off for live terminal cards, which use the
+    /// native data detector so their touch/scroll behavior is unchanged.
+    var trimMarkdownLinks: Bool = false
     /// Fired (throttled) when the user deliberately over-scrolls past the top
     /// (a rubber-band pull) — the hook for opening the conversation-history viewer.
     var onScrolledToTop: (() -> Void)? = nil
@@ -23,7 +28,18 @@ struct TerminalTextView: UIViewRepresentable {
         tv.isEditable = false
         tv.isSelectable = true
         tv.isScrollEnabled = true
-        tv.dataDetectorTypes = [.link]          // linkify URLs in the output
+        if trimMarkdownLinks {
+            // We linkify URLs ourselves in `attributed()` (trimming trailing
+            // markdown like `**url**`), so the built-in detector must stay off —
+            // it would otherwise re-link the raw run greedily and swallow those markers.
+            tv.dataDetectorTypes = []
+            tv.linkTextAttributes = [
+                .foregroundColor: UIColor(red: 0.45, green: 0.72, blue: 1.0, alpha: 1.0),
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+            ]
+        } else {
+            tv.dataDetectorTypes = [.link]          // linkify URLs in the output
+        }
         tv.backgroundColor = .clear
         tv.textContainerInset = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
         tv.textContainer.lineFragmentPadding = 0
@@ -90,7 +106,7 @@ struct TerminalTextView: UIViewRepresentable {
     private func attributed() -> NSAttributedString {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 1
-        return NSAttributedString(
+        let attr = NSMutableAttributedString(
             string: text,
             attributes: [
                 .font: UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
@@ -98,6 +114,44 @@ struct TerminalTextView: UIViewRepresentable {
                 .paragraphStyle: style,
             ]
         )
+        if trimMarkdownLinks {
+            Self.addLinks(to: attr)
+        }
+        return attr
+    }
+
+    private static let linkDetector: NSDataDetector? =
+        try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// Trailing characters that prose/markdown commonly places right after a URL
+    /// but that aren't part of it. Data detectors grab them greedily — e.g.
+    /// `**https://example.com/x**` yields `https://example.com/x**`, so the tap
+    /// opens a broken URL. `)` is handled separately to preserve balanced parens.
+    private static let trailingJunk = CharacterSet(charactersIn: "*_~`.,;:!?\"']}>")
+
+    /// Detects URLs in the plain text and adds `.link` attributes, trimming the
+    /// trailing markdown/punctuation the detector over-captures.
+    private static func addLinks(to attr: NSMutableAttributedString) {
+        guard let detector = linkDetector else { return }
+        let ns = attr.string as NSString
+        let matches = detector.matches(in: attr.string, range: NSRange(location: 0, length: ns.length))
+        for match in matches {
+            var range = match.range
+            while range.length > 0 {
+                let unit = ns.character(at: range.location + range.length - 1)
+                guard let scalar = Unicode.Scalar(unit) else { break }
+                if scalar == ")" {
+                    // Keep a ) that closes a ( inside the URL (e.g. wiki/Foo_(bar)).
+                    if ns.substring(with: range).contains("(") { break }
+                } else if !trailingJunk.contains(scalar) {
+                    break
+                }
+                range.length -= 1
+            }
+            guard range.length > 0,
+                  let url = URL(string: ns.substring(with: range)) else { continue }
+            attr.addAttribute(.link, value: url, range: range)
+        }
     }
 
     private func scrollToBottom(_ tv: UITextView) {
