@@ -133,8 +133,14 @@ func (c *Client) Send(method string, params map[string]any) (json.RawMessage, er
 	return resp.Result, nil
 }
 
-// DetectSocketPath returns the best available cmux socket path by reading
-// the last-socket-path file written by the cmux Mac app, with fallbacks.
+// DetectSocketPath returns the best available cmux socket path by reading the
+// last-socket-path pointer file written by the cmux Mac app, with fallbacks.
+//
+// cmux may write the pointer file (and the socket itself) under either the XDG
+// state directory (cmux v2+) or the legacy Application Support directory, and
+// may name the socket with a uid suffix (cmux-<uid>.sock) or without it
+// (cmux.sock). We probe all known locations so a socket that exists under any
+// of them is found instead of falling through to the legacy /tmp default.
 func DetectSocketPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -142,25 +148,49 @@ func DetectSocketPath() string {
 	}
 
 	appSupport := filepath.Join(home, "Library", "Application Support", "cmux")
+	xdgState := filepath.Join(home, ".local", "state", "cmux")
 
-	// Primary: last-socket-path written by cmux on each launch
-	if data, err := os.ReadFile(filepath.Join(appSupport, "last-socket-path")); err == nil {
-		if p := strings.TrimSpace(string(data)); p != "" {
+	// Primary: the last-socket-path pointer cmux writes on each launch. It can
+	// live in either the XDG state dir or Application Support; prefer a pointer
+	// whose socket actually exists, but remember the first non-empty one as a
+	// fallback in case none of the referenced sockets stat cleanly.
+	var firstPointer string
+	for _, pointer := range []string{
+		filepath.Join(xdgState, "last-socket-path"),
+		filepath.Join(appSupport, "last-socket-path"),
+	} {
+		data, err := os.ReadFile(pointer)
+		if err != nil {
+			continue
+		}
+		p := strings.TrimSpace(string(data))
+		if p == "" {
+			continue
+		}
+		if firstPointer == "" {
+			firstPointer = p
+		}
+		if _, err := os.Stat(p); err == nil {
 			return p
 		}
 	}
 
-	// XDG state directory (cmux v2+)
-	xdgState := filepath.Join(home, ".local", "state", "cmux",
-		fmt.Sprintf("cmux-%d.sock", os.Getuid()))
-	if _, err := os.Stat(xdgState); err == nil {
-		return xdgState
+	// Secondary: probe known socket locations directly, covering both the
+	// uid-suffixed and plain socket names in each directory.
+	for _, candidate := range []string{
+		filepath.Join(xdgState, fmt.Sprintf("cmux-%d.sock", os.Getuid())),
+		filepath.Join(xdgState, "cmux.sock"),
+		filepath.Join(appSupport, "cmux.sock"),
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
 	}
 
-	// Stable default (legacy Application Support)
-	stable := filepath.Join(appSupport, "cmux.sock")
-	if _, err := os.Stat(stable); err == nil {
-		return stable
+	// A pointer file named a socket that isn't currently present: still prefer
+	// it over the hard-coded default (the socket may appear once cmux is ready).
+	if firstPointer != "" {
+		return firstPointer
 	}
 
 	// Legacy fallback
