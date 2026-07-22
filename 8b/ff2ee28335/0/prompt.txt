@@ -1,0 +1,1 @@
+Merge PR#14 and then help with the next PR, I tried adding the mac mini but after scanning the QR code, nothing happened
