@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "234990633557",
+  "session_id": "3a13b4cf-773b-49d7-85df-91ce3cd90d9a",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-22T18:46:20.373271Z",
+  "branch": "feat/notification-nav-and-fixes",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/App/MainTabView.swift",
+    "ios/cmux/App/cmuxApp.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "cffaebb40324",
+  "token_usage": {
+    "input_tokens": 11236,
+    "cache_creation_tokens": 193317,
+    "cache_read_tokens": 5410992,
+    "output_tokens": 59710,
+    "api_call_count": 69
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-22T18:46:20.33486Z",
+    "agent_lines": 76,
+    "agent_removed": 5,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 76,
+    "total_lines_changed": 81,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

@@ -1,0 +1,20 @@
+lets build improvements on the app starting with when tapping on notification, we should navigate/focus on that surface
+
+---
+
+other things to fix
+- when loading claude history, should auto refresh to make sure it's the latest session data and start from the bottom not the top
+- make sure that links are properly clickable, often links are shown with markdown syntax i.e. **https://example.com/link** -> when clicking it should go to https://example.com/link but getting https://example.com/link** causing errors
+- update the workspace titles to match what's shown on cmux (instead of just "workspace x")
+
+---
+
+the scroll up to load claude transcript/history isn't working anymore
+
+---
+
+is everything merged?
+
+---
+
+split into logical commits on a new branch
