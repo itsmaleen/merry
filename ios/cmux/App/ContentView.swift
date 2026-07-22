@@ -4,8 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        if case .disconnected = appState.connectionStatus,
-           (try? PairingStore().load()) == nil {
+        if appState.bridges.isEmpty {
             PairingView()
         } else {
             MainTabView()

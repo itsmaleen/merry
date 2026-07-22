@@ -75,21 +75,21 @@ struct MainTabView: View {
             PairingView()
         }
         .alert(
-            "Replace pairing?",
+            "Add this bridge?",
             isPresented: Binding(
                 get: { appState.pendingPairing != nil },
                 set: { if !$0 { appState.cancelPendingPairing() } }
             ),
             presenting: appState.pendingPairing
         ) { pending in
-            Button("Pair with \(pending.host):\(pending.port)", role: .destructive) {
+            Button("Add \(pending.host):\(pending.port)") {
                 appState.confirmPendingPairing()
             }
             Button("Cancel", role: .cancel) {
                 appState.cancelPendingPairing()
             }
         } message: { pending in
-            Text("This will disconnect from your current bridge and send all input to \(pending.host):\(pending.port). Only continue if you initiated this pairing.")
+            Text("This adds a new bridge and switches all input to \(pending.host):\(pending.port). Only continue if you initiated this pairing.")
         }
     }
 

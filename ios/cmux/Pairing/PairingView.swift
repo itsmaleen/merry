@@ -48,7 +48,11 @@ struct PairingView: View {
                 QRScannerView { scannedURL in
                     showScanner = false
                     if let url = URL(string: scannedURL) {
-                        appState.handlePairingURL(url)
+                        // In-app scan is an explicit user action — commit directly
+                        // rather than routing through the deep-link confirmation
+                        // (which would surface behind this sheet and appear to do
+                        // nothing).
+                        appState.handlePairingURL(url, trusted: true)
                     }
                 }
             }
@@ -93,8 +97,9 @@ private struct ManualPairingView: View {
                     Button("Connect") {
                         guard let portInt = Int(port), !host.isEmpty, !token.isEmpty else { return }
                         let creds = PairingCredentials(host: host, port: portInt, token: token)
-                        try? PairingStore().save(creds)
-                        appState.connect(to: creds)
+                        // Route through the bridge list (adds/updates + selects)
+                        // instead of the legacy single-pairing store.
+                        appState.commitPairing(creds)
                         dismiss()
                     }
                     .disabled(host.isEmpty || token.isEmpty)
