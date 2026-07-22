@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -145,10 +146,20 @@ func runPair(dir string, cfg config) {
 		log.Fatalf("token: %v", err)
 	}
 
-	// If Tailscale enabled, start tsnet to get the hostname
+	// If Tailscale is enabled, bring up tsnet to discover the tailnet hostname.
+	// The user explicitly asked for remote access, so refuse to fall back to a
+	// LAN-only QR — that silent degradation is exactly what makes a phone pair
+	// "successfully" and then sit on "reconnecting" off Wi-Fi.
 	var tailscaleHost string
 	if cfg.Tailscale {
 		tailscaleHost = startTailscaleForPairing(dir, cfg)
+		if tailscaleHost == "" {
+			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n"+
+				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n"+
+				"If the background bridge daemon is running it holds the tsnet state — stop it first:\n"+
+				"  launchctl bootout gui/$(id -u)/%s\n"+
+				"Refusing to print a LAN-only QR that would silently drop remote access.", launchdLabel)
+		}
 	}
 
 	if err := pair.PrintQR("", cfg.BridgePort, token, tailscaleHost); err != nil {
@@ -156,19 +167,40 @@ func runPair(dir string, cfg config) {
 	}
 }
 
-// startTailscaleForPairing starts a tsnet server to discover the tailnet hostname.
+// launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh;
+// referenced in the pairing hint so users can stop the daemon before pairing.
+const launchdLabel = "com.itsmaleen.cmux-bridge"
+
+// startTailscaleForPairing starts a tsnet server to discover the tailnet
+// hostname. If the node isn't authenticated yet it surfaces the interactive
+// login URL clearly (instead of burying it in tsnet's verbose output) and waits
+// a few minutes for the user to approve it. Returns "" if the node can't be
+// brought up in that window.
 func startTailscaleForPairing(dir string, cfg config) string {
+	var loginOnce sync.Once
 	ts := &tsnet.Server{
 		Hostname: cfg.TailscaleHostname,
 		Dir:      filepath.Join(dir, "tailscale"),
+		Logf: func(format string, args ...any) {
+			msg := fmt.Sprintf(format, args...)
+			if i := strings.Index(msg, "https://login.tailscale.com/"); i >= 0 {
+				url := strings.Fields(msg[i:])[0]
+				loginOnce.Do(func() {
+					fmt.Println()
+					fmt.Println("Tailscale login required to enable remote access.")
+					fmt.Printf("Open this URL and approve %q on your tailnet:\n\n  %s\n\n", cfg.TailscaleHostname, url)
+					fmt.Println("Waiting for authorization (up to 3 minutes)…")
+				})
+			}
+		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	status, err := ts.Up(ctx)
 	if err != nil {
-		log.Printf("tailscale: failed to start: %v", err)
+		log.Printf("tailscale: node did not come up: %v", err)
 		ts.Close()
 		return ""
 	}
