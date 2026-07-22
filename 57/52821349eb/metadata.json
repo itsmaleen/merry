@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "5752821349eb",
+  "strategy": "manual-commit",
+  "branch": "fix/pair-auto-pause-daemon",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "bridge/cmd/cmux-bridge/main.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/57/52821349eb/0/metadata.json",
+      "transcript": "/57/52821349eb/0/full.jsonl",
+      "compact_transcript": "/57/52821349eb/0/transcript.jsonl",
+      "content_hash": "/57/52821349eb/0/content_hash.txt",
+      "prompt": "/57/52821349eb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4138,
+    "cache_creation_tokens": 15584,
+    "cache_read_tokens": 2935890,
+    "output_tokens": 11302,
+    "api_call_count": 12
+  }
+}
