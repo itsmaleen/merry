@@ -1,0 +1,21 @@
+what was the command to setup cmux companion w/ tailscale?
+
+---
+
+do we have a make command or something for setup when someone first clones the project?
+
+---
+
+tried to set this up on my mac mini and getting the following error "cannot connect to cmux socket: connect /tmp/cmux.sock: dial unix /tmp/cmux.sock: connect: no such file or directory:
+
+---
+
+tried to set this up on my mac mini and getting the following error "cannot connect to cmux socket: connect /tmp/cmux.sock: dial unix /tmp/cmux.sock: connect: no such file or directory"
+
+---
+
+but the setup here works with automation mode
+
+---
+
+/loop make sure that the mac mini is ready to cmux bridge setup so I can add it on my iphone
