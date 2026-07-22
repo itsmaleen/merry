@@ -1,0 +1,1 @@
+/loop /efficient-fable go through the recent changes for the open PR#18 and then optimize the code. These changes have introduced some amount of lag for things like opening the keyboard. Speed up and optimize the app as a whole

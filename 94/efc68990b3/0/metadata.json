@@ -1,0 +1,103 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "94efc68990b3",
+  "session_id": "47ad15ea-0b91-4bec-ba35-96910c0d385c",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-22T19:01:35.616181Z",
+  "branch": "feat/notification-nav-and-fixes",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8[1m]",
+  "turn_id": "09c49022a30c",
+  "token_usage": {
+    "input_tokens": 7792,
+    "cache_creation_tokens": 80600,
+    "cache_read_tokens": 1296344,
+    "output_tokens": 29697,
+    "api_call_count": 21
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-loop-2026-07-22T18:51:40.324246Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "09c49022a30c",
+      "timestamp": "2026-07-22T18:51:40.324246Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01XKABKcJfY4RJcnWQn7idwY",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "efficient-fable"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "09c49022a30c",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 24,
+        "end": 25,
+        "entry_ids": [
+          "316b97db-a776-4ff2-98f1-3838ac831f8c"
+        ],
+        "tool_use_id": "toolu_01XKABKcJfY4RJcnWQn7idwY"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01XKABKcJfY4RJcnWQn7idwY"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: efficient-fable",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "initial_attribution": {
+    "calculated_at": "2026-07-22T19:01:35.589774Z",
+    "agent_lines": 86,
+    "agent_removed": 21,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 86,
+    "total_lines_changed": 107,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 16,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 15
+      }
+    }
+  ]
+}
