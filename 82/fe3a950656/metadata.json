@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "82fe3a950656",
+  "strategy": "manual-commit",
+  "branch": "feat/notification-nav-and-fixes",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Control/WorkspaceListView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/82/fe3a950656/0/metadata.json",
+      "transcript": "/82/fe3a950656/0/full.jsonl",
+      "compact_transcript": "/82/fe3a950656/0/transcript.jsonl",
+      "content_hash": "/82/fe3a950656/0/content_hash.txt",
+      "prompt": "/82/fe3a950656/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11103,
+    "cache_creation_tokens": 192361,
+    "cache_read_tokens": 5149279,
+    "output_tokens": 59264,
+    "api_call_count": 67
+  }
+}
