@@ -1,0 +1,13 @@
+do we allow having multiple devices on our current cmux companion app?
+
+---
+
+ok so let's go ahead and build out ability to have One phone → multiple Macs/bridges
+
+---
+
+move this to it's own branch and open a seperate PR, then go ahead and review the original socket PR
+
+---
+
+yes

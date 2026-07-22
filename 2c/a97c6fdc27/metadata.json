@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "2ca97c6fdc27",
+  "strategy": "manual-commit",
+  "branch": "fix/detect-socket-path-xdg",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "bridge/internal/socket/client.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2c/a97c6fdc27/0/metadata.json",
+      "transcript": "/2c/a97c6fdc27/0/full.jsonl",
+      "compact_transcript": "/2c/a97c6fdc27/0/transcript.jsonl",
+      "content_hash": "/2c/a97c6fdc27/0/content_hash.txt",
+      "prompt": "/2c/a97c6fdc27/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 13566,
+    "cache_creation_tokens": 224554,
+    "cache_read_tokens": 10179253,
+    "output_tokens": 90022,
+    "api_call_count": 101
+  }
+}
