@@ -20,6 +20,19 @@ final class AppState: ObservableObject {
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
     @Published var browserURLs: [String: String] = [:]
+    // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
+    // notification can bring the relevant surface into view on the Layout tab.
+    @Published var selectedTab: SidebarTab = .layout
+
+    // The live instance, so AppDelegate can route a tapped notification to it.
+    // Weak so it doesn't keep a torn-down state alive.
+    static private(set) weak var current: AppState?
+    // A notification tapped before any AppState existed (cold launch straight
+    // from a notification). Drained in init.
+    private static var pendingLaunchTap: (surfaceID: String, workspaceID: String?)?
+    // A surface to focus once the bridge finishes connecting, for a tap that
+    // arrived while the session was still coming up. Applied in clientDidConnect.
+    private var pendingNavigationTarget: (surfaceID: String, workspaceID: String?)?
 
     private var lastFocusedSurface: [String: String] = [:]
     // Claude conversation transcripts, loaded on demand for the full-screen
@@ -43,6 +56,44 @@ final class AppState: ObservableObject {
         startDiscovery()
         connectSelected()
         requestNotificationPermission()
+        Self.current = self
+        if let tap = Self.pendingLaunchTap {
+            Self.pendingLaunchTap = nil
+            navigateToSurface(surfaceID: tap.surfaceID, workspaceID: tap.workspaceID)
+        }
+    }
+
+    // MARK: - Notification navigation
+
+    /// Routes a tapped notification to the live AppState, or stashes it until one
+    /// comes up (cold launch straight from a notification).
+    static func handleNotificationTap(surfaceID: String, workspaceID: String?) {
+        if let current {
+            current.navigateToSurface(surfaceID: surfaceID, workspaceID: workspaceID)
+        } else {
+            pendingLaunchTap = (surfaceID, workspaceID)
+        }
+    }
+
+    /// Brings the surface referenced by a tapped notification into view: shows the
+    /// Layout tab and, once connected, selects its workspace and focuses it.
+    func navigateToSurface(surfaceID: String, workspaceID: String?) {
+        selectedTab = .layout
+        guard connectionStatus.isConnected else {
+            // Cold launch: apply once clientDidConnect fires.
+            pendingNavigationTarget = (surfaceID, workspaceID)
+            return
+        }
+        applyNavigation(surfaceID: surfaceID, workspaceID: workspaceID)
+    }
+
+    private func applyNavigation(surfaceID: String, workspaceID: String?) {
+        if let wsID = workspaceID, wsID != currentWorkspaceID {
+            selectWorkspace(wsID)
+        }
+        focusSurface(surfaceID)
+        // That surface is now on screen, so its pending notifications are stale.
+        notifications.removeAll { $0.surfaceID == surfaceID }
     }
 
     /// The bridge whose session is (or should be) active.
@@ -64,6 +115,12 @@ final class AppState: ObservableObject {
         if let subtitle = n.subtitle { content.subtitle = subtitle }
         if let body = n.body { content.body = body }
         content.sound = .default
+        // Carry the surface/workspace so tapping the notification can bring that
+        // surface into view (see AppDelegate.userNotificationCenter(_:didReceive:)).
+        var info: [String: String] = [:]
+        if let sid = n.surfaceID { info["surface_id"] = sid }
+        if let wid = n.workspaceID { info["workspace_id"] = wid }
+        content.userInfo = info
 
         let request = UNNotificationRequest(
             identifier: n.id,
@@ -590,6 +647,11 @@ extension AppState: BridgeClientDelegate {
         refreshWorkspaces {
             self.refreshSurfaces()
             self.refreshPanes()
+            // A notification tapped before the session was up (cold launch).
+            if let tap = self.pendingNavigationTarget {
+                self.pendingNavigationTarget = nil
+                self.applyNavigation(surfaceID: tap.surfaceID, workspaceID: tap.workspaceID)
+            }
         }
     }
 

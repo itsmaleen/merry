@@ -4,13 +4,12 @@ struct MainTabView: View {
     @EnvironmentObject var appState: AppState
     @State private var showSidebar = false
     @State private var sidebarTimer: Timer?
-    @State private var selectedTab: SidebarTab = .layout
 
     var body: some View {
         ZStack(alignment: .leading) {
             // Full-screen content
             Group {
-                switch selectedTab {
+                switch appState.selectedTab {
                 case .layout:
                     WorkspaceLayoutView()
                 case .surfaces:
@@ -99,7 +98,7 @@ struct MainTabView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SidebarTab.allCases) { tab in
                 Button {
-                    selectedTab = tab
+                    appState.selectedTab = tab
                     dismissSidebar()
                 } label: {
                     HStack(spacing: 10) {
@@ -118,12 +117,12 @@ struct MainTabView: View {
                                 .background(Capsule().fill(.orange))
                         }
                     }
-                    .foregroundStyle(selectedTab == tab ? .white : .white.opacity(0.5))
+                    .foregroundStyle(appState.selectedTab == tab ? .white : .white.opacity(0.5))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(selectedTab == tab ? Color.white.opacity(0.1) : .clear)
+                            .fill(appState.selectedTab == tab ? Color.white.opacity(0.1) : .clear)
                     )
                 }
                 .buttonStyle(.plain)
