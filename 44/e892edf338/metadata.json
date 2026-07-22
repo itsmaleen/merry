@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "44e892edf338",
+  "strategy": "manual-commit",
+  "branch": "feat/ios-multi-bridge",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/App/ContentView.swift",
+    "ios/cmux/App/MainTabView.swift",
+    "ios/cmux/Connection/PairingStore.swift",
+    "ios/cmux/Settings/SettingsView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/44/e892edf338/0/metadata.json",
+      "transcript": "/44/e892edf338/0/full.jsonl",
+      "compact_transcript": "/44/e892edf338/0/transcript.jsonl",
+      "content_hash": "/44/e892edf338/0/content_hash.txt",
+      "prompt": "/44/e892edf338/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4407,
+    "cache_creation_tokens": 66252,
+    "cache_read_tokens": 5285405,
+    "output_tokens": 38766,
+    "api_call_count": 40
+  }
+}
