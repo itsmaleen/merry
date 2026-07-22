@@ -11,6 +11,10 @@ final class AppState: ObservableObject {
     @Published var surfaces: [Surface] = []
     @Published var panes: [Pane] = []
     @Published var isPairingPresented = false
+    // Paired bridges (Macs) and which one is currently active. Persisted in the
+    // Keychain via BridgeStore; a single phone can hold several and switch.
+    @Published var bridges: [SavedBridge] = []
+    @Published var selectedBridgeID: UUID?
     // Tracks the last surface explicitly focused by the user; used when surface.list
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
@@ -28,14 +32,23 @@ final class AppState: ObservableObject {
     @Published var claudeTranscriptLoading: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
-    private let pairingStore = PairingStore()
+    private let bridgeStore = BridgeStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
 
     init() {
+        let loaded = bridgeStore.loadAll()
+        bridges = loaded.bridges
+        selectedBridgeID = loaded.selectedID ?? loaded.bridges.first?.id
         startDiscovery()
-        connectIfPaired()
+        connectSelected()
         requestNotificationPermission()
+    }
+
+    /// The bridge whose session is (or should be) active.
+    var selectedBridge: SavedBridge? {
+        if let id = selectedBridgeID, let b = bridges.first(where: { $0.id == id }) { return b }
+        return bridges.first
     }
 
     private func requestNotificationPermission() {
@@ -63,8 +76,8 @@ final class AppState: ObservableObject {
     // MARK: - Pairing
 
     // A parsed pairing request awaiting the user's confirmation because it would
-    // REPLACE an existing pairing (a silent re-pair from a hostile QR/deep-link
-    // would otherwise redirect all keystrokes to an attacker's host).
+    // add a new, not-yet-trusted bridge and switch input to it (a hostile
+    // QR/deep-link could otherwise silently redirect all keystrokes).
     @Published var pendingPairing: PairingCredentials?
 
     func handlePairingURL(_ url: URL) {
@@ -80,20 +93,38 @@ final class AppState: ObservableObject {
         let tailscaleHost = components.queryItems?.first(where: { $0.name == "tailscale_host" })?.value
         let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost)
 
-        // First-time pairing (or re-pairing the exact same host) is committed
-        // immediately. Any change to an existing pairing requires confirmation.
-        if let existing = try? pairingStore.load(),
-           existing.host != host || existing.port != port || existing.token != token {
-            pendingPairing = credentials
+        // A bridge we already trust (same token) is just refreshing its network
+        // coordinates — update it in place and switch to it, no confirmation.
+        if bridges.contains(where: { $0.credentials.token == token }) {
+            commitPairing(credentials)
             return
         }
-        commitPairing(credentials)
+        // Trust-on-first-use: the very first bridge is committed immediately.
+        if bridges.isEmpty {
+            commitPairing(credentials)
+            return
+        }
+        // A new, unknown bridge added alongside existing ones: confirm before
+        // switching input to it.
+        pendingPairing = credentials
     }
 
-    /// Applies a pairing the user has confirmed (or that needed no confirmation).
+    /// Adds or updates a bridge from confirmed credentials, makes it active, and
+    /// connects. A bridge with a matching token is updated in place (keeping its
+    /// name); otherwise a new one is appended.
     func commitPairing(_ credentials: PairingCredentials) {
-        try? pairingStore.save(credentials)
-        connect(to: credentials)
+        let bridge: SavedBridge
+        if let idx = bridges.firstIndex(where: { $0.credentials.token == credentials.token }) {
+            bridges[idx].credentials = credentials
+            bridge = bridges[idx]
+        } else {
+            bridge = SavedBridge(name: SavedBridge.defaultName(for: credentials), credentials: credentials)
+            bridges.append(bridge)
+        }
+        selectedBridgeID = bridge.id
+        persistBridges()
+        resetSessionState()
+        connect(to: bridge.credentials)
         isPairingPresented = false
         pendingPairing = nil
     }
@@ -107,26 +138,87 @@ final class AppState: ObservableObject {
         pendingPairing = nil
     }
 
-    func unpair() {
+    // MARK: - Bridge management
+
+    /// Switches the active session to another paired bridge.
+    func selectBridge(_ id: UUID) {
+        guard id != selectedBridgeID, let bridge = bridges.first(where: { $0.id == id }) else { return }
+        selectedBridgeID = id
+        persistBridges()
+        resetSessionState()
+        connect(to: bridge.credentials)
+    }
+
+    /// Renames a paired bridge; an empty name falls back to the derived default.
+    func renameBridge(_ id: UUID, to name: String) {
+        guard let idx = bridges.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        bridges[idx].name = trimmed.isEmpty ? SavedBridge.defaultName(for: bridges[idx].credentials) : trimmed
+        persistBridges()
+    }
+
+    /// Removes a paired bridge. If it was the active one, switches to another
+    /// (or goes disconnected when none remain).
+    func removeBridge(_ id: UUID) {
+        let wasSelected = (id == selectedBridgeID)
+        bridges.removeAll { $0.id == id }
+        if wasSelected {
+            client?.disconnect()
+            client = nil
+            selectedBridgeID = bridges.first?.id
+            resetSessionState()
+            if let next = selectedBridge {
+                connect(to: next.credentials)
+            } else {
+                connectionStatus = .disconnected
+            }
+        }
+        persistBridges()
+    }
+
+    /// Removes every paired bridge and returns to the pairing screen.
+    func unpairAll() {
         client?.disconnect()
         client = nil
-        try? pairingStore.delete()
+        bridges = []
+        selectedBridgeID = nil
+        persistBridges()
+        resetSessionState()
         connectionStatus = .disconnected
+    }
+
+    private func persistBridges() {
+        bridgeStore.persist(bridges: bridges, selectedID: selectedBridgeID)
+    }
+
+    /// Clears all per-connection UI state so switching bridges doesn't briefly
+    /// show the previous Mac's workspaces/surfaces/notifications.
+    private func resetSessionState() {
         notifications = []
         workspaces = []
+        currentWorkspaceID = nil
         surfaces = []
         panes = []
+        localFocusedSurfaceID = nil
+        surfaceContent = [:]
+        browserURLs = [:]
+        claudeTranscript = [:]
+        claudeTranscriptSession = [:]
+        claudeTranscriptLoading = []
+        presentedHistory = nil
+        lastFocusedSurface = [:]
     }
 
     // MARK: - Connection
 
-    func connectIfPaired() {
-        guard let creds = try? pairingStore.load() else { return }
-        connect(to: creds)
+    func connectSelected() {
+        guard let bridge = selectedBridge else { return }
+        connect(to: bridge.credentials)
     }
 
     func connect(to credentials: PairingCredentials) {
         client?.disconnect()
+        connectionStatus = .connecting
         let newClient = BridgeClient(credentials: credentials)
         newClient.delegate = self
         client = newClient
@@ -533,10 +625,10 @@ extension AppState: BridgeClientDelegate {
 
 extension AppState: BridgeDiscoveryDelegate {
     func discovery(_ discovery: BridgeDiscovery, didFind candidates: [PairingCredentials]) {
-        guard connectionStatus == .disconnected,
-              let stored = try? pairingStore.load() else { return }
-        if let match = candidates.first(where: { $0.host == stored.host && $0.port == stored.port }) {
-            connect(to: PairingCredentials(host: match.host, port: match.port, token: stored.token, tailscaleHost: stored.tailscaleHost))
+        guard connectionStatus == .disconnected, let stored = selectedBridge else { return }
+        let creds = stored.credentials
+        if let match = candidates.first(where: { $0.host == creds.host && $0.port == creds.port }) {
+            connect(to: PairingCredentials(host: match.host, port: match.port, token: creds.token, tailscaleHost: creds.tailscaleHost))
         }
     }
 }
