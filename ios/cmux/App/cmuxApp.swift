@@ -33,4 +33,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
+
+    // Tapping a notification focuses the surface it came from.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        guard let surfaceID = info["surface_id"] as? String else { return }
+        let workspaceID = info["workspace_id"] as? String
+        await MainActor.run {
+            AppState.handleNotificationTap(surfaceID: surfaceID, workspaceID: workspaceID)
+        }
+    }
 }

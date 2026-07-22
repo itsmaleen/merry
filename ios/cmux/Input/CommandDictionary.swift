@@ -3,8 +3,16 @@ import Foundation
 @MainActor
 final class CommandDictionary: ObservableObject {
     @Published var commands: [String] {
-        didSet { save() }
+        didSet {
+            lowercasedCommands = commands.map { $0.lowercased() }
+            save()
+        }
     }
+
+    /// Lowercased mirror of `commands`, kept in sync in didSet.
+    /// suggestions(for:) runs on every keystroke; lowercasing the whole list
+    /// (twice) per call was per-keystroke allocation churn.
+    private var lowercasedCommands: [String]
 
     private static let storageKey = "commandDictionary"
 
@@ -31,11 +39,14 @@ final class CommandDictionary: ObservableObject {
     ]
 
     init() {
+        // didSet doesn't fire during init, so set the mirror explicitly.
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let saved = try? JSONDecoder().decode([String].self, from: data) {
             self.commands = saved
+            self.lowercasedCommands = saved.map { $0.lowercased() }
         } else {
             self.commands = Self.defaultCommands
+            self.lowercasedCommands = Self.defaultCommands.map { $0.lowercased() }
         }
     }
 
@@ -64,9 +75,17 @@ final class CommandDictionary: ObservableObject {
         if query.isEmpty {
             return Array(commands.prefix(20))
         }
-        // Show matches: prefix first, then contains
-        let prefix = commands.filter { $0.lowercased().hasPrefix(query) }
-        let contains = commands.filter { $0.lowercased().contains(query) && !$0.lowercased().hasPrefix(query) }
-        return Array((prefix + contains).prefix(20))
+        // Show matches: prefix first, then contains — one pass, no per-call
+        // lowercasing.
+        var prefixMatches: [String] = []
+        var containsMatches: [String] = []
+        for (i, lower) in lowercasedCommands.enumerated() {
+            if lower.hasPrefix(query) {
+                prefixMatches.append(commands[i])
+            } else if lower.contains(query) {
+                containsMatches.append(commands[i])
+            }
+        }
+        return Array((prefixMatches + containsMatches).prefix(20))
     }
 }

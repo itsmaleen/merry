@@ -18,7 +18,7 @@ struct WorkspaceListView: View {
                             appState.selectWorkspace(workspace.id)
                         } label: {
                             HStack {
-                                Text(workspace.name)
+                                Text(workspace.title)
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 if workspace.id == appState.currentWorkspaceID {

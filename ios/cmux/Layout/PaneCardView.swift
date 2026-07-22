@@ -230,9 +230,10 @@ struct TranscriptSheetView: View {
             }
         }
         .onAppear {
-            if appState.claudeTranscript[target.id] == nil {
-                appState.loadClaudeTranscript(target.id)
-            }
+            // Always refetch on open so we show the latest session data, not a
+            // stale cache from a previous viewing. Any cached text stays visible
+            // (pinned to the bottom) until the fresh transcript replaces it.
+            appState.loadClaudeTranscript(target.id)
         }
     }
 
@@ -287,7 +288,7 @@ struct TranscriptSheetView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            TerminalTextView(text: text, fontSize: 12.5, textOpacity: 0.9)
+            TerminalTextView(text: text, fontSize: 12.5, textOpacity: 0.9, trimMarkdownLinks: true)
                 .padding(.horizontal, 4)
         }
     }

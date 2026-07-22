@@ -20,6 +20,19 @@ final class AppState: ObservableObject {
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
     @Published var browserURLs: [String: String] = [:]
+    // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
+    // notification can bring the relevant surface into view on the Layout tab.
+    @Published var selectedTab: SidebarTab = .layout
+
+    // The live instance, so AppDelegate can route a tapped notification to it.
+    // Weak so it doesn't keep a torn-down state alive.
+    static private(set) weak var current: AppState?
+    // A notification tapped before any AppState existed (cold launch straight
+    // from a notification). Drained in init.
+    private static var pendingLaunchTap: (surfaceID: String, workspaceID: String?)?
+    // A surface to focus once the bridge finishes connecting, for a tap that
+    // arrived while the session was still coming up. Applied in clientDidConnect.
+    private var pendingNavigationTarget: (surfaceID: String, workspaceID: String?)?
 
     private var lastFocusedSurface: [String: String] = [:]
     // Claude conversation transcripts, loaded on demand for the full-screen
@@ -43,6 +56,58 @@ final class AppState: ObservableObject {
         startDiscovery()
         connectSelected()
         requestNotificationPermission()
+        Self.current = self
+        if let tap = Self.pendingLaunchTap {
+            Self.pendingLaunchTap = nil
+            navigateToSurface(surfaceID: tap.surfaceID, workspaceID: tap.workspaceID)
+        }
+    }
+
+    // MARK: - Notification navigation
+
+    /// Routes a tapped notification to the live AppState, or stashes it until one
+    /// comes up (cold launch straight from a notification).
+    static func handleNotificationTap(surfaceID: String, workspaceID: String?) {
+        if let current {
+            current.navigateToSurface(surfaceID: surfaceID, workspaceID: workspaceID)
+        } else {
+            pendingLaunchTap = (surfaceID, workspaceID)
+        }
+    }
+
+    /// Brings the surface referenced by a tapped notification into view: shows the
+    /// Layout tab and, once connected, selects its workspace and focuses it.
+    func navigateToSurface(surfaceID: String, workspaceID: String?) {
+        selectedTab = .layout
+        guard connectionStatus.isConnected else {
+            // Cold launch: apply once clientDidConnect fires.
+            pendingNavigationTarget = (surfaceID, workspaceID)
+            return
+        }
+        applyNavigation(surfaceID: surfaceID, workspaceID: workspaceID)
+    }
+
+    private func applyNavigation(surfaceID: String, workspaceID: String?) {
+        // Focus only after the workspace switch lands: selectWorkspace's
+        // completion restores that workspace's last-remembered focus, which
+        // would overwrite an eagerly applied one — and focusSurface records
+        // lastFocusedSurface under currentWorkspaceID, which is stale until
+        // the completion updates it.
+        if let wsID = workspaceID, wsID != currentWorkspaceID {
+            selectWorkspace(wsID) { [weak self] in
+                self?.finishNavigation(surfaceID: surfaceID)
+            }
+        } else {
+            finishNavigation(surfaceID: surfaceID)
+        }
+    }
+
+    private func finishNavigation(surfaceID: String) {
+        focusSurface(surfaceID)
+        // That surface is now on screen, so its pending notifications are stale.
+        if notifications.contains(where: { $0.surfaceID == surfaceID }) {
+            notifications.removeAll { $0.surfaceID == surfaceID }
+        }
     }
 
     /// The bridge whose session is (or should be) active.
@@ -64,6 +129,12 @@ final class AppState: ObservableObject {
         if let subtitle = n.subtitle { content.subtitle = subtitle }
         if let body = n.body { content.body = body }
         content.sound = .default
+        // Carry the surface/workspace so tapping the notification can bring that
+        // surface into view (see AppDelegate.userNotificationCenter(_:didReceive:)).
+        var info: [String: String] = [:]
+        if let sid = n.surfaceID { info["surface_id"] = sid }
+        if let wid = n.workspaceID { info["workspace_id"] = wid }
+        content.userInfo = info
 
         let request = UNNotificationRequest(
             identifier: n.id,
@@ -241,12 +312,13 @@ final class AppState: ObservableObject {
 
     // MARK: - Commands
 
-    func selectWorkspace(_ id: String) {
+    func selectWorkspace(_ id: String, then completion: (() -> Void)? = nil) {
         send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
             self?.currentWorkspaceID = id
             self?.localFocusedSurfaceID = self?.lastFocusedSurface[id]
             self?.refreshSurfaces()
             self?.refreshPanes()
+            completion?()
         }
     }
 
@@ -338,12 +410,18 @@ final class AppState: ObservableObject {
             params["workspace_id"] = wsID
         }
         send(method: "surface.read_text", params: params) { [weak self] result in
-            guard let self, let text = result["text"] as? String else { return }
-            let content = Self.capHistoryLines(Self.trimTerminalText(text))
-            // Diff before assigning: a no-op write to a @Published dictionary
-            // still fires objectWillChange every poll.
-            if self.surfaceContent[surfaceID] != content {
-                self.surfaceContent[surfaceID] = content
+            guard self != nil, let text = result["text"] as? String else { return }
+            // Trim/cap off the main actor: a deep focused read is thousands of
+            // lines, and doing that inline stalls whatever animation (keyboard,
+            // card resize) happens to be in flight when the poll lands.
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let content = Self.capHistoryLines(Self.trimTerminalText(text))
+                await MainActor.run {
+                    // Diff before assigning: a no-op write to a @Published
+                    // dictionary still fires objectWillChange every poll.
+                    guard let self, self.surfaceContent[surfaceID] != content else { return }
+                    self.surfaceContent[surfaceID] = content
+                }
             }
         }
     }
@@ -374,25 +452,40 @@ final class AppState: ObservableObject {
         send(method: "claude.transcript", params: params) { [weak self] result in
             guard let self else { return }
             self.claudeTranscriptLoading.remove(surfaceID)
-            let text = (result["text"] as? String).map(Self.trimTerminalText) ?? ""
+            let raw = result["text"] as? String ?? ""
             let sessionID = result["session_id"] as? String ?? ""
             // Diagnostic: the surface we asked for vs the session the bridge
             // resolved it to. If these ever look mismatched, this line names the
             // exact ids to chase (the bridge maps surface → resume_binding →
             // <checkpoint_id>.jsonl and echoes the resolved session_id back).
-            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(text.count) chars)")
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)")
             self.claudeTranscriptSession[surfaceID] = sessionID
-            self.claudeTranscript[surfaceID] = text
+            // Trim off the main actor — transcripts can be hundreds of messages,
+            // and this runs every time the history viewer opens.
+            Task.detached(priority: .userInitiated) { [weak self] in
+                let text = Self.trimTerminalText(raw)
+                await MainActor.run {
+                    guard let self, self.claudeTranscript[surfaceID] != text else { return }
+                    self.claudeTranscript[surfaceID] = text
+                }
+            }
         }
     }
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
+    /// Plain character ops, no regex — this runs over thousands of lines per
+    /// poll, and a per-line NSRegularExpression here dominated the poll cost.
     nonisolated private static func trimTerminalText(_ text: String) -> String {
-        text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) }
-            .joined(separator: "\n")
-            .replacingOccurrences(of: "\\n+$", with: "", options: .regularExpression)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        for i in lines.indices {
+            while let last = lines[i].last, last.isWhitespace {
+                lines[i].removeLast()
+            }
+        }
+        while lines.last?.isEmpty == true {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Bound history so a very long session doesn't produce an attributed
@@ -476,12 +569,14 @@ final class AppState: ObservableObject {
         }
         send(method: "workspace.list", params: [:]) { [weak self] result in
             if let list = result["workspaces"] as? [[String: Any]] {
-                self?.workspaces = list.compactMap(Workspace.init)
+                self?.setIfChanged(\.workspaces, to: list.compactMap(Workspace.init), by: Workspace.sameContent)
             }
             step()
         }
         send(method: "workspace.current", params: [:]) { [weak self] result in
-            if let id = result["id"] as? String { self?.currentWorkspaceID = id }
+            if let id = result["id"] as? String, id != self?.currentWorkspaceID {
+                self?.currentWorkspaceID = id
+            }
             step()
         }
     }
@@ -493,7 +588,7 @@ final class AppState: ObservableObject {
         }
         send(method: "surface.list", params: params) { [weak self] result in
             if let list = result["surfaces"] as? [[String: Any]] {
-                self?.surfaces = list.compactMap(Surface.init)
+                self?.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
                 // Validate remembered surface still exists
                 if let localID = self?.localFocusedSurfaceID,
                    self?.surfaces.contains(where: { $0.id == localID }) == false {
@@ -515,7 +610,7 @@ final class AppState: ObservableObject {
         send(method: "surface.list", params: params) { [weak self] result in
             guard let self else { return }
             if let list = result["surfaces"] as? [[String: Any]] {
-                self.surfaces = list.compactMap(Surface.init)
+                self.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
                 if let newSurface = self.surfaces.first(where: { !previousIDs.contains($0.id) }) {
                     self.focusSurface(newSurface.id)
                 } else if self.focusedSurfaceID == nil, let first = self.surfaces.first {
@@ -532,7 +627,7 @@ final class AppState: ObservableObject {
         }
         send(method: "pane.list", params: params) { [weak self] result in
             if let list = result["panes"] as? [[String: Any]] {
-                self?.panes = list.compactMap(Pane.init)
+                self?.setIfChanged(\.panes, to: list.compactMap(Pane.init), by: Pane.sameContent)
             }
         }
     }
@@ -567,11 +662,32 @@ final class AppState: ObservableObject {
     }
 
     func clearNotificationsForFocusedSurface() {
-        guard let focusedID = focusedSurfaceID else { return }
+        // Guard before mutating: this runs on delayed timers after every focus
+        // change, and removeAll on a @Published array fires objectWillChange
+        // even when nothing matches.
+        guard let focusedID = focusedSurfaceID,
+              notifications.contains(where: { $0.surfaceID == focusedID }) else { return }
         notifications.removeAll { $0.surfaceID == focusedID }
     }
 
     // MARK: - Private helpers
+
+    /// Assigns a @Published list only when its content actually changed.
+    /// The refresh RPCs re-fetch on every connect/foreground/focus change and
+    /// usually return identical lists; an unconditional assign would fire
+    /// objectWillChange each time and re-render every view observing AppState.
+    /// Comparison is via an explicit closure, NOT Equatable conformance — these
+    /// structs are SwiftUI view parameters, and conforming them to Equatable
+    /// has caused missed re-renders here before.
+    private func setIfChanged<T>(
+        _ keyPath: ReferenceWritableKeyPath<AppState, [T]>, to value: [T],
+        by same: (T, T) -> Bool
+    ) {
+        let current = self[keyPath: keyPath]
+        if current.count != value.count || !zip(current, value).allSatisfy(same) {
+            self[keyPath: keyPath] = value
+        }
+    }
 
     private func send(
         method: String,
@@ -590,6 +706,11 @@ extension AppState: BridgeClientDelegate {
         refreshWorkspaces {
             self.refreshSurfaces()
             self.refreshPanes()
+            // A notification tapped before the session was up (cold launch).
+            if let tap = self.pendingNavigationTarget {
+                self.pendingNavigationTarget = nil
+                self.applyNavigation(surfaceID: tap.surfaceID, workspaceID: tap.workspaceID)
+            }
         }
     }
 
@@ -659,12 +780,25 @@ struct BridgeNotification: Identifiable, Decodable {
 
 struct Workspace: Identifiable {
     let id: String
-    let name: String
+    /// The display title cmux computes for the workspace (custom title, else the
+    /// active conversation topic, else the working directory) — matches what the
+    /// cmux UI shows. Falls back through older fields, then the id.
+    let title: String
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
         self.id = id
-        self.name = (dict["name"] as? String) ?? id
+        // First non-blank candidate wins — a present-but-empty field must not
+        // shadow a usable later fallback.
+        self.title = [dict["title"], dict["custom_title"], dict["name"]]
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+            ?? id
+    }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Workspace, _ b: Workspace) -> Bool {
+        a.id == b.id && a.title == b.title
     }
 }
 
@@ -689,6 +823,13 @@ struct Surface: Identifiable {
         self.workspaceID = dict["workspace_id"] as? String
         self.isFocused = dict["is_focused"] as? Bool ?? false
         self.agentKind = (dict["resume_binding"] as? [String: Any])?["kind"] as? String
+    }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Surface, _ b: Surface) -> Bool {
+        a.id == b.id && a.title == b.title && a.type == b.type
+            && a.workspaceID == b.workspaceID && a.isFocused == b.isFocused
+            && a.agentKind == b.agentKind
     }
 }
 
@@ -737,6 +878,13 @@ struct Pane: Identifiable {
         surfaceIDs = dict["surface_ids"] as? [String] ?? []
         focusedSurfaceID = dict["focused_surface_id"] as? String
         isFocused = dict["is_focused"] as? Bool ?? false
+    }
+
+    // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
+    static func sameContent(_ a: Pane, _ b: Pane) -> Bool {
+        a.id == b.id && a.pixelFrame == b.pixelFrame
+            && a.containerFrame == b.containerFrame && a.surfaceIDs == b.surfaceIDs
+            && a.focusedSurfaceID == b.focusedSurfaceID && a.isFocused == b.isFocused
     }
 }
 
