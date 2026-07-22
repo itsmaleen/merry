@@ -238,8 +238,13 @@ private enum TerminalTextRenderer {
                     let unit = ns.character(at: range.location + range.length - 1)
                     guard let scalar = Unicode.Scalar(unit) else { break }
                     if scalar == ")" {
-                        // Keep a ) that closes a ( inside the URL (e.g. wiki/Foo_(bar)).
-                        if ns.substring(with: range).contains("(") { break }
+                        // Keep a ) that closes a ( inside the URL (e.g.
+                        // wiki/Foo_(bar)) — but trim unbalanced extras, as in
+                        // "(see wiki/Foo_(bar))" where the last ) is prose.
+                        let candidate = ns.substring(with: range)
+                        let opens = candidate.lazy.filter { $0 == "(" }.count
+                        let closes = candidate.lazy.filter { $0 == ")" }.count
+                        if closes <= opens { break }
                     } else if !trailingJunk.contains(scalar) {
                         break
                     }

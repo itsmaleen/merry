@@ -88,9 +88,21 @@ final class AppState: ObservableObject {
     }
 
     private func applyNavigation(surfaceID: String, workspaceID: String?) {
+        // Focus only after the workspace switch lands: selectWorkspace's
+        // completion restores that workspace's last-remembered focus, which
+        // would overwrite an eagerly applied one — and focusSurface records
+        // lastFocusedSurface under currentWorkspaceID, which is stale until
+        // the completion updates it.
         if let wsID = workspaceID, wsID != currentWorkspaceID {
-            selectWorkspace(wsID)
+            selectWorkspace(wsID) { [weak self] in
+                self?.finishNavigation(surfaceID: surfaceID)
+            }
+        } else {
+            finishNavigation(surfaceID: surfaceID)
         }
+    }
+
+    private func finishNavigation(surfaceID: String) {
         focusSurface(surfaceID)
         // That surface is now on screen, so its pending notifications are stale.
         if notifications.contains(where: { $0.surfaceID == surfaceID }) {
@@ -300,12 +312,13 @@ final class AppState: ObservableObject {
 
     // MARK: - Commands
 
-    func selectWorkspace(_ id: String) {
+    func selectWorkspace(_ id: String, then completion: (() -> Void)? = nil) {
         send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
             self?.currentWorkspaceID = id
             self?.localFocusedSurfaceID = self?.lastFocusedSurface[id]
             self?.refreshSurfaces()
             self?.refreshPanes()
+            completion?()
         }
     }
 
@@ -775,10 +788,11 @@ struct Workspace: Identifiable {
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
         self.id = id
-        let computed = (dict["title"] as? String)?.trimmingCharacters(in: .whitespaces)
-        self.title = (computed?.isEmpty == false ? computed : nil)
-            ?? (dict["custom_title"] as? String)
-            ?? (dict["name"] as? String)
+        // First non-blank candidate wins — a present-but-empty field must not
+        // shadow a usable later fallback.
+        self.title = [dict["title"], dict["custom_title"], dict["name"]]
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
             ?? id
     }
 
