@@ -80,7 +80,12 @@ final class AppState: ObservableObject {
     // QR/deep-link could otherwise silently redirect all keystrokes).
     @Published var pendingPairing: PairingCredentials?
 
-    func handlePairingURL(_ url: URL) {
+    /// Handles a pairing URL. `trusted` is true when the user initiated the
+    /// pairing inside the app (scanning a QR from the pairing sheet, or manual
+    /// entry) — those are explicit actions and are committed directly. It is
+    /// false for an external `cmux-bridge://` deep link opened by another app,
+    /// where a new bridge must be confirmed before it can take over input.
+    func handlePairingURL(_ url: URL, trusted: Bool = false) {
         guard url.scheme == "cmux-bridge",
               url.host == "pair",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -99,13 +104,13 @@ final class AppState: ObservableObject {
             commitPairing(credentials)
             return
         }
-        // Trust-on-first-use: the very first bridge is committed immediately.
-        if bridges.isEmpty {
+        // Trust-on-first-use, or an explicit in-app pairing action: commit now.
+        if bridges.isEmpty || trusted {
             commitPairing(credentials)
             return
         }
-        // A new, unknown bridge added alongside existing ones: confirm before
-        // switching input to it.
+        // A new, unknown bridge arriving via an external deep link while others
+        // exist: confirm before switching input to it.
         pendingPairing = credentials
     }
 
