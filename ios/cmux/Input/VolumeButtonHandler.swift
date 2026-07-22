@@ -47,8 +47,6 @@ final class VolumeButtonHandler: ObservableObject {
             }
 
             let session = AVAudioSession.sharedInstance()
-            try? session.setCategory(.ambient)
-            try? session.setActive(true)
 
             // Listen for audio session interruptions and restart
             if self.interruptionObserver == nil {
@@ -67,9 +65,17 @@ final class VolumeButtonHandler: ObservableObject {
                 }
             }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.setVolume(0.5)
-                self?.startObserving(session: session)
+            // Session config off the main thread: setCategory/setActive block
+            // while the system reconfigures the audio graph (tens to hundreds
+            // of ms), and this runs on every app-foreground. AVAudioSession is
+            // thread-safe; observation starts only after activation finishes.
+            DispatchQueue.global(qos: .userInitiated).async {
+                try? session.setCategory(.ambient)
+                try? session.setActive(true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.setVolume(0.5)
+                    self?.startObserving(session: session)
+                }
             }
         }
     }
