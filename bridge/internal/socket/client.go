@@ -122,7 +122,7 @@ func (c *Client) Send(method string, params map[string]any) (json.RawMessage, er
 		} `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &resp); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return nil, fmt.Errorf("parse response: %w (raw: %q)", err, responseSnippet(line))
 	}
 	if !resp.OK {
 		if resp.Error != nil {
@@ -232,7 +232,7 @@ func authenticate(conn net.Conn, password string) error {
 		} `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &resp); err != nil {
-		return fmt.Errorf("parse auth response: %w", err)
+		return fmt.Errorf("parse auth response: %w (raw: %q)", err, responseSnippet(line))
 	}
 	if !resp.OK {
 		if resp.Error != nil {
@@ -247,4 +247,18 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// responseSnippet trims and truncates a raw socket line for inclusion in error
+// messages, so a non-JSON reply is visible instead of a bare "invalid character
+// 'E'". cmux returns plain-text errors for some failures, and a connection that
+// has desynced surfaces arbitrary bytes here — both are far easier to diagnose
+// with the offending text attached.
+func responseSnippet(line string) string {
+	s := strings.TrimSpace(line)
+	const max = 160
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
