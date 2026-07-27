@@ -24,6 +24,36 @@ LOG_DIR="$HOME/Library/Logs"
 LOG_PATH="$LOG_DIR/cmux-bridge.log"
 mkdir -p "$LOG_DIR"
 
+# Clean up ROOT-owned leftovers from a historical `sudo ./install-bridge.sh`
+# (from before the guard above existed). These silently shadow the per-user
+# install: a root-domain launchd job respawns the daemon as root — which cmux
+# denies control-socket access to ("Access denied - only processes started
+# inside cmux can connect"), so it flaps forever with 'E' parse errors — and
+# root-owned files (this plist, the log, the tsnet state) make the per-user
+# LaunchAgent fail to even start (launchd exits it with EX_CONFIG / 78, no
+# output). We only invoke sudo when something root-owned is actually found, so a
+# clean machine never gets prompted.
+TS_STATE="$HOME/.config/cmux-bridge/tailscale/tailscaled.state"
+is_root_owned() { [ -e "$1" ] && [ "$(stat -f %u "$1" 2>/dev/null)" = "0" ]; }
+NEEDS_ROOT_CLEANUP=0
+[ -n "$(pgrep -u 0 -f "$BINARY" 2>/dev/null || true)" ] && NEEDS_ROOT_CLEANUP=1
+for f in "$PLIST_PATH" "$LOG_PATH" "$TS_STATE"; do
+    is_root_owned "$f" && NEEDS_ROOT_CLEANUP=1
+done
+if [ "$NEEDS_ROOT_CLEANUP" = "1" ]; then
+    echo "Detected root-owned bridge leftovers from a past 'sudo' install — cleaning up (needs sudo)..."
+    # Remove any root-domain launchd registration so it stops respawning as root.
+    sudo launchctl bootout "gui/0/${PLIST_LABEL}" 2>/dev/null || true
+    sudo launchctl bootout "system/${PLIST_LABEL}" 2>/dev/null || true
+    sudo pkill -9 -f "$BINARY" 2>/dev/null || true
+    # Root-owned plist/log block the per-user agent; drop them (both re-created).
+    is_root_owned "$PLIST_PATH" && { echo "  removing root-owned $PLIST_PATH"; sudo rm -f "$PLIST_PATH"; }
+    is_root_owned "$LOG_PATH"   && { echo "  removing root-owned $LOG_PATH";   sudo rm -f "$LOG_PATH"; }
+    # Hand the tsnet state back to the user rather than deleting it, to preserve
+    # the tailnet node identity (deleting would force a re-auth).
+    is_root_owned "$TS_STATE"   && { echo "  reclaiming root-owned $TS_STATE"; sudo chown "$(id -u):$(id -g)" "$TS_STATE"; }
+fi
+
 # Build to a temp path, then install to /usr/local/bin — using sudo only if the
 # destination isn't user-writable (so the rest of the script stays non-root).
 echo "Building cmux-bridge..."

@@ -93,6 +93,18 @@ func main() {
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	flag.Parse()
 
+	// cmux only accepts control-socket connections from the user that runs cmux;
+	// a root peer is denied with "ERROR: Access denied - only processes started
+	// inside cmux can connect". The bridge then connects but has every RPC
+	// rejected — surfacing as cryptic 'E' parse errors and endless reconnect
+	// flapping. This most often happens when a historical `sudo ./install-bridge.sh`
+	// left a root-domain launchd job behind. Warn early so the log names the cause.
+	if os.Geteuid() == 0 {
+		log.Printf("WARNING: running as root (uid 0). cmux denies control-socket access to " +
+			"root (\"Access denied - only processes started inside cmux can connect\"), so " +
+			"every RPC will fail. Run the bridge as your normal user (see scripts/install-bridge.sh).")
+	}
+
 	dir := configDir()
 	cfg, err := loadConfig(dir)
 	if err != nil {
@@ -135,10 +147,21 @@ func runPair(dir string, cfg config) {
 		}
 	}
 
-	// Verify connectivity
+	// Verify connectivity with a real RPC round-trip. Connect() only opens the
+	// socket; it does not prove cmux will answer requests. cmux can accept the
+	// connection and then reject every RPC — e.g. when the bridge runs as the
+	// wrong uid or the socket password is wrong. Pinging here surfaces that at
+	// pairing time instead of leaving a daemon that silently flaps afterward.
 	client := socket.NewClient(cfg.SocketPath, cfg.SocketPassword)
 	if err := client.Connect(); err != nil {
 		log.Fatalf("cannot connect to cmux socket: %v\nMake sure cmux is running and the socket path is correct (%s)", err, cfg.SocketPath)
+	}
+	if _, err := client.Send("system.ping", nil); err != nil {
+		client.Close()
+		log.Fatalf("connected to the cmux socket but it rejected a test request: %v\n"+
+			"An \"Access denied\" error means the bridge is running as the wrong user (do not run "+
+			"as root — cmux only accepts connections from the user running cmux); otherwise the "+
+			"socket password is wrong.", err)
 	}
 	client.Close()
 	fmt.Println("Connected to cmux.")
