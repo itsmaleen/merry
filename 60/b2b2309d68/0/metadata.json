@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "60b2b2309d68",
+  "session_id": "ea3065b4-7aa2-46d7-8427-af11c18e005e",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-27T15:53:52.949672Z",
+  "branch": "fix/bridge-root-daemon-hardening",
+  "checkpoints_count": 3,
+  "save_step_count": 3,
+  "files_touched": [
+    "bridge/cmd/cmux-bridge/main.go",
+    "bridge/internal/socket/client.go",
+    "scripts/install-bridge.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "a0d6dc886788",
+  "token_usage": {
+    "input_tokens": 8736,
+    "cache_creation_tokens": 522838,
+    "cache_read_tokens": 7516137,
+    "output_tokens": 97362,
+    "api_call_count": 79
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-27T15:53:52.903613Z",
+    "agent_lines": 70,
+    "agent_removed": 3,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 70,
+    "total_lines_changed": 73,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 15,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 15,
+      "user_lines_removed": 0,
+      "agent_lines_added": 67,
+      "agent_lines_removed": 3,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 15,
+      "user_lines_removed": 0,
+      "agent_lines_added": 67,
+      "agent_lines_removed": 3,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 15,
+      "user_lines_removed": 0,
+      "agent_lines_added": 70,
+      "agent_lines_removed": 3,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 15
+      }
+    }
+  ]
+}

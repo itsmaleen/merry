@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "60b2b2309d68",
+  "strategy": "manual-commit",
+  "branch": "fix/bridge-root-daemon-hardening",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "bridge/cmd/cmux-bridge/main.go",
+    "bridge/internal/socket/client.go",
+    "scripts/install-bridge.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/60/b2b2309d68/0/metadata.json",
+      "transcript": "/60/b2b2309d68/0/full.jsonl",
+      "compact_transcript": "/60/b2b2309d68/0/transcript.jsonl",
+      "content_hash": "/60/b2b2309d68/0/content_hash.txt",
+      "prompt": "/60/b2b2309d68/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8736,
+    "cache_creation_tokens": 522838,
+    "cache_read_tokens": 7516137,
+    "output_tokens": 97362,
+    "api_call_count": 79
+  }
+}

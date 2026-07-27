@@ -1,0 +1,64 @@
+I updated cmux and now seems like bridge is down, check and start it again or give me the command
+
+---
+
+I killed the bridge but now can't install bridge, remove the sudo guard
+
+marlin@Marlins-MacBook-Pro-2 cmux-companion % ./scripts/install-bridge.sh --tailscale
+Building cmux-bridge...
+Building cmux-bridge → /var/folders/p4/7cgc0d_d7hn9q9p131fpwgw00000gn/T/tmp.4Oooxp4XjV
+Done.
+Installing /usr/local/bin/cmux-bridge (needs sudo for /usr/local/bin)...
+Tailscale enabled.
+Installing LaunchAgent → /Users/marlin/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist
+./scripts/install-bridge.sh: line 51: /Users/marlin/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist: Permission denied
+marlin@Marlins-MacBook-Pro-2 cmux-companion % sudo ./scripts/install-bridge.sh --tailscale
+error: run this WITHOUT sudo (as your normal user):
+         ./scripts/install-bridge.sh --tailscale
+
+---
+
+marlin@Marlins-MacBook-Pro-2 cmux-companion % cmux-bridge --pair --tailscale
+cmux socket password (leave empty if not using password mode):
+Connected to cmux.
+Paused the background bridge daemon for pairing.
+2026/07/25 17:49:28 tsnet running state path /Users/marlin/.config/cmux-bridge/tailscale/tailscaled.state
+2026/07/25 17:49:28 tailscale: node did not come up: tsnet.Up: tsnet: failed to migrate existing TPM-sealed state file to plaintext format: open /Users/marlin/.config/cmux-bridge/tailscale/tailscaled.state: permission denied
+Restarted the background bridge daemon.
+2026/07/25 17:49:28 --tailscale was requested but the bridge's Tailscale node did not come up.
+Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.
+Refusing to print a LAN-only QR that would silently drop remote access.
+marlin@Marlins-MacBook-Pro-2 cmux-companion % cmux-bridge --pair --tailscale
+cmux socket password (leave empty if not using password mode):
+Connected to cmux.
+Paused the background bridge daemon for pairing.
+2026/07/25 17:49:45 tsnet running state path /Users/marlin/.config/cmux-bridge/tailscale/tailscaled.state
+2026/07/25 17:49:45 tailscale: node did not come up: tsnet.Up: tsnet: failed to migrate existing TPM-sealed state file to plaintext format: open /Users/marlin/.config/cmux-bridge/tailscale/tailscaled.state: permission denied
+Restarted the background bridge daemon.
+2026/07/25 17:49:45 --tailscale was requested but the bridge's Tailscale node did not come up.
+Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.
+Refusing to print a LAN-only QR that would silently drop remote access.
+
+---
+
+got qr code and connected to iphone but seeing empty without any workspaces or surfaces
+
+---
+
+its done/ready
+51694   0       com.itsmaleen.cmux-bridge
+ALL BRIDGE PROCESSES GONE
+
+---
+
+any updates to the code to avoid this issue in the future
+
+---
+
+confirm the exact mechanism with a one-line sudo probe against the socket.
+
+---
+
+marlin@Marlins-MacBook-Pro-2 cmux-companion % sudo python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect("/Users/marlin/.local/state/cmux/cmux-501.sock"); s.sendall(b"{\"id\":\"x\",\"method\":\"system.ping\",\"params\":{}}\n"); s.settimeout(3); print(repr(s.recv(4096)))'
+Password:
+b'ERROR: Access denied - only processes started inside cmux can connect\n'
