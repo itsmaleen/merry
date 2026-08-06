@@ -1,0 +1,1 @@
+Add to the settings the ability to enable/disable walkie talky commands (i.e. high jacking volume controls). Default should be off
