@@ -277,9 +277,10 @@ struct WorkspaceLayoutView: View {
             contentPollTimer = nil
         }
         .onChange(of: volumeButtonControls) { _, enabled in
-            // Toggling in Settings takes effect immediately: attach the KVO
-            // observer, or tear it down so the buttons go back to being
-            // ordinary volume controls.
+            // Belt-and-braces. Today MainTabView switches on selectedTab, so
+            // visiting Settings tears this view down and the toggle is picked
+            // up by onAppear on the way back. This keeps the handler honest if
+            // the tab ever starts retaining its view.
             if enabled {
                 volumeHandler.start()
             } else {
