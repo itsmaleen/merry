@@ -8,7 +8,12 @@ struct cmuxApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
-        UserDefaults.standard.register(defaults: ["autoSubmitSpeech": true])
+        UserDefaults.standard.register(defaults: [
+            "autoSubmitSpeech": true,
+            // Hijacking the hardware volume buttons is opt-in: until the user
+            // turns it on, the buttons stay ordinary volume controls.
+            "volumeButtonControls": false,
+        ])
     }
 
     var body: some Scene {

@@ -171,6 +171,7 @@ struct WorkspaceLayoutView: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject var quickActionStore: QuickActionStore
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
+    @AppStorage("volumeButtonControls") private var volumeButtonControls = false
     @StateObject private var volumeHandler = VolumeButtonHandler()
     @StateObject private var speechManager = SpeechInputManager()
     @StateObject private var quickAction = QuickActionState()
@@ -267,7 +268,7 @@ struct WorkspaceLayoutView: View {
             speechManager.requestPermissions()
             wireVolumeCallbacks()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                volumeHandler.start()
+                if volumeButtonControls { volumeHandler.start() }
             }
             startContentPolling()
         }
@@ -275,10 +276,21 @@ struct WorkspaceLayoutView: View {
             contentPollTimer?.invalidate()
             contentPollTimer = nil
         }
+        .onChange(of: volumeButtonControls) { _, enabled in
+            // Belt-and-braces. Today MainTabView switches on selectedTab, so
+            // visiting Settings tears this view down and the toggle is picked
+            // up by onAppear on the way back. This keeps the handler honest if
+            // the tab ever starts retaining its view.
+            if enabled {
+                volumeHandler.start()
+            } else {
+                volumeHandler.stop()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             // Restart volume handler — iOS can deactivate AVAudioSession
             // when backgrounded, interrupted, or idle, killing the KVO observer
-            volumeHandler.start()
+            if volumeButtonControls { volumeHandler.start() }
             appState.refreshSurfaces()
             // Content polling can be left dead after a background/tab switch
             // (the timer was invalidated but onAppear never re-fired). Restart

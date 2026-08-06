@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
+    @AppStorage("volumeButtonControls") private var volumeButtonControls = false
     @State private var showUnpairConfirm = false
     @State private var renameTarget: SavedBridge?
     @State private var renameText = ""
@@ -30,6 +31,13 @@ struct SettingsView: View {
                     NavigationLink("Manage Quick Actions") {
                         QuickActionSettingsView()
                     }
+                }
+
+                Section("Walkie-Talkie") {
+                    Toggle("Volume button controls", isOn: $volumeButtonControls)
+                    Text("When enabled, the hardware volume buttons stop changing volume and drive the app instead: volume up starts or sends a dictation, double-tap up opens quick actions, volume down cycles surfaces, double-tap down cycles workspaces.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Speech Input") {
