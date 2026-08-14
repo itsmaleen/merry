@@ -10,6 +10,7 @@
     {
       "metadata": "/20/9ed24a9dc6/0/metadata.json",
       "transcript": "/20/9ed24a9dc6/0/full.jsonl",
+      "compact_transcript": "/20/9ed24a9dc6/0/transcript.jsonl",
       "content_hash": "/20/9ed24a9dc6/0/content_hash.txt",
       "prompt": ""
     }
