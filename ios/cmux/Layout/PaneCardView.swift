@@ -280,6 +280,17 @@ struct TranscriptSheetView: View {
                     Text("Loading history…")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.3))
+                } else if appState.claudeTranscriptMissing.contains(target.id) {
+                    // Say so plainly rather than showing the newest session in
+                    // the same folder, which is a different conversation.
+                    Text("This surface's session file is missing")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                    Text("cmux points it at session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), which is no longer in ~/.claude/projects.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
                 } else {
                     Text("No conversation history")
                         .font(.system(size: 12, design: .monospaced))

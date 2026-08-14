@@ -43,6 +43,10 @@ final class AppState: ObservableObject {
     // surface ID. Surfaced in the history viewer for diagnosing wrong-session reports.
     @Published var claudeTranscriptSession: [String: String] = [:]
     @Published var claudeTranscriptLoading: Set<String> = []
+    // Surfaces bound to a session whose transcript file is gone. Distinguishes
+    // "this conversation's file no longer exists" from "nothing said yet" —
+    // both arrive as empty text.
+    @Published var claudeTranscriptMissing: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
     private let bridgeStore = BridgeStore()
@@ -281,6 +285,7 @@ final class AppState: ObservableObject {
         claudeTranscript = [:]
         claudeTranscriptSession = [:]
         claudeTranscriptLoading = []
+        claudeTranscriptMissing = []
         presentedHistory = nil
         lastFocusedSurface = [:]
     }
@@ -454,12 +459,18 @@ final class AppState: ObservableObject {
             self.claudeTranscriptLoading.remove(surfaceID)
             let raw = result["text"] as? String ?? ""
             let sessionID = result["session_id"] as? String ?? ""
+            let missing = result["session_missing"] as? Bool ?? false
             // Diagnostic: the surface we asked for vs the session the bridge
             // resolved it to. If these ever look mismatched, this line names the
             // exact ids to chase (the bridge maps surface → resume_binding →
             // <checkpoint_id>.jsonl and echoes the resolved session_id back).
-            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)")
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)\(missing ? " MISSING FILE" : "")")
             self.claudeTranscriptSession[surfaceID] = sessionID
+            if missing {
+                self.claudeTranscriptMissing.insert(surfaceID)
+            } else {
+                self.claudeTranscriptMissing.remove(surfaceID)
+            }
             // Trim off the main actor — transcripts can be hundreds of messages,
             // and this runs every time the history viewer opens.
             Task.detached(priority: .userInitiated) { [weak self] in
