@@ -1,0 +1,11 @@
+/cross-review
+
+---
+
+<task-notification>
+<task-id>bobsa81h6</task-id>
+<tool-use-id>toolu_01S9NYTZ1DhCgA3t4qo9Pg7N</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-marlin-cmux-companion/8d7b2650-ae3b-4649-8cc8-0a1816f08a8a/tasks/bobsa81h6.output</output-file>
+<status>completed</status>
+<summary>Background command "Run cross-review dispatch (background)" completed (exit code 0)</summary>
+</task-notification>
