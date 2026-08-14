@@ -1,0 +1,9 @@
+/efficient-fable
+
+---
+
+/loop a few things to fix/add- need a tab key shortcut to include - show on terminals/surfaces when “working” maybe with a small loading animation in them. that way can quickly see if message sent triggered work to start- need to fix the swipe to switch active surface to not be possible while text is being selected. when dragging finger to select text, it triggers the swipe to next surface- need to have some way to make sure when rendering links that they dont get broken up so its still all one link e.g https://ms-mac-mini.tail901772.ts.net/wrinkles/onepager/business_os_landscap in one line and then e.html in another and only first line is a link but its an incomplete link leading nowhere
+
+---
+
+looks like it worked

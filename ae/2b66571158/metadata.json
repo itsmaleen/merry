@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "ae2b66571158",
+  "strategy": "manual-commit",
+  "branch": "ui-polish-and-session-missing",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "bridge/internal/claude/transcript.go",
+    "bridge/internal/claude/transcript_test.go",
+    "bridge/internal/ws/handler.go",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/PaneCardView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ae/2b66571158/0/metadata.json",
+      "transcript": "/ae/2b66571158/0/full.jsonl",
+      "compact_transcript": "/ae/2b66571158/0/transcript.jsonl",
+      "content_hash": "/ae/2b66571158/0/content_hash.txt",
+      "prompt": "/ae/2b66571158/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 297241,
+    "cache_read_tokens": 2542967,
+    "output_tokens": 68426,
+    "api_call_count": 21
+  }
+}
