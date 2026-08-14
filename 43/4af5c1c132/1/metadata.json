@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "434af5c1c132",
+  "session_id": "969371f8-2c74-438d-813d-a462f5f41058",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-14T15:25:51.395292Z",
+  "branch": "ui-polish-and-session-missing",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/PaneCardView.swift"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "e71a246a30cd",
+  "checkpoint_transcript_start": 399,
+  "transcript_lines_at_start": 399,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_015U4F1am7MV4sT7DxZy4UEA",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "e71a246a30cd",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 109,
+        "end": 110,
+        "entry_ids": [
+          "c945e3d8-953f-45d1-a5a1-6b67698e5fb3"
+        ],
+        "tool_use_id": "toolu_015U4F1am7MV4sT7DxZy4UEA"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_015U4F1am7MV4sT7DxZy4UEA"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-14T15:25:51.378423Z",
+    "agent_lines": 84,
+    "agent_removed": 2,
+    "human_added": 121,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 205,
+    "total_lines_changed": 211,
+    "agent_percentage": 40.758293838862556,
+    "metric_version": 2
+  }
+}

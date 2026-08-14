@@ -4,7 +4,7 @@
   "checkpoint_id": "434af5c1c132",
   "strategy": "manual-commit",
   "branch": "ui-polish-and-session-missing",
-  "checkpoints_count": 3,
+  "checkpoints_count": 7,
   "files_touched": [
     "ios/cmux/App/AppState.swift",
     "ios/cmux/Input/TerminalInputBar.swift",
@@ -19,6 +19,12 @@
       "compact_transcript": "/43/4af5c1c132/0/transcript.jsonl",
       "content_hash": "/43/4af5c1c132/0/content_hash.txt",
       "prompt": "/43/4af5c1c132/0/prompt.txt"
+    },
+    {
+      "metadata": "/43/4af5c1c132/1/metadata.json",
+      "transcript": "/43/4af5c1c132/1/full.jsonl",
+      "content_hash": "/43/4af5c1c132/1/content_hash.txt",
+      "prompt": "/43/4af5c1c132/1/prompt.txt"
     }
   ],
   "token_usage": {

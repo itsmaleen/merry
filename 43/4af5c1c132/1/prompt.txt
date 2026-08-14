@@ -1,0 +1,9 @@
+still having issues sometimes loading the correct session history. not for all surfaces but some are loading some other session history. can you investigste the issue
+
+---
+
+ran the install bridge script
+
+---
+
+for some reason can't connect from my phone, stuck on reconnecting
