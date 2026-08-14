@@ -85,6 +85,13 @@ func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (Result
 
 	info, err := os.Stat(transcriptPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Deleted between resolution and read (session cleanup racing the
+			// request) — same outcome as never resolving it: report the
+			// session missing, not an opaque transcript_error.
+			res.SessionMissing = boundSession != ""
+			return res, nil
+		}
 		return res, err
 	}
 
@@ -99,6 +106,10 @@ func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (Result
 
 	data, err := readTail(transcriptPath, info.Size(), maxTranscriptFileBytes)
 	if err != nil {
+		if os.IsNotExist(err) {
+			res.SessionMissing = boundSession != ""
+			return res, nil
+		}
 		return res, err
 	}
 

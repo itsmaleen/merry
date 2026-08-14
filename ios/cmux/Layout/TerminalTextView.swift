@@ -344,6 +344,17 @@ private enum TerminalTextRenderer {
             lineIndex += 1
         }
         guard end > matchEnd, let url = URL(string: urlString) else { return nil }
+        // A continuation may only ever extend the URL's path/query — never its
+        // authority. Terminal output is untrusted, and a crafted next row like
+        // "@evil.example" would otherwise turn the displayed host into userinfo
+        // and send the tap to a different server than the visible first row.
+        guard let joined = URLComponents(string: urlString),
+              let original = match.url.flatMap({ URLComponents(string: $0.absoluteString) }),
+              let scheme = joined.scheme, scheme.lowercased() == original.scheme?.lowercased(),
+              joined.user == original.user,
+              let host = joined.host, host.lowercased() == original.host?.lowercased(),
+              joined.port == original.port
+        else { return nil }
         return (NSRange(location: match.range.location, length: end - match.range.location), url)
     }
 }

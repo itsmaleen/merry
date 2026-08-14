@@ -28,6 +28,16 @@ final class AppState: ObservableObject {
     // 50-line previews for deep reads) changes content without meaning the
     // surface is active, so those polls don't update workingSurfaces.
     private var lastReadDepth: [String: Int] = [:]
+    // One pending activity probe per surface — rapid key taps coalesce into
+    // the newest instead of queueing a deep read per tap (this codebase has
+    // been RPC-flooded before; see startContentPolling's debounce).
+    private var pendingProbes: [String: DispatchWorkItem] = [:]
+    // Per-surface read ordering. Two in-flight reads' detached trims can
+    // finish out of order; a response older than the newest applied one is
+    // dropped instead of rolling content back (and casting a bogus
+    // workingSurfaces vote from the rollback).
+    private var readSeq: [String: Int] = [:]
+    private var appliedReadSeq: [String: Int] = [:]
     @Published var browserURLs: [String: String] = [:]
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
@@ -290,6 +300,12 @@ final class AppState: ObservableObject {
         panes = []
         localFocusedSurfaceID = nil
         surfaceContent = [:]
+        workingSurfaces = []
+        lastReadDepth = [:]
+        readSeq = [:]
+        appliedReadSeq = [:]
+        for probe in pendingProbes.values { probe.cancel() }
+        pendingProbes = [:]
         browserURLs = [:]
         claudeTranscript = [:]
         claudeTranscriptSession = [:]
@@ -416,11 +432,20 @@ final class AppState: ObservableObject {
     /// started, and a background surface's next poll can be ~15s out — probe
     /// it sooner so the working indicator reacts promptly.
     private func scheduleActivityProbe(for surfaceID: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        pendingProbes[surfaceID]?.cancel()
+        let probe = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            let depth = surfaceID == self.focusedSurfaceID ? Self.focusedHistoryLines : 50
+            self.pendingProbes[surfaceID] = nil
+            // Probe at the depth this surface was last read at, so the
+            // response diffs against comparable content and always gets to
+            // vote — the focused-vs-background depth can flip between
+            // scheduling and firing.
+            let depth = self.lastReadDepth[surfaceID]
+                ?? (surfaceID == self.focusedSurfaceID ? Self.focusedHistoryLines : 50)
             self.readSurfaceText(surfaceID, lines: depth)
         }
+        pendingProbes[surfaceID] = probe
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: probe)
     }
 
     /// Flip a surface's working flag, mutating the published set only on real
@@ -444,6 +469,8 @@ final class AppState: ObservableObject {
     /// those this returns roughly the visible screen — that's a cmux limitation,
     /// not a bug here. See [[project_cmux_no_scrollback]].
     func readSurfaceText(_ surfaceID: String, lines: Int = 50) {
+        let seq = (readSeq[surfaceID] ?? 0) + 1
+        readSeq[surfaceID] = seq
         var params: [String: Any] = ["surface_id": surfaceID, "lines": lines]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
@@ -457,6 +484,10 @@ final class AppState: ObservableObject {
                 let content = Self.capHistoryLines(Self.trimTerminalText(text))
                 await MainActor.run {
                     guard let self else { return }
+                    // Never apply (or let vote) a response that lost the race
+                    // to a newer one — it would roll live content back.
+                    guard seq > (self.appliedReadSeq[surfaceID] ?? 0) else { return }
+                    self.appliedReadSeq[surfaceID] = seq
                     let previous = self.surfaceContent[surfaceID]
                     // A depth-consistent poll that sees movement means the
                     // surface is working; an identical read means idle. A poll
