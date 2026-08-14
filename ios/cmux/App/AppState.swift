@@ -19,6 +19,15 @@ final class AppState: ObservableObject {
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
+    // Surfaces whose screen moved on their most recent read_text poll. TUIs
+    // repaint continuously while an agent/command runs and go static when
+    // idle, so "the last poll saw a change" works as a liveness signal with
+    // no protocol support. Drives the working indicator on pane cards.
+    @Published var workingSurfaces: Set<String> = []
+    // The read depth last used per surface; a depth flip (focus change swaps
+    // 50-line previews for deep reads) changes content without meaning the
+    // surface is active, so those polls don't update workingSurfaces.
+    private var lastReadDepth: [String: Int] = [:]
     @Published var browserURLs: [String: String] = [:]
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
@@ -395,10 +404,35 @@ final class AppState: ObservableObject {
 
     func sendText(_ text: String, to surfaceID: String) {
         send(method: "surface.send_text", params: ["surface_id": surfaceID, "text": text])
+        scheduleActivityProbe(for: surfaceID)
     }
 
     func sendKey(_ key: String, to surfaceID: String) {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
+        scheduleActivityProbe(for: surfaceID)
+    }
+
+    /// Sending input is the moment the user most wants to see whether work
+    /// started, and a background surface's next poll can be ~15s out — probe
+    /// it sooner so the working indicator reacts promptly.
+    private func scheduleActivityProbe(for surfaceID: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self else { return }
+            let depth = surfaceID == self.focusedSurfaceID ? Self.focusedHistoryLines : 50
+            self.readSurfaceText(surfaceID, lines: depth)
+        }
+    }
+
+    /// Flip a surface's working flag, mutating the published set only on real
+    /// transitions so idle polls don't fire objectWillChange.
+    private func setWorking(_ working: Bool, for surfaceID: String) {
+        if working != workingSurfaces.contains(surfaceID) {
+            if working {
+                workingSurfaces.insert(surfaceID)
+            } else {
+                workingSurfaces.remove(surfaceID)
+            }
+        }
     }
 
     /// Reads a surface's text. cmux's `surface.read_text` returns the last
@@ -422,9 +456,19 @@ final class AppState: ObservableObject {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let content = Self.capHistoryLines(Self.trimTerminalText(text))
                 await MainActor.run {
+                    guard let self else { return }
+                    let previous = self.surfaceContent[surfaceID]
+                    // A depth-consistent poll that sees movement means the
+                    // surface is working; an identical read means idle. A poll
+                    // at a new depth changed the text without implying
+                    // activity, so it doesn't vote.
+                    if self.lastReadDepth[surfaceID] == lines || previous == nil {
+                        self.setWorking(previous != nil && previous != content, for: surfaceID)
+                    }
+                    self.lastReadDepth[surfaceID] = lines
                     // Diff before assigning: a no-op write to a @Published
                     // dictionary still fires objectWillChange every poll.
-                    guard let self, self.surfaceContent[surfaceID] != content else { return }
+                    guard previous != content else { return }
                     self.surfaceContent[surfaceID] = content
                 }
             }

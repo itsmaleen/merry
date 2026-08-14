@@ -180,6 +180,22 @@ struct TerminalInputBar: View {
                 }
             }
 
+            // Tab stays one tap away while the bar is collapsed — completions
+            // and agent-mode toggles shouldn't require raising the keyboard
+            // first. While composing, the control-key row already offers ⇥.
+            if !focused {
+                Button {
+                    onSendKey("Tab")
+                } label: {
+                    Text("⇥")
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(minWidth: 30)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.08)))
+                }
+            }
+
             // Compact mode has no header, so the dismiss lives inline here.
             if isCompact && focused {
                 Button {
