@@ -14,6 +14,12 @@ struct PaneCardView: View {
     /// history (claude agent surfaces).
     var canOpenHistory: Bool = false
     var onOpenHistory: (() -> Void)?
+    /// The surface's screen moved on its latest poll — its agent/command is
+    /// actively producing output. Shows the pulsing dots in the title bar.
+    var isWorking: Bool = false
+    /// Reports selection begin/end in the terminal text so the parent can
+    /// hold back gestures that would fight a selection drag.
+    var onSelectionActiveChanged: ((Bool) -> Void)? = nil
     @State private var notificationPulse = false
     @State private var terminalAtTop = false
 
@@ -125,7 +131,8 @@ struct PaneCardView: View {
             fontSize: (isFocused ? 9 : 7) * contentScale,
             textOpacity: isFocused ? 0.85 : 0.5,
             onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil,
-            onTopStateChanged: (isFocused && canOpenHistory) ? { terminalAtTop = $0 } : nil
+            onTopStateChanged: (isFocused && canOpenHistory) ? { terminalAtTop = $0 } : nil,
+            onSelectionActiveChanged: onSelectionActiveChanged
         )
         .overlay(alignment: .top) {
             // Only surface the affordance once the user is at the top; a further
@@ -171,6 +178,12 @@ struct PaneCardView: View {
 
             Spacer()
 
+            // Working indicator — the screen is moving, so a message/command
+            // visibly triggered work.
+            if isWorking {
+                WorkingDots()
+            }
+
             // Recording indicator
             if isTranscribing {
                 HStack(spacing: 4) {
@@ -205,6 +218,31 @@ struct PaneCardView: View {
         if hasNotification { return Color.orange.opacity(0.6) }
         if isFocused { return Color.white.opacity(0.5) }
         return Color.white.opacity(0.08)
+    }
+}
+
+/// Three dots pulsing in sequence — shown in a card's title bar while its
+/// agent/command is actively producing output.
+private struct WorkingDots: View {
+    @State private var animating = false
+
+    var body: some View {
+        HStack(spacing: 2.5) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 3.5, height: 3.5)
+                    .opacity(animating ? 0.15 : 0.9)
+                    .animation(
+                        .easeInOut(duration: 0.45)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.15),
+                        value: animating
+                    )
+            }
+        }
+        .onAppear { animating = true }
+        .onDisappear { animating = false }
     }
 }
 
@@ -280,6 +318,17 @@ struct TranscriptSheetView: View {
                     Text("Loading history…")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.3))
+                } else if appState.claudeTranscriptMissing.contains(target.id) {
+                    // Say so plainly rather than showing the newest session in
+                    // the same folder, which is a different conversation.
+                    Text("This surface's session file is missing")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                    Text("cmux points it at session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), which is no longer in ~/.claude/projects.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
                 } else {
                     Text("No conversation history")
                         .font(.system(size: 12, design: .monospaced))

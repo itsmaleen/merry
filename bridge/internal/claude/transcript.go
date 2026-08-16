@@ -40,47 +40,77 @@ func NewResolver() *Resolver {
 	return &Resolver{home: home}
 }
 
+// Result is the outcome of resolving and rendering a surface's transcript.
+type Result struct {
+	// Supported reports whether the binding describes a Claude surface at all.
+	Supported bool
+	// SessionID is the session the transcript was read from, or — when the
+	// bound session's file is gone — the session the surface points at.
+	SessionID string
+	// Text is the rendered transcript, empty when no file was found.
+	Text string
+	// SessionMissing reports that the surface names a specific session whose
+	// transcript file is not on disk. Distinguishes "this conversation's file
+	// is gone" from "this surface hasn't said anything yet", which otherwise
+	// look identical (both empty Text) to the client.
+	SessionMissing bool
+}
+
 // Render returns the rendered transcript for a surface's resume_binding.
-//
-// supported reports whether the binding describes a Claude surface at all.
-// If supported is true but text is empty (""), no transcript file was found yet.
-// sessionID is the base filename (without .jsonl) of the active transcript.
-func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (text string, supported bool, sessionID string, err error) {
+func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (Result, error) {
 	if resumeBinding == nil {
-		return "", false, "", nil
+		return Result{}, nil
 	}
 	kind, _ := resumeBinding["kind"].(string)
 	if kind != "claude" {
-		return "", false, "", nil
+		return Result{}, nil
 	}
 
-	transcriptPath, err := r.resolveTranscriptPath(resumeBinding)
+	res := Result{Supported: true}
+
+	transcriptPath, boundSession, err := r.resolveTranscriptPath(resumeBinding)
 	if err != nil {
-		return "", true, "", err
+		res.SessionID = boundSession
+		return res, err
 	}
 	if transcriptPath == "" {
-		// Claude surface but no transcript file found yet.
-		return "", true, "", nil
+		// Claude surface, but nothing to read: either the surface has no
+		// session yet, or it names one whose file has since disappeared.
+		res.SessionID = boundSession
+		res.SessionMissing = boundSession != ""
+		return res, nil
 	}
 
-	sessionID = strings.TrimSuffix(filepath.Base(transcriptPath), ".jsonl")
+	res.SessionID = strings.TrimSuffix(filepath.Base(transcriptPath), ".jsonl")
 
 	info, err := os.Stat(transcriptPath)
 	if err != nil {
-		return "", true, sessionID, err
+		if os.IsNotExist(err) {
+			// Deleted between resolution and read (session cleanup racing the
+			// request) — same outcome as never resolving it: report the
+			// session missing, not an opaque transcript_error.
+			res.SessionMissing = boundSession != ""
+			return res, nil
+		}
+		return res, err
 	}
 
 	// Check cache.
 	if v, ok := r.cache.Load(transcriptPath); ok {
 		entry := v.(*cacheEntry)
 		if entry.modTime.Equal(info.ModTime()) && entry.size == info.Size() {
-			return entry.text, true, sessionID, nil
+			res.Text = entry.text
+			return res, nil
 		}
 	}
 
 	data, err := readTail(transcriptPath, info.Size(), maxTranscriptFileBytes)
 	if err != nil {
-		return "", true, sessionID, err
+		if os.IsNotExist(err) {
+			res.SessionMissing = boundSession != ""
+			return res, nil
+		}
+		return res, err
 	}
 
 	rendered := renderJSONL(data, maxMessages)
@@ -89,34 +119,47 @@ func (r *Resolver) Render(resumeBinding map[string]any, maxMessages int) (text s
 		size:    info.Size(),
 		text:    rendered,
 	})
-	return rendered, true, sessionID, nil
+	res.Text = rendered
+	return res, nil
 }
 
 // resolveTranscriptPath returns the transcript .jsonl file for the surface's
-// resume_binding, or "" if none is found.
+// resume_binding, or "" if none is found. boundSession is the well-formed
+// session id the surface is bound to, whether or not its file exists.
 //
 // checkpoint_id names the surface's SPECIFIC session and is the authoritative
 // mapping — many surfaces share one cwd (e.g. cmux worktrees), so "newest file
 // in the project dir" would collapse them all onto the same transcript. cmux's
 // agent hook keeps checkpoint_id pointed at each surface's live session, so the
 // <checkpoint_id>.jsonl file is used directly. The cwd encoding is only a
-// best-effort fallback when no checkpoint_id is present.
-func (r *Resolver) resolveTranscriptPath(rb map[string]any) (string, error) {
+// best-effort fallback for a surface that names no session at all.
+func (r *Resolver) resolveTranscriptPath(rb map[string]any) (path string, boundSession string, err error) {
 	projectsDir := filepath.Join(r.home, ".claude", "projects")
 
 	// Strategy 1: the checkpoint_id names the surface's exact session file.
-	// Only accept a well-formed session UUID — it's interpolated into a glob,
-	// so `../` or `*?[` in a malformed value must never reach the filesystem.
-	if checkpointID, _ := rb["checkpoint_id"].(string); sessionIDPattern.MatchString(checkpointID) {
-		pattern := filepath.Join(projectsDir, "*", checkpointID+".jsonl")
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			return "", err
+	if checkpointID, _ := rb["checkpoint_id"].(string); checkpointID != "" {
+		// Only accept a well-formed session UUID — it's interpolated into a
+		// glob, so `../` or `*?[` in a malformed value must never reach the
+		// filesystem.
+		if sessionIDPattern.MatchString(checkpointID) {
+			boundSession = checkpointID
+			pattern := filepath.Join(projectsDir, "*", checkpointID+".jsonl")
+			matches, err := filepath.Glob(pattern)
+			if err != nil {
+				return "", boundSession, err
+			}
+			// Defense in depth: the match must resolve inside projectsDir.
+			if len(matches) > 0 && isWithin(projectsDir, matches[0]) {
+				return matches[0], boundSession, nil
+			}
 		}
-		// Defense in depth: the match must resolve inside projectsDir.
-		if len(matches) > 0 && isWithin(projectsDir, matches[0]) {
-			return matches[0], nil
-		}
+		// The surface names a session and that file is not on disk. Stop here
+		// rather than falling through to the cwd heuristic below: sessions can
+		// outlive their files (cmux keeps a checkpoint_id pointed at a session
+		// that was never written, or was since removed), and with many surfaces
+		// sharing one cwd the fallback confidently returns a DIFFERENT
+		// surface's conversation. An empty history beats someone else's.
+		return "", boundSession, nil
 	}
 
 	// Strategy 2 (fallback): no checkpoint_id — encode the cwd and take the
@@ -124,11 +167,12 @@ func (r *Resolver) resolveTranscriptPath(rb map[string]any) (string, error) {
 	if cwd, _ := rb["cwd"].(string); cwd != "" {
 		dir := filepath.Join(projectsDir, encodeCWD(cwd))
 		if _, err := os.Stat(dir); err == nil {
-			return latestJSONL(dir)
+			path, err := latestJSONL(dir)
+			return path, "", err
 		}
 	}
 
-	return "", nil
+	return "", "", nil
 }
 
 // readTail reads at most maxBytes from the end of the file at path. Claude

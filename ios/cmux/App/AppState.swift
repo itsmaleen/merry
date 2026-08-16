@@ -19,6 +19,25 @@ final class AppState: ObservableObject {
     // doesn't return is_focused and pane.list is unavailable.
     @Published private(set) var localFocusedSurfaceID: String?
     @Published var surfaceContent: [String: String] = [:]
+    // Surfaces whose screen moved on their most recent read_text poll. TUIs
+    // repaint continuously while an agent/command runs and go static when
+    // idle, so "the last poll saw a change" works as a liveness signal with
+    // no protocol support. Drives the working indicator on pane cards.
+    @Published var workingSurfaces: Set<String> = []
+    // The read depth last used per surface; a depth flip (focus change swaps
+    // 50-line previews for deep reads) changes content without meaning the
+    // surface is active, so those polls don't update workingSurfaces.
+    private var lastReadDepth: [String: Int] = [:]
+    // One pending activity probe per surface — rapid key taps coalesce into
+    // the newest instead of queueing a deep read per tap (this codebase has
+    // been RPC-flooded before; see startContentPolling's debounce).
+    private var pendingProbes: [String: DispatchWorkItem] = [:]
+    // Per-surface read ordering. Two in-flight reads' detached trims can
+    // finish out of order; a response older than the newest applied one is
+    // dropped instead of rolling content back (and casting a bogus
+    // workingSurfaces vote from the rollback).
+    private var readSeq: [String: Int] = [:]
+    private var appliedReadSeq: [String: Int] = [:]
     @Published var browserURLs: [String: String] = [:]
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
@@ -43,6 +62,10 @@ final class AppState: ObservableObject {
     // surface ID. Surfaced in the history viewer for diagnosing wrong-session reports.
     @Published var claudeTranscriptSession: [String: String] = [:]
     @Published var claudeTranscriptLoading: Set<String> = []
+    // Surfaces bound to a session whose transcript file is gone. Distinguishes
+    // "this conversation's file no longer exists" from "nothing said yet" —
+    // both arrive as empty text.
+    @Published var claudeTranscriptMissing: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
     private let bridgeStore = BridgeStore()
@@ -277,10 +300,17 @@ final class AppState: ObservableObject {
         panes = []
         localFocusedSurfaceID = nil
         surfaceContent = [:]
+        workingSurfaces = []
+        lastReadDepth = [:]
+        readSeq = [:]
+        appliedReadSeq = [:]
+        for probe in pendingProbes.values { probe.cancel() }
+        pendingProbes = [:]
         browserURLs = [:]
         claudeTranscript = [:]
         claudeTranscriptSession = [:]
         claudeTranscriptLoading = []
+        claudeTranscriptMissing = []
         presentedHistory = nil
         lastFocusedSurface = [:]
     }
@@ -390,10 +420,44 @@ final class AppState: ObservableObject {
 
     func sendText(_ text: String, to surfaceID: String) {
         send(method: "surface.send_text", params: ["surface_id": surfaceID, "text": text])
+        scheduleActivityProbe(for: surfaceID)
     }
 
     func sendKey(_ key: String, to surfaceID: String) {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
+        scheduleActivityProbe(for: surfaceID)
+    }
+
+    /// Sending input is the moment the user most wants to see whether work
+    /// started, and a background surface's next poll can be ~15s out — probe
+    /// it sooner so the working indicator reacts promptly.
+    private func scheduleActivityProbe(for surfaceID: String) {
+        pendingProbes[surfaceID]?.cancel()
+        let probe = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingProbes[surfaceID] = nil
+            // Probe at the depth this surface was last read at, so the
+            // response diffs against comparable content and always gets to
+            // vote — the focused-vs-background depth can flip between
+            // scheduling and firing.
+            let depth = self.lastReadDepth[surfaceID]
+                ?? (surfaceID == self.focusedSurfaceID ? Self.focusedHistoryLines : 50)
+            self.readSurfaceText(surfaceID, lines: depth)
+        }
+        pendingProbes[surfaceID] = probe
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: probe)
+    }
+
+    /// Flip a surface's working flag, mutating the published set only on real
+    /// transitions so idle polls don't fire objectWillChange.
+    private func setWorking(_ working: Bool, for surfaceID: String) {
+        if working != workingSurfaces.contains(surfaceID) {
+            if working {
+                workingSurfaces.insert(surfaceID)
+            } else {
+                workingSurfaces.remove(surfaceID)
+            }
+        }
     }
 
     /// Reads a surface's text. cmux's `surface.read_text` returns the last
@@ -405,6 +469,8 @@ final class AppState: ObservableObject {
     /// those this returns roughly the visible screen — that's a cmux limitation,
     /// not a bug here. See [[project_cmux_no_scrollback]].
     func readSurfaceText(_ surfaceID: String, lines: Int = 50) {
+        let seq = (readSeq[surfaceID] ?? 0) + 1
+        readSeq[surfaceID] = seq
         var params: [String: Any] = ["surface_id": surfaceID, "lines": lines]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
@@ -417,9 +483,23 @@ final class AppState: ObservableObject {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let content = Self.capHistoryLines(Self.trimTerminalText(text))
                 await MainActor.run {
+                    guard let self else { return }
+                    // Never apply (or let vote) a response that lost the race
+                    // to a newer one — it would roll live content back.
+                    guard seq > (self.appliedReadSeq[surfaceID] ?? 0) else { return }
+                    self.appliedReadSeq[surfaceID] = seq
+                    let previous = self.surfaceContent[surfaceID]
+                    // A depth-consistent poll that sees movement means the
+                    // surface is working; an identical read means idle. A poll
+                    // at a new depth changed the text without implying
+                    // activity, so it doesn't vote.
+                    if self.lastReadDepth[surfaceID] == lines || previous == nil {
+                        self.setWorking(previous != nil && previous != content, for: surfaceID)
+                    }
+                    self.lastReadDepth[surfaceID] = lines
                     // Diff before assigning: a no-op write to a @Published
                     // dictionary still fires objectWillChange every poll.
-                    guard let self, self.surfaceContent[surfaceID] != content else { return }
+                    guard previous != content else { return }
                     self.surfaceContent[surfaceID] = content
                 }
             }
@@ -454,12 +534,18 @@ final class AppState: ObservableObject {
             self.claudeTranscriptLoading.remove(surfaceID)
             let raw = result["text"] as? String ?? ""
             let sessionID = result["session_id"] as? String ?? ""
+            let missing = result["session_missing"] as? Bool ?? false
             // Diagnostic: the surface we asked for vs the session the bridge
             // resolved it to. If these ever look mismatched, this line names the
             // exact ids to chase (the bridge maps surface → resume_binding →
             // <checkpoint_id>.jsonl and echoes the resolved session_id back).
-            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)")
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)\(missing ? " MISSING FILE" : "")")
             self.claudeTranscriptSession[surfaceID] = sessionID
+            if missing {
+                self.claudeTranscriptMissing.insert(surfaceID)
+            } else {
+                self.claudeTranscriptMissing.remove(surfaceID)
+            }
             // Trim off the main actor — transcripts can be hundreds of messages,
             // and this runs every time the history viewer opens.
             Task.detached(priority: .userInitiated) { [weak self] in

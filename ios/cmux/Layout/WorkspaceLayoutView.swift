@@ -183,6 +183,9 @@ struct WorkspaceLayoutView: View {
     // True while the remote-keyboard compose bar is focused; collapses the
     // layout to just the focused terminal so it owns the whole screen.
     @State private var keyboardActive = false
+    // True while text is selected in the focused terminal. A selection drag
+    // looks exactly like a cycle swipe, so the swipe defers to it.
+    @State private var isTextSelectionActive = false
 
     var body: some View {
         ZStack {
@@ -258,6 +261,9 @@ struct WorkspaceLayoutView: View {
             lastNotificationCount = newCount
         }
         .onChange(of: appState.focusedSurfaceID) { _, _ in
+            // The old card's text view is gone; don't let a stale selection
+            // flag keep vetoing cycle swipes on the new card.
+            isTextSelectionActive = false
             // Clear notifications for newly focused surface after a moment
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 appState.clearNotificationsForFocusedSurface()
@@ -530,7 +536,9 @@ struct WorkspaceLayoutView: View {
                     ?? surface
                 guard focused.isClaudeAgent else { return }
                 appState.presentedHistory = HistoryTarget(id: focused.id, title: focused.title)
-            }
+            },
+            isWorking: appState.workingSurfaces.contains(surface.id),
+            onSelectionActiveChanged: { isTextSelectionActive = $0 }
         )
         .id(surface.id)
         .transition(.asymmetric(
@@ -544,6 +552,9 @@ struct WorkspaceLayoutView: View {
             DragGesture(minimumDistance: 50)
                 .onEnded { value in
                     guard !quickAction.isOpen else { return }
+                    // A drag that extended a text selection must not also
+                    // switch surfaces.
+                    guard !isTextSelectionActive else { return }
                     let dx = value.translation.width
                     let dy = value.translation.height
                     // Only act on a clearly horizontal swipe. Vertical/diagonal
@@ -584,7 +595,8 @@ struct WorkspaceLayoutView: View {
             transcript: "",
             terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
             isBrowser: surface.isBrowser,
-            browserURL: appState.browserURLs[surface.id] ?? ""
+            browserURL: appState.browserURLs[surface.id] ?? "",
+            isWorking: appState.workingSurfaces.contains(surface.id)
         )
         .onTapGesture {
             cycleDirection = .trailing

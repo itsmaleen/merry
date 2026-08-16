@@ -179,7 +179,7 @@ func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver 
 		}
 	}
 
-	text, supported, sessionID, err := resolver.Render(resumeBinding, maxMessages)
+	res, err := resolver.Render(resumeBinding, maxMessages)
 	if err != nil {
 		return commandResponse{
 			ID: cmd.ID,
@@ -192,9 +192,10 @@ func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver 
 	}
 
 	result, _ := json.Marshal(map[string]any{
-		"supported":  supported,
-		"text":       text,
-		"session_id": sessionID,
+		"supported":       res.Supported,
+		"text":            res.Text,
+		"session_id":      res.SessionID,
+		"session_missing": res.SessionMissing,
 	})
 	return commandResponse{
 		ID:     cmd.ID,

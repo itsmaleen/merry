@@ -26,6 +26,9 @@ struct TerminalTextView: UIViewRepresentable {
     /// Reports whether the content is scrolled to its top, so callers can show a
     /// "pull for history" affordance only when it's actually reachable.
     var onTopStateChanged: ((Bool) -> Void)? = nil
+    /// Reports when a text selection starts or clears, so parents can veto
+    /// gestures (surface-cycle swipes) that would fight a selection drag.
+    var onSelectionActiveChanged: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -58,6 +61,7 @@ struct TerminalTextView: UIViewRepresentable {
         let coord = context.coordinator
         coord.onScrolledToTop = onScrolledToTop
         coord.onTopStateChanged = onTopStateChanged
+        coord.onSelectionActiveChanged = onSelectionActiveChanged
         coord.render(TerminalTextSnapshot(self), into: tv)
     }
 
@@ -68,8 +72,10 @@ struct TerminalTextView: UIViewRepresentable {
         var autoScroll = true
         var onScrolledToTop: (() -> Void)?
         var onTopStateChanged: ((Bool) -> Void)?
+        var onSelectionActiveChanged: ((Bool) -> Void)?
         private var lastTopFire: TimeInterval = 0
         private var atTop = false
+        private var selectionActive = false
 
         /// What the text view currently shows. Compared against incoming
         /// snapshots, NOT tv.attributedText: the injected link attributes mean
@@ -174,6 +180,15 @@ struct TerminalTextView: UIViewRepresentable {
                 onScrolledToTop()
             }
         }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            // UIKit fires this for caret-only/no-op changes too; only real
+            // select/deselect transitions should reach the parent.
+            let active = textView.selectedRange.length > 0
+            guard active != selectionActive else { return }
+            selectionActive = active
+            onSelectionActiveChanged?(active)
+        }
     }
 }
 
@@ -224,13 +239,21 @@ private enum TerminalTextRenderer {
     /// Detects URLs in the plain text and adds `.link` attributes. With
     /// `trimTrailingJunk` the trailing markdown/punctuation the detector
     /// over-captures is trimmed off first (transcript viewer); without it the
-    /// detector's own match and URL are used verbatim (live terminal cards,
-    /// matching what UITextView's built-in link detection produced).
+    /// detector's match is extended across terminal hard-wraps when a URL was
+    /// broken over multiple rows (live terminal cards).
     private static func addLinks(to attr: NSMutableAttributedString, trimTrailingJunk trim: Bool) {
         guard let detector = linkDetector else { return }
         let ns = attr.string as NSString
         let matches = detector.matches(in: attr.string, range: NSRange(location: 0, length: ns.length))
+        // Line table for re-joining hard-wrapped URLs — live terminal text
+        // only; transcript text is logical lines, never width-wrapped.
+        let lines = trim ? [] : lineRanges(of: ns)
+        let maxLineLength = lines.reduce(0) { max($0, $1.length) }
+        var linkedEnd = 0
         for match in matches {
+            // A wrapped URL's tail can re-match as its own link; if a previous
+            // match was extended over this text, skip the scrap.
+            guard match.range.location >= linkedEnd else { continue }
             var range = match.range
             var url = match.url
             if trim {
@@ -252,9 +275,86 @@ private enum TerminalTextRenderer {
                 }
                 guard range.length > 0 else { continue }
                 url = URL(string: ns.substring(with: range))
+            } else if let joined = joinedAcrossWraps(match, in: ns, lines: lines, maxLineLength: maxLineLength) {
+                range = joined.0
+                url = joined.1
             }
             guard let url else { continue }
             attr.addAttribute(.link, value: url, range: range)
+            linkedEnd = range.location + range.length
         }
+    }
+
+    /// Content range of each line (newlines excluded), in order.
+    private static func lineRanges(of ns: NSString) -> [NSRange] {
+        var ranges: [NSRange] = []
+        var start = 0
+        while start <= ns.length {
+            let rest = NSRange(location: start, length: ns.length - start)
+            let newline = ns.range(of: "\n", options: [], range: rest)
+            if newline.location == NSNotFound {
+                ranges.append(rest)
+                break
+            }
+            ranges.append(NSRange(location: start, length: newline.location - start))
+            start = newline.location + newline.length
+        }
+        return ranges
+    }
+
+    /// Characters that can legitimately continue a URL on the next row.
+    private static let urlScalars: CharacterSet = {
+        var set = CharacterSet.alphanumerics
+        set.insert(charactersIn: "-._~:/?#[]@!$&'()*+,;=%")
+        return set
+    }()
+
+    /// Rows shorter than this never count as "full width", so small snapshots
+    /// can't trigger bogus joins.
+    private static let minWrapWidth = 40
+
+    /// A URL the terminal hard-wrapped shows up as a match that runs to the
+    /// edge of a full-width row, with the URL's remainder starting the next
+    /// row — linkifying just the first row produces a truncated link that
+    /// leads nowhere. Returns the range spanning the break(s) plus the URL
+    /// with them removed, or nil when the match doesn't look wrapped. The
+    /// PTY's width isn't in the protocol, so "full width" means the longest
+    /// row in this snapshot.
+    private static func joinedAcrossWraps(
+        _ match: NSTextCheckingResult, in ns: NSString, lines: [NSRange], maxLineLength: Int
+    ) -> (NSRange, URL)? {
+        guard maxLineLength >= minWrapWidth else { return nil }
+        let matchEnd = match.range.location + match.range.length
+        guard var lineIndex = lines.firstIndex(where: {
+            NSLocationInRange(match.range.location, $0) && matchEnd == $0.location + $0.length
+        }), lines[lineIndex].length == maxLineLength else { return nil }
+
+        var urlString = ns.substring(with: match.range)
+        var end = matchEnd
+        while lineIndex + 1 < lines.count {
+            let next = lines[lineIndex + 1]
+            let nextText = ns.substring(with: next)
+            let continuation = String(nextText.unicodeScalars.prefix(while: urlScalars.contains))
+            guard !continuation.isEmpty else { break }
+            urlString += continuation
+            end = next.location + (continuation as NSString).length
+            // Only a row that is entirely URL characters at full width can
+            // wrap onward; anything less means the URL ended on this row.
+            guard end == next.location + next.length, next.length == maxLineLength else { break }
+            lineIndex += 1
+        }
+        guard end > matchEnd, let url = URL(string: urlString) else { return nil }
+        // A continuation may only ever extend the URL's path/query — never its
+        // authority. Terminal output is untrusted, and a crafted next row like
+        // "@evil.example" would otherwise turn the displayed host into userinfo
+        // and send the tap to a different server than the visible first row.
+        guard let joined = URLComponents(string: urlString),
+              let original = match.url.flatMap({ URLComponents(string: $0.absoluteString) }),
+              let scheme = joined.scheme, scheme.lowercased() == original.scheme?.lowercased(),
+              joined.user == original.user,
+              let host = joined.host, host.lowercased() == original.host?.lowercased(),
+              joined.port == original.port
+        else { return nil }
+        return (NSRange(location: match.range.location, length: end - match.range.location), url)
     }
 }

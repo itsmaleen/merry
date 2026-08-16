@@ -275,8 +275,8 @@ func TestResolveRejectsMaliciousCheckpointID(t *testing.T) {
 	r := &Resolver{home: home}
 
 	// Valid UUID resolves.
-	if _, supported, sid, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": validID}, 100); err != nil || !supported || sid != validID {
-		t.Fatalf("valid id: supported=%v sid=%q err=%v", supported, sid, err)
+	if res, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": validID}, 100); err != nil || !res.Supported || res.SessionID != validID {
+		t.Fatalf("valid id: supported=%v sid=%q err=%v", res.Supported, res.SessionID, err)
 	}
 
 	// Malicious values must NOT resolve to any file (fall through to "" → text empty).
@@ -289,14 +289,88 @@ func TestResolveRejectsMaliciousCheckpointID(t *testing.T) {
 		"..",
 		validID + "/../../secret",
 	} {
-		text, supported, _, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": bad}, 100)
+		res, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": bad}, 100)
 		if err != nil {
 			t.Fatalf("bad id %q returned error %v (should quietly not resolve)", bad, err)
 		}
-		if strings.Contains(text, "SECRET") {
+		if strings.Contains(res.Text, "SECRET") {
 			t.Fatalf("bad id %q LEAKED the out-of-tree file", bad)
 		}
-		_ = supported
+	}
+}
+
+// A surface whose checkpoint_id names a session with no file on disk must
+// render nothing — NOT the newest session in its project dir. Many surfaces
+// share one cwd, so that fallback served a different surface's conversation.
+func TestResolveMissingCheckpointFileDoesNotFallBackToCWD(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/Users/someone/proj"
+	projects := filepath.Join(home, ".claude", "projects", encodeCWD(cwd))
+	if err := os.MkdirAll(projects, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A different surface's session, sitting in the same project dir.
+	otherID := "aaaaaaaa-1111-2222-3333-444444444444"
+	if err := os.WriteFile(filepath.Join(projects, otherID+".jsonl"),
+		[]byte(`{"type":"user","message":{"role":"user","content":"OTHER SURFACE"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Resolver{home: home}
+
+	// This surface points at a session whose file is gone.
+	goneID := "bbbbbbbb-1111-2222-3333-444444444444"
+	res, err := r.Render(map[string]any{
+		"kind":          "claude",
+		"checkpoint_id": goneID,
+		"cwd":           cwd,
+	}, 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(res.Text, "OTHER SURFACE") {
+		t.Fatalf("served another surface's transcript: %q", res.Text)
+	}
+	if res.Text != "" {
+		t.Fatalf("want empty text for a missing session file, got %q", res.Text)
+	}
+	if !res.SessionMissing {
+		t.Fatal("want SessionMissing=true so the client can say why it's empty")
+	}
+	if res.SessionID != goneID {
+		t.Fatalf("want the bound session echoed back, got %q", res.SessionID)
+	}
+	if !res.Supported {
+		t.Fatal("want Supported=true — it is still a claude surface")
+	}
+}
+
+// With no checkpoint_id at all, the cwd fallback is still the best guess.
+func TestResolveWithoutCheckpointFallsBackToLatestInCWD(t *testing.T) {
+	home := t.TempDir()
+	cwd := "/Users/someone/proj"
+	projects := filepath.Join(home, ".claude", "projects", encodeCWD(cwd))
+	if err := os.MkdirAll(projects, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	onlyID := "aaaaaaaa-1111-2222-3333-444444444444"
+	if err := os.WriteFile(filepath.Join(projects, onlyID+".jsonl"),
+		[]byte(`{"type":"user","message":{"role":"user","content":"HELLO"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &Resolver{home: home}
+
+	res, err := r.Render(map[string]any{"kind": "claude", "cwd": cwd}, 100)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(res.Text, "HELLO") {
+		t.Fatalf("want the cwd fallback to resolve, got %q", res.Text)
+	}
+	if res.SessionID != onlyID {
+		t.Fatalf("want session %q, got %q", onlyID, res.SessionID)
+	}
+	if res.SessionMissing {
+		t.Fatal("want SessionMissing=false — nothing was bound to begin with")
 	}
 }
 
