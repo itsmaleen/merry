@@ -20,6 +20,11 @@ struct PaneCardView: View {
     /// Reports selection begin/end in the terminal text so the parent can
     /// hold back gestures that would fight a selection drag.
     var onSelectionActiveChanged: ((Bool) -> Void)? = nil
+    /// Find-in-surface: every match is highlighted, the current one is scrolled
+    /// to, and the count is reported back for the "3/17" readout.
+    var searchQuery: String = ""
+    var currentMatchIndex: Int = 0
+    var onSearchMatchCount: ((Int) -> Void)? = nil
     @State private var notificationPulse = false
     @State private var terminalAtTop = false
 
@@ -133,7 +138,10 @@ struct PaneCardView: View {
             textOpacity: isFocused ? 0.85 : 0.5,
             onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil,
             onTopStateChanged: (isFocused && canOpenHistory) ? { terminalAtTop = $0 } : nil,
-            onSelectionActiveChanged: onSelectionActiveChanged
+            onSelectionActiveChanged: onSelectionActiveChanged,
+            searchQuery: searchQuery,
+            currentMatchIndex: currentMatchIndex,
+            onSearchMatchCount: onSearchMatchCount
         )
         .overlay(alignment: .top) {
             // Only surface the affordance once the user is at the top; a further

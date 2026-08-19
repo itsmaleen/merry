@@ -13,7 +13,7 @@ struct QuickAction: Identifiable {
 
 enum QuickActionBuilder {
     @MainActor
-    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, onToggleFullscreen: @escaping () -> Void = {}) -> [QuickAction] {
+    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, onToggleFullscreen: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
         let builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
@@ -56,6 +56,9 @@ enum QuickActionBuilder {
             },
             QuickAction(label: "Zoom", icon: "arrow.up.left.and.arrow.down.right", section: "Terminal") {
                 appState.togglePaneZoom(sid)
+            },
+            QuickAction(label: "Search", icon: "magnifyingglass", section: "Terminal") {
+                onOpenSearch()
             },
             QuickAction(label: "New Workspace", icon: "square.grid.2x2", section: "Workspace") {
                 appState.createWorkspace()
@@ -186,6 +189,13 @@ struct WorkspaceLayoutView: View {
     // True while text is selected in the focused terminal. A selection drag
     // looks exactly like a cycle swipe, so the swipe defers to it.
     @State private var isTextSelectionActive = false
+    // Find-in-surface over the focused card's text — the conversation for a
+    // claude surface, the terminal mirror plus its scrollback otherwise.
+    @State private var isSearching = false
+    @State private var searchQuery = ""
+    @State private var searchMatchIndex = 0
+    @State private var searchMatchCount = 0
+    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -204,6 +214,13 @@ struct WorkspaceLayoutView: View {
                     emptyState
                 } else {
                     surfaceLayout
+                }
+
+                if isSearching, !quickAction.isFullscreen, !quickAction.isOpen {
+                    searchBar
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 2)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
                 // Always-available remote keyboard for the focused terminal.
@@ -227,6 +244,7 @@ struct WorkspaceLayoutView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.22), value: keyboardActive)
+            .animation(.easeInOut(duration: 0.2), value: isSearching)
 
             // Quick action overlay
             if quickAction.isOpen {
@@ -249,6 +267,9 @@ struct WorkspaceLayoutView: View {
                 .environmentObject(appState)
         }
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: quickAction.isOpen)
+        .onChange(of: searchQuery) { _, _ in
+            searchMatchIndex = 0
+        }
         .onChange(of: appState.notifications.count) { oldCount, newCount in
             if newCount > oldCount {
                 AudioServicesPlaySystemSound(1007)
@@ -264,6 +285,9 @@ struct WorkspaceLayoutView: View {
             // The old card's text view is gone; don't let a stale selection
             // flag keep vetoing cycle swipes on the new card.
             isTextSelectionActive = false
+            // Matches belong to the surface they were found in; carrying an
+            // index across a surface switch points at nothing.
+            if isSearching { closeSearch() }
             // Clear notifications for newly focused surface after a moment
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 appState.clearNotificationsForFocusedSurface()
@@ -306,11 +330,103 @@ struct WorkspaceLayoutView: View {
         }
     }
 
+    // MARK: - Search
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.4))
+
+            TextField("", text: $searchQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.9))
+                .tint(.white.opacity(0.6))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .focused($searchFieldFocused)
+                .onSubmit { stepSearch(1) }
+                .overlay(alignment: .leading) {
+                    if searchQuery.isEmpty {
+                        Text("find in surface")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.25))
+                            .allowsHitTesting(false)
+                    }
+                }
+
+            // Count first, so the reader sees whether stepping is worth it.
+            Text(searchCountLabel)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(searchMatchCount > 0 ? 0.5 : 0.25))
+                .monospacedDigit()
+
+            Button { stepSearch(-1) } label: {
+                Image(systemName: "chevron.up").font(.system(size: 13, weight: .semibold))
+            }
+            .disabled(searchMatchCount == 0)
+            Button { stepSearch(1) } label: {
+                Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
+            }
+            .disabled(searchMatchCount == 0)
+            Button { closeSearch() } label: {
+                Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
+            }
+        }
+        .tint(.white.opacity(0.6))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+        )
+    }
+
+    private var searchCountLabel: String {
+        if searchQuery.isEmpty { return "" }
+        if searchMatchCount == 0 { return "none" }
+        // The renderer stops counting at its cap, so say so rather than
+        // implying the last match is the last one in the surface.
+        let total = searchMatchCount >= TextSearch.maxMatches ? "\(TextSearch.maxMatches)+" : "\(searchMatchCount)"
+        return "\(searchMatchIndex + 1)/\(total)"
+    }
+
+    private func openSearch() {
+        isSearching = true
+        searchFieldFocused = true
+    }
+
+    private func closeSearch() {
+        isSearching = false
+        searchFieldFocused = false
+        searchQuery = ""
+        searchMatchIndex = 0
+        searchMatchCount = 0
+    }
+
+    private func stepSearch(_ delta: Int) {
+        guard searchMatchCount > 0 else { return }
+        searchMatchIndex = TextSearch.step(from: searchMatchIndex, by: delta, count: searchMatchCount)
+    }
+
     // MARK: - Quick actions
 
     private func openQuickActions() {
         guard let surface = focusedSurface else { return }
-        quickAction.open(with: QuickActionBuilder.build(surfaceID: surface.id, appState: appState, store: quickActionStore, onToggleFullscreen: { [quickAction] in quickAction.isFullscreen.toggle() }))
+        quickAction.open(with: QuickActionBuilder.build(
+            surfaceID: surface.id,
+            appState: appState,
+            store: quickActionStore,
+            onToggleFullscreen: { [quickAction] in quickAction.isFullscreen.toggle() },
+            onOpenSearch: { openSearch() }
+        ))
     }
 
     private var quickActionOverlay: some View {
@@ -538,7 +654,17 @@ struct WorkspaceLayoutView: View {
                 appState.presentedHistory = HistoryTarget(id: focused.id, title: focused.title)
             },
             isWorking: appState.workingSurfaces.contains(surface.id),
-            onSelectionActiveChanged: { isTextSelectionActive = $0 }
+            onSelectionActiveChanged: { isTextSelectionActive = $0 },
+            searchQuery: isSearching ? searchQuery : "",
+            currentMatchIndex: searchMatchIndex,
+            onSearchMatchCount: { count in
+                guard searchMatchCount != count else { return }
+                searchMatchCount = count
+                // The text under an active search keeps changing (the focused
+                // surface repolls every few seconds), so an index that was
+                // valid a moment ago can now be past the end.
+                searchMatchIndex = TextSearch.clamp(searchMatchIndex, to: count)
+            }
         )
         .id(surface.id)
         .transition(.asymmetric(
