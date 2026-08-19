@@ -29,6 +29,15 @@ struct TerminalTextView: UIViewRepresentable {
     /// Reports when a text selection starts or clears, so parents can veto
     /// gestures (surface-cycle swipes) that would fight a selection drag.
     var onSelectionActiveChanged: ((Bool) -> Void)? = nil
+    /// Active search query. Every match is highlighted and the one at
+    /// `currentMatchIndex` is scrolled into view.
+    var searchQuery: String = ""
+    /// Which match is the current one, as an index into the matches found in
+    /// this text. Clamped internally, so a stale index is never fatal.
+    var currentMatchIndex: Int = 0
+    /// Reports how many matches the current query has, so the parent can render
+    /// "3/17" and enable stepping. Fires only when the count changes.
+    var onSearchMatchCount: ((Int) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -62,6 +71,7 @@ struct TerminalTextView: UIViewRepresentable {
         coord.onScrolledToTop = onScrolledToTop
         coord.onTopStateChanged = onTopStateChanged
         coord.onSelectionActiveChanged = onSelectionActiveChanged
+        coord.onSearchMatchCount = onSearchMatchCount
         coord.render(TerminalTextSnapshot(self), into: tv)
     }
 
@@ -73,6 +83,10 @@ struct TerminalTextView: UIViewRepresentable {
         var onScrolledToTop: (() -> Void)?
         var onTopStateChanged: ((Bool) -> Void)?
         var onSelectionActiveChanged: ((Bool) -> Void)?
+        var onSearchMatchCount: ((Int) -> Void)?
+        /// Last count handed to onSearchMatchCount, so an unchanged count
+        /// doesn't publish (and re-render the layout) on every poll.
+        private var reportedMatchCount: Int?
         private var lastTopFire: TimeInterval = 0
         private var atTop = false
         private var selectionActive = false
@@ -93,17 +107,18 @@ struct TerminalTextView: UIViewRepresentable {
             generation += 1
             let gen = generation
             Task.detached(priority: .userInitiated) { [weak self, weak tv] in
-                let attr = TerminalTextRenderer.build(snapshot)
+                let built = TerminalTextRenderer.build(snapshot)
                 await MainActor.run {
                     // Only the newest build may land — an older one finishing
                     // late would put stale text (and a stale scroll) on screen.
                     guard let self, let tv, gen == self.generation else { return }
-                    self.apply(attr, for: snapshot, to: tv)
+                    self.apply(built, for: snapshot, to: tv)
                 }
             }
         }
 
-        fileprivate func apply(_ attr: NSAttributedString, for snapshot: TerminalTextSnapshot, to tv: UITextView) {
+        fileprivate func apply(_ built: TerminalTextRenderer.Built, for snapshot: TerminalTextSnapshot, to tv: UITextView) {
+            let attr = built.attributed
             // Don't clobber an in-progress selection (a live poll would
             // otherwise yank the text out from under the user mid-copy).
             // Resetting `pending` lets the next update retry once it clears.
@@ -124,6 +139,22 @@ struct TerminalTextView: UIViewRepresentable {
 
             tv.attributedText = attr
             applied = snapshot
+
+            if reportedMatchCount != built.matches.count {
+                reportedMatchCount = built.matches.count
+                onSearchMatchCount?(built.matches.count)
+            }
+
+            // A search owns the scroll position while it is active: jumping to
+            // the bottom on the next poll would throw the reader off the match
+            // they are reading, which is the whole point of searching.
+            if !snapshot.searchQuery.isEmpty, !built.matches.isEmpty {
+                let index = TextSearch.clamp(snapshot.currentMatchIndex, to: built.matches.count)
+                tv.layoutIfNeeded()
+                tv.scrollRangeToVisible(built.matches[index])
+                return
+            }
+
             if autoScroll {
                 scrollToBottom(tv)
             } else if isPrepend {
@@ -199,12 +230,16 @@ private struct TerminalTextSnapshot: Equatable {
     let fontSize: CGFloat
     let textOpacity: Double
     let trimMarkdownLinks: Bool
+    let searchQuery: String
+    let currentMatchIndex: Int
 
     init(_ view: TerminalTextView) {
         text = view.text
         fontSize = view.fontSize
         textOpacity = view.textOpacity
         trimMarkdownLinks = view.trimMarkdownLinks
+        searchQuery = view.searchQuery
+        currentMatchIndex = view.currentMatchIndex
     }
 }
 
@@ -212,7 +247,20 @@ private struct TerminalTextSnapshot: Equatable {
 /// of the View type) so its statics carry no MainActor isolation and can run in
 /// a detached task.
 private enum TerminalTextRenderer {
-    static func build(_ snapshot: TerminalTextSnapshot) -> NSAttributedString {
+    /// A rendered string plus where the active search matched it, so the
+    /// coordinator can scroll to the current match and report the count without
+    /// searching the text a second time on the main actor.
+    struct Built {
+        let attributed: NSAttributedString
+        let matches: [NSRange]
+    }
+
+    /// Every match gets this wash; the current one gets `currentMatchColor` so
+    /// stepping is visible without hunting.
+    private static let matchColor = UIColor.systemYellow.withAlphaComponent(0.28)
+    private static let currentMatchColor = UIColor.systemYellow.withAlphaComponent(0.85)
+
+    static func build(_ snapshot: TerminalTextSnapshot) -> Built {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 1
         let attr = NSMutableAttributedString(
@@ -224,7 +272,18 @@ private enum TerminalTextRenderer {
             ]
         )
         addLinks(to: attr, trimTrailingJunk: snapshot.trimMarkdownLinks)
-        return attr
+        let matches = TextSearch.matches(of: snapshot.searchQuery, in: snapshot.text)
+        let plan = TextSearch.highlightPlan(matches: matches, current: snapshot.currentMatchIndex)
+        for range in plan.others {
+            attr.addAttribute(.backgroundColor, value: matchColor, range: range)
+        }
+        if let current = plan.current {
+            attr.addAttribute(.backgroundColor, value: currentMatchColor, range: current)
+            // The current match sits on a near-opaque fill, where white text is
+            // unreadable.
+            attr.addAttribute(.foregroundColor, value: UIColor.black, range: current)
+        }
+        return Built(attributed: attr, matches: matches)
     }
 
     private static let linkDetector: NSDataDetector? =
