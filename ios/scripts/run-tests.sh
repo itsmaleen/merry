@@ -15,3 +15,4 @@ run_suite() {
 }
 
 run_suite text-search scripts/test-text-search.swift cmux/Layout/TextSearch.swift
+run_suite scroll-follow scripts/test-scroll-follow.swift cmux/Layout/ScrollFollow.swift

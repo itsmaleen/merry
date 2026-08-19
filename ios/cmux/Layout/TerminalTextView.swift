@@ -38,6 +38,13 @@ struct TerminalTextView: UIViewRepresentable {
     /// Reports how many matches the current query has, so the parent can render
     /// "3/17" and enable stepping. Fires only when the count changes.
     var onSearchMatchCount: ((Int) -> Void)? = nil
+    /// Bump to jump to the newest output and resume following it. Deliberately
+    /// NOT part of the rendered snapshot: a scroll request must not rebuild the
+    /// attributed string.
+    var scrollToBottomRequest: Int = 0
+    /// Reports whether the view is pinned to the bottom, so the parent can offer
+    /// a jump-to-bottom affordance only when it would do something.
+    var onAtBottomChanged: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -72,7 +79,9 @@ struct TerminalTextView: UIViewRepresentable {
         coord.onTopStateChanged = onTopStateChanged
         coord.onSelectionActiveChanged = onSelectionActiveChanged
         coord.onSearchMatchCount = onSearchMatchCount
+        coord.onAtBottomChanged = onAtBottomChanged
         coord.render(TerminalTextSnapshot(self), into: tv)
+        coord.handleScrollRequest(scrollToBottomRequest, in: tv)
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -84,9 +93,43 @@ struct TerminalTextView: UIViewRepresentable {
         var onTopStateChanged: ((Bool) -> Void)?
         var onSelectionActiveChanged: ((Bool) -> Void)?
         var onSearchMatchCount: ((Int) -> Void)?
+        var onAtBottomChanged: ((Bool) -> Void)?
         /// Last count handed to onSearchMatchCount, so an unchanged count
         /// doesn't publish (and re-render the layout) on every poll.
         private var reportedMatchCount: Int?
+        /// True while this class is driving the scroll position.
+        ///
+        /// UIScrollView delivers scrollViewDidScroll for programmatic offsets as
+        /// well as finger ones, and `autoScroll` must only ever answer "does the
+        /// USER want to follow new output". Without this flag one short landing
+        /// — `scrollToBottom` computing its target from a contentSize that was
+        /// stale because the card was mid-animation — flips autoScroll off, and
+        /// the card then never follows its output again for the rest of the
+        /// session. That is the stuck-mid-scroll symptom this flag fixes.
+        private var isProgrammaticScroll = false
+        private var lastHandledScrollRequest = 0
+        private var reportedAtBottom: Bool?
+
+        /// Jumps to the newest output and resumes following it.
+        fileprivate func handleScrollRequest(_ request: Int, in tv: UITextView) {
+            guard request != lastHandledScrollRequest else { return }
+            lastHandledScrollRequest = request
+            autoScroll = true
+            scrollToBottom(tv)
+        }
+
+        /// Runs `body` without letting its scrolling be mistaken for the user's.
+        private func programmatically(_ body: () -> Void) {
+            isProgrammaticScroll = true
+            body()
+            isProgrammaticScroll = false
+        }
+
+        private func reportAtBottom(_ atBottom: Bool) {
+            guard reportedAtBottom != atBottom else { return }
+            reportedAtBottom = atBottom
+            onAtBottomChanged?(atBottom)
+        }
         private var lastTopFire: TimeInterval = 0
         private var atTop = false
         private var selectionActive = false
@@ -150,8 +193,12 @@ struct TerminalTextView: UIViewRepresentable {
             // they are reading, which is the whole point of searching.
             if !snapshot.searchQuery.isEmpty, !built.matches.isEmpty {
                 let index = TextSearch.clamp(snapshot.currentMatchIndex, to: built.matches.count)
-                tv.layoutIfNeeded()
-                tv.scrollRangeToVisible(built.matches[index])
+                programmatically {
+                    tv.layoutIfNeeded()
+                    tv.scrollRangeToVisible(built.matches[index])
+                }
+                // Leave autoScroll as the user left it: closing the search then
+                // returns the card to following live output if it was.
                 return
             }
 
@@ -161,31 +208,60 @@ struct TerminalTextView: UIViewRepresentable {
                 // Layout synchronously so contentSize reflects the prepended
                 // text, then shift the offset by exactly the added height — the
                 // viewport stays anchored on the text the user was reading.
-                tv.layoutIfNeeded()
-                let delta = tv.contentSize.height - oldHeight
-                if delta > 0 {
-                    tv.setContentOffset(CGPoint(x: oldOffset.x, y: oldOffset.y + delta), animated: false)
+                programmatically {
+                    tv.layoutIfNeeded()
+                    let delta = tv.contentSize.height - oldHeight
+                    if delta > 0 {
+                        tv.setContentOffset(CGPoint(x: oldOffset.x, y: oldOffset.y + delta), animated: false)
+                    }
                 }
             }
         }
 
         private func scrollToBottom(_ tv: UITextView) {
             // Defer a runloop so layout reflects the new content size first.
-            DispatchQueue.main.async {
-                // Force pending layout so contentSize is correct for large
-                // appends (e.g. a full-scrollback load), otherwise we under-scroll.
-                tv.layoutIfNeeded()
-                let bottom = max(0, tv.contentSize.height - tv.bounds.height + tv.adjustedContentInset.bottom)
-                if bottom > 0 {
-                    tv.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
-                }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.pinToBottom(tv)
+                // A card whose frame is still settling (keyboard, focus change,
+                // rotation) reports a contentSize that is short, so the first
+                // pass can land above the real bottom. One more pass on the next
+                // runloop, once layout has caught up, finishes the job — with
+                // autoScroll untouched throughout, a short landing is now
+                // recoverable instead of permanent.
+                DispatchQueue.main.async { self.pinToBottom(tv) }
             }
         }
 
+        private func pinToBottom(_ tv: UITextView) {
+            programmatically {
+                tv.layoutIfNeeded()
+                let bottom = ScrollFollow.bottomOffset(
+                    contentHeight: tv.contentSize.height,
+                    viewportHeight: tv.bounds.height,
+                    bottomInset: tv.adjustedContentInset.bottom
+                )
+                if bottom > 0, abs(tv.contentOffset.y - bottom) > 0.5 {
+                    tv.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+                }
+            }
+            reportAtBottom(true)
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            let threshold: CGFloat = 24
-            let maxOffset = scrollView.contentSize.height - scrollView.bounds.height
-            autoScroll = scrollView.contentOffset.y >= maxOffset - threshold
+            let atBottom = ScrollFollow.isAtBottom(
+                offsetY: scrollView.contentOffset.y,
+                contentHeight: scrollView.contentSize.height,
+                viewportHeight: scrollView.bounds.height
+            )
+            // Only a finger may decide to stop following live output. See
+            // isProgrammaticScroll.
+            autoScroll = ScrollFollow.follow(
+                current: autoScroll, atBottom: atBottom, isProgrammatic: isProgrammaticScroll
+            )
+            if !isProgrammaticScroll {
+                reportAtBottom(atBottom)
+            }
 
             // Report reaching the top so the history hint appears only then —
             // but only for USER-driven scrolls. A programmatic setContentOffset
