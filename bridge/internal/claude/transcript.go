@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,11 +32,49 @@ type cacheEntry struct {
 	text    string
 }
 
+// maxCachedRenderings bounds the rendered-transcript cache. Entries are keyed
+// by path AND message bound, both client-influenced, and each holds up to
+// maxRenderBytes — so an unbounded map lets a client pin hundreds of megabytes
+// by walking max_messages, and ordinary session churn retains renderings of
+// transcripts that were deleted long ago. A handful of entries is all the cache
+// was ever for: the same surface polling the same transcript.
+const maxCachedRenderings = 8
+
+// renderCache is a small insertion-ordered cache with a hard entry cap.
+type renderCache struct {
+	mu      sync.Mutex
+	entries map[string]*cacheEntry
+	order   []string // oldest first
+}
+
+func (c *renderCache) get(key string) (*cacheEntry, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[key]
+	return entry, ok
+}
+
+func (c *renderCache) put(key string, entry *cacheEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]*cacheEntry, maxCachedRenderings)
+	}
+	if _, exists := c.entries[key]; !exists {
+		c.order = append(c.order, key)
+		for len(c.order) > maxCachedRenderings {
+			delete(c.entries, c.order[0])
+			c.order = c.order[1:]
+		}
+	}
+	c.entries[key] = entry
+}
+
 // Resolver locates and renders Claude session transcripts.
 type Resolver struct {
 	home  string
 	hooks *hookStore
-	cache sync.Map // keyed by absolute path → *cacheEntry
+	cache renderCache
 }
 
 // NewResolver creates a Resolver that resolves $HOME via os.UserHomeDir.
@@ -142,8 +181,7 @@ func (r *Resolver) Render(req Request) (Result, error) {
 	// file, so that is part of the key — two clients asking for different
 	// depths must not be served each other's text.
 	cacheKey := fmt.Sprintf("%s\x00%d", transcriptPath, req.MaxMessages)
-	if v, ok := r.cache.Load(cacheKey); ok {
-		entry := v.(*cacheEntry)
+	if entry, ok := r.cache.get(cacheKey); ok {
 		if entry.modTime.Equal(info.ModTime()) && entry.size == info.Size() {
 			res.Text = entry.text
 			return res, nil
@@ -160,7 +198,7 @@ func (r *Resolver) Render(req Request) (Result, error) {
 	}
 
 	rendered := renderJSONL(data, req.MaxMessages)
-	r.cache.Store(cacheKey, &cacheEntry{
+	r.cache.put(cacheKey, &cacheEntry{
 		modTime: info.ModTime(),
 		size:    info.Size(),
 		text:    rendered,
@@ -178,49 +216,57 @@ func (r *Resolver) Render(req Request) (Result, error) {
 // them all onto the same transcript, and is only ever a last resort for a
 // surface that names no session at all.
 //
-//  1. hook_store_surface — cmux's hook store says which session this surface is
-//     running and where Claude wrote its transcript. Best available: the path
-//     is recorded, never derived, so it holds for a relocated CLAUDE_CONFIG_DIR
-//     or a nested workflow session that no glob under ~/.claude/projects finds.
-//  2. hook_store_session — the surface's checkpoint_id, looked up in the same
-//     store, for a session whose surface binding has moved on.
-//  3. projects_glob — derive <checkpoint_id>.jsonl under ~/.claude/projects.
+//  1. hook_store_session — the session the surface's checkpoint_id names,
+//     looked up in cmux's hook store, which recorded the path Claude Code
+//     itself reported. Best available: the path is recorded, never derived, so
+//     it holds for a relocated CLAUDE_CONFIG_DIR or a nested workflow session
+//     that no glob under ~/.claude/projects finds.
+//  2. projects_glob — derive <checkpoint_id>.jsonl under ~/.claude/projects.
 //     Covers a Claude session cmux's hooks never recorded.
-//  4. cwd_latest — no session named at all; newest transcript for the cwd.
+//  3. hook_store_surface — the session the store says this surface is running
+//     right now, when its checkpoint resolved to nothing.
+//  4. hook_store_surface_recent — the newest session recorded for this surface,
+//     for a surface whose resume_binding names none at all.
+//  5. cwd_latest — nothing names a session anywhere; newest transcript for the cwd.
+//
+// The surface-keyed strategies rank BELOW the checkpoint ones deliberately. A
+// surface's store record outlives the session that wrote it (SessionEnd clears
+// the active pointer, the record stays), so a surface that has since started a
+// new session would otherwise be served the old conversation indefinitely.
 func (r *Resolver) resolveTranscriptPath(req Request) (path string, boundSession string, source string, err error) {
 	projectsDir := filepath.Join(r.home, ".claude", "projects")
-
-	// Strategy 1: the hook store's binding for this surface.
-	if rec, ok := r.hooks.bySurface(req.SurfaceID); ok {
-		if sessionIDPattern.MatchString(rec.SessionID) {
-			boundSession = rec.SessionID
-		}
-		if readableTranscript(rec.TranscriptPath) {
-			return rec.TranscriptPath, boundSession, "hook_store_surface", nil
-		}
-	}
 
 	if checkpointID, _ := req.ResumeBinding["checkpoint_id"].(string); checkpointID != "" {
 		// Only accept a well-formed session UUID — it's interpolated into a
 		// glob, so `../` or `*?[` in a malformed value must never reach the
 		// filesystem.
 		if sessionIDPattern.MatchString(checkpointID) {
-			if boundSession == "" {
-				boundSession = checkpointID
+			boundSession = checkpointID
+
+			// Strategy 1: that session's recorded transcript path.
+			if rec, ok := r.hooks.bySession(checkpointID); ok {
+				if resolved, ok := storedTranscript(rec.TranscriptPath, rec.SessionID); ok {
+					return resolved, boundSession, "hook_store_session", nil
+				}
 			}
 
-			// Strategy 2: that session's recorded transcript path.
-			if rec, ok := r.hooks.bySession(checkpointID); ok && readableTranscript(rec.TranscriptPath) {
-				return rec.TranscriptPath, boundSession, "hook_store_session", nil
-			}
-
-			// Strategy 3: derive the path under ~/.claude/projects.
+			// Strategy 2: derive the path under ~/.claude/projects.
 			match, err := findTranscriptByID(projectsDir, checkpointID)
 			if err != nil {
 				return "", boundSession, "", err
 			}
 			if match != "" {
 				return match, boundSession, "projects_glob", nil
+			}
+
+			// Strategy 3: the session this surface is running right now. The
+			// checkpoint named a session with nothing on disk, so prefer the
+			// live conversation over reporting nothing — but only from the
+			// store's authoritative pointer, never the historical scan.
+			if rec, ok := r.hooks.activeBySurface(req.SurfaceID); ok {
+				if resolved, ok := storedTranscript(rec.TranscriptPath, rec.SessionID); ok {
+					return resolved, rec.SessionID, "hook_store_surface", nil
+				}
 			}
 		}
 		// The surface names a session and that file is not on disk. Stop here
@@ -232,13 +278,24 @@ func (r *Resolver) resolveTranscriptPath(req Request) (path string, boundSession
 		return "", boundSession, "", nil
 	}
 
+	// Strategy 4: no checkpoint at all — the newest session recorded for this
+	// surface. Historical, but still bound to THIS surface.
+	if rec, ok := r.hooks.recentBySurface(req.SurfaceID); ok {
+		if sessionIDPattern.MatchString(rec.SessionID) {
+			boundSession = rec.SessionID
+		}
+		if resolved, ok := storedTranscript(rec.TranscriptPath, rec.SessionID); ok {
+			return resolved, boundSession, "hook_store_surface_recent", nil
+		}
+	}
+
 	// A surface the hook store knows but whose recorded file is gone: report it
 	// missing rather than guessing from the cwd, for the same reason.
 	if boundSession != "" {
 		return "", boundSession, "", nil
 	}
 
-	// Strategy 4 (last resort): no session named anywhere — encode the cwd and
+	// Strategy 5 (last resort): no session named anywhere — encode the cwd and
 	// take the most-recently-modified session in that project dir.
 	if cwd, _ := req.ResumeBinding["cwd"].(string); cwd != "" {
 		dir := filepath.Join(projectsDir, encodeCWD(cwd))
@@ -295,20 +352,20 @@ func fingerprint(path string, info os.FileInfo, maxMessages int) string {
 // this bounds memory for very large sessions. A partial first line (from
 // cutting mid-line) is harmless — renderJSONL skips unparseable lines.
 func readTail(path string, size, maxBytes int64) ([]byte, error) {
-	if size <= maxBytes {
-		return os.ReadFile(path)
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	buf := make([]byte, maxBytes)
-	n, err := f.ReadAt(buf, size-maxBytes)
-	if err != nil && n == 0 {
-		return nil, err
+	if size > maxBytes {
+		if _, err := f.Seek(size-maxBytes, io.SeekStart); err != nil {
+			return nil, err
+		}
 	}
-	return buf[:n], nil
+	// LimitReader, not ReadFile: the file is being appended to live, so the
+	// size this decision was made on is already stale and an unbounded read
+	// would follow the writer past maxBytes.
+	return io.ReadAll(io.LimitReader(f, maxBytes))
 }
 
 // isWithin reports whether path is inside dir (or equal to it).

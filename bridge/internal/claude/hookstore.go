@@ -2,6 +2,7 @@ package claude
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,7 +80,14 @@ func (s *hookStore) load() *hookStoreFile {
 		return s.parsed
 	}
 
-	data, err := os.ReadFile(s.path)
+	// LimitReader, not ReadFile: the CLI rewrites this file on every hook event,
+	// so the size the guard above checked can be stale by the time it is opened.
+	f, err := os.Open(s.path)
+	if err != nil {
+		return nil
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxHookStoreBytes))
+	f.Close()
 	if err != nil {
 		return nil
 	}
@@ -96,12 +104,11 @@ func (s *hookStore) load() *hookStoreFile {
 	return s.parsed
 }
 
-// bySurface returns the record for the session a cmux surface is running.
-// Prefers the store's own active-session pointer; falls back to the most
-// recently updated record naming that surface, which covers a session whose
-// pointer was cleared (e.g. after a SessionEnd) but whose transcript is still
-// the last thing that surface showed.
-func (s *hookStore) bySurface(surfaceID string) (hookSessionRecord, bool) {
+// activeBySurface returns the session the store says a surface is running right
+// now. This is the store's own authoritative pointer, so it is the only
+// surface-keyed lookup allowed to override a resolution the surface's
+// checkpoint could not satisfy.
+func (s *hookStore) activeBySurface(surfaceID string) (hookSessionRecord, bool) {
 	if surfaceID == "" {
 		return hookSessionRecord{}, false
 	}
@@ -109,16 +116,40 @@ func (s *hookStore) bySurface(surfaceID string) (hookSessionRecord, bool) {
 	if file == nil {
 		return hookSessionRecord{}, false
 	}
-
 	for key, active := range file.ActiveSessionsBySurface {
 		if !strings.EqualFold(key, surfaceID) {
 			continue
 		}
-		if rec, ok := lookupSession(file, active.SessionID); ok {
-			return rec, true
+		rec, ok := lookupSession(file, active.SessionID)
+		if !ok {
+			return hookSessionRecord{}, false
 		}
+		// The pointer and the record must agree about which surface this is.
+		// They are written by the same hooks, so a disagreement means the store
+		// is stale or inconsistent — and following it hands this surface's
+		// client another surface's conversation.
+		if rec.SurfaceID != "" && !strings.EqualFold(rec.SurfaceID, surfaceID) {
+			return hookSessionRecord{}, false
+		}
+		return rec, true
 	}
+	return hookSessionRecord{}, false
+}
 
+// recentBySurface returns the most recently updated record naming a surface.
+//
+// Unlike activeBySurface this is a HISTORICAL guess: a session whose pointer
+// was cleared (SessionEnd) still matches here, so it must never outrank a
+// session the surface's resume_binding actually names — it is only for a
+// surface that names none at all.
+func (s *hookStore) recentBySurface(surfaceID string) (hookSessionRecord, bool) {
+	if surfaceID == "" {
+		return hookSessionRecord{}, false
+	}
+	file := s.load()
+	if file == nil {
+		return hookSessionRecord{}, false
+	}
 	var best hookSessionRecord
 	found := false
 	for _, rec := range file.Sessions {
@@ -166,22 +197,39 @@ func lookupSession(file *hookStoreFile, sessionID string) (hookSessionRecord, bo
 	return hookSessionRecord{}, false
 }
 
-// readableTranscript reports whether a store-supplied path names a transcript
-// file that can be read now.
+// storedTranscript resolves a store-supplied path for one session, returning
+// the path to actually read.
 //
-// The store is a 0600 file the CLI writes for this user, and the path in it
-// came from Claude Code itself, so this is a sanity check rather than a trust
-// boundary: it must be an absolute, unwalked path to an existing regular
-// .jsonl file. Notably it is NOT confined to ~/.claude/projects — relocating
-// that tree with CLAUDE_CONFIG_DIR is exactly the case the store exists to
-// handle.
-func readableTranscript(path string) bool {
-	if path == "" || !filepath.IsAbs(path) {
-		return false
+// The path must be absolute and unwalked, and — after symlinks are resolved —
+// must still be a regular file named `<sessionID>.jsonl`. Tying the file name
+// to the session the record claims is what keeps a stale, inconsistent, or
+// tampered store from turning this into "read whichever JSONL the store names":
+// without it a record for session A can serve session B's conversation, or a
+// symlink can redirect the read to an unrelated file entirely.
+//
+// Only the file NAME is constrained, never the directory, because relocating
+// the transcript tree with CLAUDE_CONFIG_DIR is exactly the case the store
+// exists to handle. A record that fails this check is not fatal: the caller
+// falls through to deriving the path under ~/.claude/projects.
+func storedTranscript(path, sessionID string) (string, bool) {
+	if path == "" || sessionID == "" || !filepath.IsAbs(path) {
+		return "", false
 	}
 	if filepath.Clean(path) != path || !strings.HasSuffix(path, ".jsonl") {
-		return false
+		return "", false
 	}
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular()
+	// Resolve once and read the resolved path, so the name that was checked is
+	// the file that gets opened.
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", false
+	}
+	if !strings.EqualFold(filepath.Base(resolved), sessionID+".jsonl") {
+		return "", false
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return resolved, true
 }
