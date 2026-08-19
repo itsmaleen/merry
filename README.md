@@ -124,6 +124,22 @@ Long-press the focused surface or double-tap volume up to open:
 
 Swipe left/right to switch between action sections.
 
+### Claude surfaces
+
+A surface running Claude Code shows the **conversation itself** on its card —
+loaded from Claude's own session transcript as soon as the surface is focused,
+with claude's live screen (input box, permission prompts) below a divider. No
+separate step: claude-code is a full-screen TUI that keeps no terminal
+scrollback, so the terminal mirror alone would only ever show the last screen.
+
+Pull past the top of a focused claude card to read the same conversation
+full-screen at a larger size.
+
+The bridge finds each surface's transcript through cmux's hook session store
+(`~/.cmuxterm/claude-hook-sessions.json`), which records the exact file Claude
+Code reported for that session — so surfaces sharing a working directory never
+show each other's conversation. See [shared/protocol.md](shared/protocol.md).
+
 ### Other controls
 
 - Swipe left/right on focused surface to cycle surfaces

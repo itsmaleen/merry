@@ -10,8 +10,8 @@ struct PaneCardView: View {
     var contentScale: CGFloat = 1.0
     var isBrowser: Bool = false
     var browserURL: String = ""
-    /// When true, scrolling to the top of a focused card opens conversation
-    /// history (claude agent surfaces).
+    /// When true, scrolling to the top of a focused card opens the conversation
+    /// full-screen (claude agent surfaces, whose card already shows it inline).
     var canOpenHistory: Bool = false
     var onOpenHistory: (() -> Void)?
     /// The surface's screen moved on its latest poll — its agent/command is
@@ -124,8 +124,9 @@ struct PaneCardView: View {
 
     private var terminalContentView: some View {
         // UITextView-backed so output is selectable (copy) and URLs are tappable.
-        // On a focused claude card, pulling to the top opens the conversation
-        // history viewer (the terminal itself only shows claude's live viewport).
+        // A claude card's text is its conversation with the live screen below it;
+        // pulling past the top opens the same conversation full-screen, which is
+        // an easier read than this card's 9pt type.
         TerminalTextView(
             text: terminalText,
             fontSize: (isFocused ? 9 : 7) * contentScale,
@@ -136,7 +137,7 @@ struct PaneCardView: View {
         )
         .overlay(alignment: .top) {
             // Only surface the affordance once the user is at the top; a further
-            // pull-up past the top opens history.
+            // pull-up past the top opens the full-screen reader.
             if isFocused && canOpenHistory && terminalAtTop {
                 historyHint
                     .padding(.top, 4)
@@ -150,7 +151,7 @@ struct PaneCardView: View {
         HStack(spacing: 5) {
             Image(systemName: "arrow.up")
                 .font(.system(size: 8, weight: .semibold))
-            Text("pull up for history")
+            Text("pull up to expand")
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
         }
         .foregroundStyle(.white.opacity(0.5))
@@ -252,8 +253,9 @@ struct HistoryTarget: Identifiable, Equatable {
     let title: String
 }
 
-/// Full-screen viewer for a claude surface's conversation transcript. Loads on
-/// appear, opens pinned to the latest exchange, scroll up for older history.
+/// Full-screen reader for a claude surface's conversation. The card already
+/// renders the same transcript inline; this is the roomier, larger-type view of
+/// it. Opens pinned to the latest exchange, scroll up for older history.
 struct TranscriptSheetView: View {
     @EnvironmentObject var appState: AppState
     let target: HistoryTarget
@@ -271,7 +273,7 @@ struct TranscriptSheetView: View {
             // Always refetch on open so we show the latest session data, not a
             // stale cache from a previous viewing. Any cached text stays visible
             // (pinned to the bottom) until the fresh transcript replaces it.
-            appState.loadClaudeTranscript(target.id)
+            appState.loadClaudeTranscript(target.id, showsSpinner: true)
         }
     }
 
@@ -295,7 +297,7 @@ struct TranscriptSheetView: View {
                 }
             }
             Spacer()
-            Button { appState.loadClaudeTranscript(target.id) } label: {
+            Button { appState.loadClaudeTranscript(target.id, showsSpinner: true) } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 15))
             }
             .tint(.white.opacity(0.6))
@@ -324,7 +326,7 @@ struct TranscriptSheetView: View {
                     Text("This surface's session file is missing")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.35))
-                    Text("cmux points it at session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), which is no longer in ~/.claude/projects.")
+                    Text("cmux binds this surface to session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), whose transcript is no longer on disk.")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.25))
                         .multilineTextAlignment(.center)

@@ -272,10 +272,10 @@ func TestResolveRejectsMaliciousCheckpointID(t *testing.T) {
 	if err := os.WriteFile(secret, []byte(`{"type":"user","message":{"role":"user","content":"SECRET"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &Resolver{home: home}
+	r := newResolver(home)
 
 	// Valid UUID resolves.
-	if res, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": validID}, 100); err != nil || !res.Supported || res.SessionID != validID {
+	if res, err := r.Render(Request{ResumeBinding: map[string]any{"kind": "claude", "checkpoint_id": validID}, MaxMessages: 100}); err != nil || !res.Supported || res.SessionID != validID {
 		t.Fatalf("valid id: supported=%v sid=%q err=%v", res.Supported, res.SessionID, err)
 	}
 
@@ -289,7 +289,7 @@ func TestResolveRejectsMaliciousCheckpointID(t *testing.T) {
 		"..",
 		validID + "/../../secret",
 	} {
-		res, err := r.Render(map[string]any{"kind": "claude", "checkpoint_id": bad}, 100)
+		res, err := r.Render(Request{ResumeBinding: map[string]any{"kind": "claude", "checkpoint_id": bad}, MaxMessages: 100})
 		if err != nil {
 			t.Fatalf("bad id %q returned error %v (should quietly not resolve)", bad, err)
 		}
@@ -315,15 +315,18 @@ func TestResolveMissingCheckpointFileDoesNotFallBackToCWD(t *testing.T) {
 		[]byte(`{"type":"user","message":{"role":"user","content":"OTHER SURFACE"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &Resolver{home: home}
+	r := newResolver(home)
 
 	// This surface points at a session whose file is gone.
 	goneID := "bbbbbbbb-1111-2222-3333-444444444444"
-	res, err := r.Render(map[string]any{
-		"kind":          "claude",
-		"checkpoint_id": goneID,
-		"cwd":           cwd,
-	}, 100)
+	res, err := r.Render(Request{
+		ResumeBinding: map[string]any{
+			"kind":          "claude",
+			"checkpoint_id": goneID,
+			"cwd":           cwd,
+		},
+		MaxMessages: 100,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -357,9 +360,9 @@ func TestResolveWithoutCheckpointFallsBackToLatestInCWD(t *testing.T) {
 		[]byte(`{"type":"user","message":{"role":"user","content":"HELLO"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &Resolver{home: home}
+	r := newResolver(home)
 
-	res, err := r.Render(map[string]any{"kind": "claude", "cwd": cwd}, 100)
+	res, err := r.Render(Request{ResumeBinding: map[string]any{"kind": "claude", "cwd": cwd}, MaxMessages: 100})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

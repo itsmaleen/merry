@@ -179,7 +179,14 @@ func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver 
 		}
 	}
 
-	res, err := resolver.Render(resumeBinding, maxMessages)
+	knownFingerprint, _ := cmd.Params["known_fingerprint"].(string)
+
+	res, err := resolver.Render(claude.Request{
+		SurfaceID:        surfaceID,
+		ResumeBinding:    resumeBinding,
+		MaxMessages:      maxMessages,
+		KnownFingerprint: knownFingerprint,
+	})
 	if err != nil {
 		return commandResponse{
 			ID: cmd.ID,
@@ -196,6 +203,11 @@ func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver 
 		"text":            res.Text,
 		"session_id":      res.SessionID,
 		"session_missing": res.SessionMissing,
+		// Hand back on the next poll as known_fingerprint: an unchanged
+		// transcript then answers without re-reading or re-sending it.
+		"fingerprint": res.Fingerprint,
+		"unchanged":   res.Unchanged,
+		"source":      res.Source,
 	})
 	return commandResponse{
 		ID:     cmd.ID,
