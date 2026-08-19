@@ -1,0 +1,8 @@
+merge
+
+---
+
+/loop Next work on the following 2 featuers (should be separate PRs)
+- Search across a surface
+- pasting an image from ios app to be sent to a surface (as in when on claude code, it can receive that image)
+make sure to test both

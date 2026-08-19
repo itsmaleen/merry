@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "8086616568f4",
+  "strategy": "manual-commit",
+  "branch": "feat/surface-search",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "ios/cmux/Layout/TextSearch.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/80/86616568f4/0/metadata.json",
+      "transcript": "/80/86616568f4/0/full.jsonl",
+      "compact_transcript": "/80/86616568f4/0/transcript.jsonl",
+      "content_hash": "/80/86616568f4/0/content_hash.txt",
+      "prompt": "/80/86616568f4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 46622,
+    "cache_read_tokens": 10265544,
+    "output_tokens": 28099,
+    "api_call_count": 26
+  }
+}
