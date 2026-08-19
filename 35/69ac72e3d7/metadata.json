@@ -4,11 +4,18 @@
   "checkpoint_id": "3569ac72e3d7",
   "strategy": "manual-commit",
   "branch": "feat/paste-image",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
+    "bridge/internal/claude/transcript.go",
     "bridge/internal/imagepaste/imagepaste.go",
+    "bridge/internal/ws/handler.go",
+    "bridge/internal/ws/server.go",
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
     "ios/cmux/Input/ImagePaste.swift",
-    "ios/cmux/Input/ImageScaling.swift"
+    "ios/cmux/Input/ImageScaling.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/scripts/run-tests.sh"
   ],
   "sessions": [
     {
@@ -17,13 +24,20 @@
       "compact_transcript": "/35/69ac72e3d7/0/transcript.jsonl",
       "content_hash": "/35/69ac72e3d7/0/content_hash.txt",
       "prompt": "/35/69ac72e3d7/0/prompt.txt"
+    },
+    {
+      "metadata": "/35/69ac72e3d7/1/metadata.json",
+      "transcript": "/35/69ac72e3d7/1/full.jsonl",
+      "compact_transcript": "/35/69ac72e3d7/1/transcript.jsonl",
+      "content_hash": "/35/69ac72e3d7/1/content_hash.txt",
+      "prompt": "/35/69ac72e3d7/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 70,
-    "cache_creation_tokens": 52877,
-    "cache_read_tokens": 16399883,
-    "output_tokens": 41150,
-    "api_call_count": 35
+    "input_tokens": 80,
+    "cache_creation_tokens": 75906,
+    "cache_read_tokens": 16602675,
+    "output_tokens": 43782,
+    "api_call_count": 40
   }
 }

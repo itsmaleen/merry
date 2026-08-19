@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "3569ac72e3d7",
+  "session_id": "efcd4e7d-a672-4bc5-b5f9-a3f4544c6c90",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-19T03:38:40.675948Z",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "bridge/internal/claude/transcript.go",
+    "bridge/internal/ws/handler.go",
+    "bridge/internal/ws/server.go",
+    "ios/cmux.xcodeproj/project.pbxproj",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "ios/scripts/run-tests.sh"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "75d2836fa53b",
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 23029,
+    "cache_read_tokens": 202792,
+    "output_tokens": 2632,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-19T03:38:40.669514Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 29,
+    "human_modified": 4,
+    "human_removed": 0,
+    "total_committed": 29,
+    "total_lines_changed": 33,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 735,
+      "user_lines_removed": 4,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 15,
+        "bridge/internal/claude/transcript.go": 1,
+        "bridge/internal/imagepaste/imagepaste.go": 173,
+        "bridge/internal/imagepaste/imagepaste_test.go": 200,
+        "bridge/internal/ws/handler.go": 72,
+        "bridge/internal/ws/server.go": 4,
+        "ios/cmux.xcodeproj/project.pbxproj": 8,
+        "ios/cmux/App/AppState.swift": 70,
+        "ios/cmux/Input/ImagePaste.swift": 77,
+        "ios/cmux/Input/ImageScaling.swift": 32,
+        "ios/cmux/Layout/WorkspaceLayoutView.swift": 17,
+        "ios/scripts/run-tests.sh": 1,
+        "ios/scripts/test-image-scaling.swift": 64
+      },
+      "user_removed_per_file": {
+        "bridge/internal/claude/transcript.go": 1,
+        "bridge/internal/ws/handler.go": 2,
+        "bridge/internal/ws/server.go": 1
+      }
+    }
+  ]
+}
