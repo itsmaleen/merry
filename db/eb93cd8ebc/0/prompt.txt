@@ -1,0 +1,12 @@
+Look into cmux and the app that they have, it clearly seems like their mobile app is able to get the full claude instance session info without our session history hack
+figure out how that is possible
+
+---
+
+Look into cmux and the app that they have (you can git clone latest in a tmp folder), it clearly seems like their mobile app is able to get the full claude instance session info without our session history hack
+figure out how that is possible
+
+---
+
+yes go ahead and make the change
+the main change I'm interested in is having the session load on the surface without needing to open session history page

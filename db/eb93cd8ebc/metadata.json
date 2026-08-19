@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "dbeb93cd8ebc",
+  "strategy": "manual-commit",
+  "branch": "feat/inline-claude-session",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "bridge/internal/claude/hookstore.go",
+    "bridge/internal/claude/hookstore_test.go",
+    "bridge/internal/claude/transcript.go",
+    "bridge/internal/claude/transcript_test.go",
+    "bridge/internal/ws/handler.go",
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/PaneCardView.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift",
+    "shared/protocol.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/db/eb93cd8ebc/0/metadata.json",
+      "transcript": "/db/eb93cd8ebc/0/full.jsonl",
+      "compact_transcript": "/db/eb93cd8ebc/0/transcript.jsonl",
+      "content_hash": "/db/eb93cd8ebc/0/content_hash.txt",
+      "prompt": "/db/eb93cd8ebc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 276,
+    "cache_creation_tokens": 659010,
+    "cache_read_tokens": 25355208,
+    "output_tokens": 91105,
+    "api_call_count": 138
+  }
+}
