@@ -36,6 +36,9 @@ enum QuickActionBuilder {
             QuickAction(label: "Escape", icon: "escape", section: "Input") {
                 appState.sendKey("escape", to: sid)
             },
+            QuickAction(label: "Paste Image", icon: "photo.on.rectangle", section: "Input") {
+                appState.pasteImage(to: sid)
+            },
             QuickAction(label: "Up Arrow", icon: "arrow.up", section: "Input") {
                 appState.sendKey("up", to: sid)
             },
@@ -219,6 +222,19 @@ struct WorkspaceLayoutView: View {
                     surfaceLayout
                 }
 
+                if let status = appState.imagePasteStatus, !quickAction.isFullscreen {
+                    Text(status)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+                        )
+                        .padding(.bottom, 4)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+
                 if isSearching, !quickAction.isFullscreen, !quickAction.isOpen {
                     searchBar
                         .padding(.horizontal, 4)
@@ -248,6 +264,7 @@ struct WorkspaceLayoutView: View {
             }
             .animation(.easeInOut(duration: 0.22), value: keyboardActive)
             .animation(.easeInOut(duration: 0.2), value: isSearching)
+            .animation(.easeInOut(duration: 0.2), value: appState.imagePasteStatus)
 
             // Quick action overlay
             if quickAction.isOpen {

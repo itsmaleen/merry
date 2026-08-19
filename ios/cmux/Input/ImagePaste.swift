@@ -1,0 +1,77 @@
+import UIKit
+
+/// Turns an image on the phone into something a terminal agent can receive.
+///
+/// A TUI reads bytes from a pty, so it cannot be handed a picture directly. The
+/// bridge writes the image to a file on the Mac and types its path into the
+/// surface, which is how a local clipboard-image paste works and how Claude Code
+/// picks the image up. This side's job is to get the bytes there: reasonably
+/// sized, in a format the bridge accepts.
+enum ImagePaste {
+    /// An image ready to send.
+    struct Encoded {
+        let base64: String
+        /// Format label for the bridge's response; the bridge sniffs the bytes
+        /// itself and does not trust this.
+        let format: String
+        /// Encoded byte count, for the "sent 240 KB" style confirmation.
+        let bytes: Int
+    }
+
+    /// JPEG quality for photographs. High enough that text in a screenshot stays
+    /// legible, low enough that a phone photo lands in the hundreds of KB.
+    static let jpegQuality: CGFloat = 0.82
+
+    /// The image currently on the pasteboard, if any.
+    ///
+    /// Reading the pasteboard shows iOS's "Allow Paste?" prompt the first time,
+    /// which is the system telling the user what we're about to do — worth it
+    /// over a photo picker for something explicitly framed as a paste.
+    static func pasteboardImage() -> UIImage? {
+        let pasteboard = UIPasteboard.general
+        guard pasteboard.hasImages else { return nil }
+        return pasteboard.image
+    }
+
+    /// Downscales and encodes an image for transport.
+    ///
+    /// PNG when the image has an alpha channel (screenshots with transparency,
+    /// diagrams), JPEG otherwise — PNG on a photograph is several times larger
+    /// for no visible gain, and the whole payload crosses a phone's wifi.
+    static func encode(_ image: UIImage) -> Encoded? {
+        let target = ImageScaling.targetSize(for: image.size)
+        let resized = target == image.size ? image : redraw(image, at: target)
+
+        if hasAlpha(resized), let png = resized.pngData() {
+            return Encoded(base64: png.base64EncodedString(), format: "png", bytes: png.count)
+        }
+        if let jpeg = resized.jpegData(compressionQuality: jpegQuality) {
+            return Encoded(base64: jpeg.base64EncodedString(), format: "jpg", bytes: jpeg.count)
+        }
+        // A CIImage-backed UIImage can refuse both encoders; PNG of the redrawn
+        // bitmap is the last resort rather than sending nothing.
+        guard let png = redraw(resized, at: target).pngData() else { return nil }
+        return Encoded(base64: png.base64EncodedString(), format: "png", bytes: png.count)
+    }
+
+    private static func redraw(_ image: UIImage, at size: CGSize) -> UIImage {
+        let format = UIGraphicsImageRendererFormat.default()
+        // Draw at exactly the pixel size computed above: the renderer would
+        // otherwise apply the screen's scale and undo the downscale.
+        format.scale = 1
+        format.opaque = !hasAlpha(image)
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    private static func hasAlpha(_ image: UIImage) -> Bool {
+        guard let alpha = image.cgImage?.alphaInfo else { return false }
+        switch alpha {
+        case .first, .last, .premultipliedFirst, .premultipliedLast:
+            return true
+        default:
+            return false
+        }
+    }
+}

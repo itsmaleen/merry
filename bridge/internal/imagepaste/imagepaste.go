@@ -1,0 +1,173 @@
+// Package imagepaste materializes an image the phone pasted into a file on the
+// Mac, so its path can be typed into a terminal surface.
+//
+// This is how a terminal receives an image at all: a TUI reads bytes from a pty,
+// so there is no way to hand it a picture directly. What a local clipboard-image
+// paste does — in Ghostty, and in cmux's own `terminal.paste_image` — is write
+// the image to a file and insert its path as ordinary input. Claude Code then
+// attaches the image from that path. Doing the same here keeps the bridge
+// working against cmux builds that predate that RPC.
+package imagepaste
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// MaxImageBytes bounds a decoded image. Phone photos run 2–5 MB; this leaves
+// room for a screenshot of a large display while keeping one paste from
+// monopolising the WebSocket or the disk.
+const MaxImageBytes = 12 * 1024 * 1024
+
+// retention is how long a pasted image stays on disk. It only has to outlive the
+// agent's read of it, but a user re-referencing "that screenshot from earlier"
+// in the same session is normal, so keep them for the working day.
+const retention = 12 * time.Hour
+
+// dirName is created under the user's cache dir with 0700: pasted images are as
+// private as the conversation they belong to.
+const dirName = "cmux-companion-images"
+
+// Result describes one materialized image.
+type Result struct {
+	// Path is the file on disk.
+	Path string
+	// Text is what to type into the surface: the shell-escaped path plus a
+	// trailing space, so the agent sees a complete token and the user can keep
+	// typing after it.
+	Text string
+	// Bytes is the decoded image size.
+	Bytes int
+	// Format is the detected image format, which may differ from what the
+	// client claimed.
+	Format string
+}
+
+// Store writes pasted images into a directory it owns.
+type Store struct {
+	dir string
+}
+
+// NewStore creates a store under the user's cache directory.
+func NewStore() *Store {
+	base, err := os.UserCacheDir()
+	if err != nil {
+		base = os.TempDir()
+	}
+	return &Store{dir: filepath.Join(base, dirName)}
+}
+
+// Save writes image bytes to a new file and returns what to type into a surface.
+//
+// The file name is generated here and never taken from the client: the client
+// supplies bytes, nothing that reaches the filesystem. The extension comes from
+// sniffing the content rather than from the client's claim, so a payload can't
+// be given a misleading name.
+func (s *Store) Save(data []byte) (Result, error) {
+	if len(data) == 0 {
+		return Result{}, errors.New("empty image")
+	}
+	if len(data) > MaxImageBytes {
+		return Result{}, fmt.Errorf("image is %d bytes, limit is %d", len(data), MaxImageBytes)
+	}
+	format, ok := detectFormat(data)
+	if !ok {
+		return Result{}, errors.New("payload is not a supported image (png, jpeg, gif, webp, heic)")
+	}
+
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return Result{}, err
+	}
+	s.prune()
+
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return Result{}, err
+	}
+	name := fmt.Sprintf("pasted-%s-%s.%s",
+		time.Now().Format("20060102-150405"), hex.EncodeToString(nonce[:]), format)
+	path := filepath.Join(s.dir, name)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return Result{}, err
+	}
+
+	return Result{
+		Path:   path,
+		Text:   ShellQuote(path) + " ",
+		Bytes:  len(data),
+		Format: format,
+	}, nil
+}
+
+// prune deletes images past their retention. Best-effort and bounded: a paste
+// should never fail because cleanup did.
+func (s *Store) prune() {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-retention)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "pasted-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(s.dir, entry.Name()))
+	}
+}
+
+// detectFormat identifies the image format from its content.
+//
+// http.DetectContentType covers png/jpeg/gif/webp; HEIC (what an iPhone camera
+// produces by default) is not in its table, so it is sniffed from the ISO-BMFF
+// brand directly.
+func detectFormat(data []byte) (string, bool) {
+	switch http.DetectContentType(data) {
+	case "image/png":
+		return "png", true
+	case "image/jpeg":
+		return "jpg", true
+	case "image/gif":
+		return "gif", true
+	case "image/webp":
+		return "webp", true
+	}
+	if isHEIC(data) {
+		return "heic", true
+	}
+	return "", false
+}
+
+// isHEIC reports whether data is an ISO base media file with a HEIF/HEIC brand.
+// Layout: [4-byte box size]["ftyp"][4-byte major brand].
+func isHEIC(data []byte) bool {
+	if len(data) < 12 || string(data[4:8]) != "ftyp" {
+		return false
+	}
+	switch string(data[8:12]) {
+	case "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1":
+		return true
+	}
+	return false
+}
+
+// ShellQuote wraps a path in single quotes so it survives a shell prompt and an
+// agent's own tokenizer intact.
+//
+// Paths generated here never contain anything that needs escaping, but the
+// quoting is not conditional on that: it is what a local clipboard-image paste
+// inserts, so keeping it identical means an agent that handles one handles the
+// other.
+func ShellQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}

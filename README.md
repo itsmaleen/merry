@@ -140,6 +140,18 @@ The bridge finds each surface's transcript through cmux's hook session store
 Code reported for that session — so surfaces sharing a working directory never
 show each other's conversation. See [shared/protocol.md](shared/protocol.md).
 
+### Sending an image
+
+Copy an image on the phone, then **Paste Image** in the quick actions (Input
+section) sends it to the focused surface. The bridge writes it to a file on the
+Mac and types that path into the surface, which is how a terminal agent receives
+a picture at all — Claude Code reads the image from the path. Nothing is
+submitted: the path lands in the prompt and you decide when to send it.
+
+Images are downscaled to a long edge of 1568px before sending (Claude resizes
+anything larger anyway), stored under the Mac's cache directory readable only by
+you, and deleted after 12 hours.
+
 ### Other controls
 
 - Swipe left/right on focused surface to cycle surfaces

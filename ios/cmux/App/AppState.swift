@@ -113,6 +113,11 @@ final class AppState: ObservableObject {
     @Published var claudeTranscriptMissing: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
+    // Short-lived confirmation or failure text for an image paste, shown over the
+    // focused card. Images are the one action whose result isn't obvious from the
+    // terminal alone — a path scrolls by, an error is silent.
+    @Published var imagePasteStatus: String?
+    private var imagePasteStatusClear: DispatchWorkItem?
     private let bridgeStore = BridgeStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -411,6 +416,8 @@ final class AppState: ObservableObject {
         claudeTranscriptLoading = []
         claudeTranscriptMissing = []
         presentedHistory = nil
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = nil
         lastFocusedSurface = [:]
     }
 
@@ -788,6 +795,69 @@ final class AppState: ObservableObject {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count > maxHistoryLines else { return text }
         return lines.suffix(maxHistoryLines).joined(separator: "\n")
+    }
+
+    /// Sends the image currently on the pasteboard to a surface.
+    ///
+    /// The bridge writes it to a file on the Mac and types the path in, which is
+    /// how a terminal agent receives an image at all — see the bridge's
+    /// `imagepaste` package. Nothing is submitted: the path lands in the prompt
+    /// and the user decides when to send it.
+    func pasteImage(to surfaceID: String) {
+        guard let image = ImagePaste.pasteboardImage() else {
+            showImagePasteStatus("No image on the clipboard")
+            return
+        }
+        showImagePasteStatus("Sending image…", autoClear: false)
+        // Encode off the main actor: a full-resolution photo is a redraw plus a
+        // JPEG pass plus base64, which is far too much for a frame.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let encoded = ImagePaste.encode(image)
+            await MainActor.run {
+                guard let self else { return }
+                guard let encoded else {
+                    self.showImagePasteStatus("Couldn't read that image")
+                    return
+                }
+                var params: [String: Any] = [
+                    "surface_id": surfaceID,
+                    "image_base64": encoded.base64,
+                    "image_format": encoded.format,
+                ]
+                if let wsID = self.currentWorkspaceID {
+                    params["workspace_id"] = wsID
+                }
+                self.send(method: "surface.paste_image", params: params) { [weak self] result in
+                    guard let self else { return }
+                    // An error reply reaches this completion with an empty result
+                    // (see BridgeClient), so a missing path means it failed.
+                    guard result["path"] is String else {
+                        self.showImagePasteStatus("Image paste failed")
+                        return
+                    }
+                    let bytes = (result["bytes"] as? Int) ?? encoded.bytes
+                    self.showImagePasteStatus("Image sent (\(Self.byteLabel(bytes)))")
+                    // The path was typed into the prompt; show it without waiting
+                    // for the next poll.
+                    self.scheduleActivityProbe(for: surfaceID)
+                }
+            }
+        }
+    }
+
+    private func showImagePasteStatus(_ text: String, autoClear: Bool = true) {
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = text
+        guard autoClear else { return }
+        let clear = DispatchWorkItem { [weak self] in self?.imagePasteStatus = nil }
+        imagePasteStatusClear = clear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: clear)
+    }
+
+    nonisolated private static func byteLabel(_ bytes: Int) -> String {
+        bytes >= 1024 * 1024
+            ? String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+            : "\(max(1, bytes / 1024)) KB"
     }
 
     func readBrowserURL(_ surfaceID: String) {

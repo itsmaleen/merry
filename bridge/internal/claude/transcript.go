@@ -532,7 +532,7 @@ func extractContent(raw json.RawMessage) string {
 			if name, _ := block["name"].(string); name != "" {
 				parts = append(parts, "⚙ "+name+toolArgumentSummary(block["input"]))
 			}
-		// thinking, tool_result, and anything else: skip
+			// thinking, tool_result, and anything else: skip
 		}
 	}
 	return strings.Join(parts, "\n")

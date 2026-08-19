@@ -254,6 +254,29 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   bridge falls back to the newest transcript for the pane's cwd
   (`cwd_latest`).
 
+- `surface.paste_image` — `{"surface_id":"...","image_base64":"...","image_format":"png"}`
+  → `{"surface_id":"...","path":"/Users/…/pasted-….png","bytes":175,"format":"png"}`.
+
+  Bridge-local. A TUI reads bytes from a pty, so an image can't be handed to it
+  directly. What a local clipboard-image paste does — and what cmux's own
+  `terminal.paste_image` does — is write the image to a file and type its path in
+  as ordinary input; Claude Code then reads the image from that path. The bridge
+  does the same, so this works against cmux builds predating that RPC, and
+  identically under herdr (the path goes in through the backend's own
+  `surface.send_text`, so a composite bridge routes it by the id's namespace).
+
+  The image is written under the user's cache directory (0700, files 0600) with a
+  generated name — the client supplies bytes, never anything that reaches the
+  filesystem — and the extension comes from sniffing the content, not from
+  `image_format`. Pasted images are pruned after 12 hours. Payloads are capped at
+  12 MB decoded; the path is typed WITHOUT a newline, so nothing is submitted
+  until the user decides.
+
+  Note the transport bound: one client message may not exceed ~16 MB. That is a
+  WebSocket-level limit, so exceeding it closes the connection (1009) rather than
+  returning an error — the iOS client downscales to a long edge of 1568px before
+  sending, which keeps a paste in the hundreds of KB.
+
 **Browsers:**
 - `browser.url.get` — `{"surface_id":"..."}` → `{"url":"..."}` (browser surfaces)
 
