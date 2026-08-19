@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "3569ac72e3d7",
+  "strategy": "manual-commit",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "bridge/internal/imagepaste/imagepaste.go",
+    "ios/cmux/Input/ImagePaste.swift",
+    "ios/cmux/Input/ImageScaling.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/35/69ac72e3d7/0/metadata.json",
+      "transcript": "/35/69ac72e3d7/0/full.jsonl",
+      "compact_transcript": "/35/69ac72e3d7/0/transcript.jsonl",
+      "content_hash": "/35/69ac72e3d7/0/content_hash.txt",
+      "prompt": "/35/69ac72e3d7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 70,
+    "cache_creation_tokens": 52877,
+    "cache_read_tokens": 16399883,
+    "output_tokens": 41150,
+    "api_call_count": 35
+  }
+}
