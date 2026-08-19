@@ -25,8 +25,13 @@ struct PaneCardView: View {
     var searchQuery: String = ""
     var currentMatchIndex: Int = 0
     var onSearchMatchCount: ((Int) -> Void)? = nil
+    /// Bumped by the parent to jump this card to the newest output.
+    var scrollToBottomRequest: Int = 0
+    /// Asks the parent to bump `scrollToBottomRequest`.
+    var onJumpToBottom: (() -> Void)? = nil
     @State private var notificationPulse = false
     @State private var terminalAtTop = false
+    @State private var terminalAtBottom = true
 
     var body: some View {
         ZStack {
@@ -141,7 +146,9 @@ struct PaneCardView: View {
             onSelectionActiveChanged: onSelectionActiveChanged,
             searchQuery: searchQuery,
             currentMatchIndex: currentMatchIndex,
-            onSearchMatchCount: onSearchMatchCount
+            onSearchMatchCount: onSearchMatchCount,
+            scrollToBottomRequest: scrollToBottomRequest,
+            onAtBottomChanged: { terminalAtBottom = $0 }
         )
         .overlay(alignment: .top) {
             // Only surface the affordance once the user is at the top; a further
@@ -152,7 +159,36 @@ struct PaneCardView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            // Offered only when it would do something: the card is scrolled up
+            // and no search is holding the position on a match.
+            if isFocused && !terminalAtBottom && searchQuery.isEmpty {
+                jumpToBottomButton
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            }
+        }
         .animation(.easeInOut(duration: 0.18), value: terminalAtTop)
+        .animation(.easeInOut(duration: 0.18), value: terminalAtBottom)
+    }
+
+    private var jumpToBottomButton: some View {
+        Button {
+            onJumpToBottom?()
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                )
+                .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+        }
+        .accessibilityLabel("Jump to newest output")
     }
 
     private var historyHint: some View {

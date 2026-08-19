@@ -195,6 +195,9 @@ struct WorkspaceLayoutView: View {
     @State private var searchQuery = ""
     @State private var searchMatchIndex = 0
     @State private var searchMatchCount = 0
+    // Bumped to ask the focused card to jump to its newest output. A counter,
+    // not a bool: every tap must land, including two in a row.
+    @State private var scrollToBottomRequest = 0
     @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
@@ -664,7 +667,9 @@ struct WorkspaceLayoutView: View {
                 // surface repolls every few seconds), so an index that was
                 // valid a moment ago can now be past the end.
                 searchMatchIndex = TextSearch.clamp(searchMatchIndex, to: count)
-            }
+            },
+            scrollToBottomRequest: scrollToBottomRequest,
+            onJumpToBottom: { scrollToBottomRequest += 1 }
         )
         .id(surface.id)
         .transition(.asymmetric(

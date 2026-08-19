@@ -18,6 +18,7 @@
 		5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */; };
 		5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */; };
 		A1B2C3D400000001AAAA0001 /* TextSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000001BBBB0001 /* TextSearch.swift */; };
+		A1B2C3D400000001AAAA0002 /* ScrollFollow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000001BBBB0002 /* ScrollFollow.swift */; };
 		A1B2C3D4E5F60718293A0001 /* TerminalTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */; };
 		80AE92760C00B2E71E97A2EC /* ControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6CEFBCA99422E02BB0230AD /* ControlView.swift */; };
 		874536F786A2CBCEB8BF95B8 /* cmuxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */; };
@@ -52,6 +53,7 @@
 		64B351B6ABD7CDE8B988761F /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCardView.swift; sourceTree = "<group>"; };
 		A1B2C3D400000001BBBB0001 /* TextSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSearch.swift; sourceTree = "<group>"; };
+		A1B2C3D400000001BBBB0002 /* ScrollFollow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollFollow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTextView.swift; sourceTree = "<group>"; };
 		7EB2FCA6F59B6691541CE21E /* ConnectionStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusBar.swift; sourceTree = "<group>"; };
 		9143B92AA62E9EC62A403DC9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 			children = (
 				6EF950ACFA51B53FD47EF868 /* PaneCardView.swift */,
 				A1B2C3D400000001BBBB0001 /* TextSearch.swift */,
+				A1B2C3D400000001BBBB0002 /* ScrollFollow.swift */,
 				A1B2C3D4E5F60718293A0002 /* TerminalTextView.swift */,
 				27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */,
 			);
@@ -270,6 +273,7 @@
 				F83F85B7207F1F1B7E5B4D1B /* PairingView.swift in Sources */,
 				5FF199610B9DA121A6FCF870 /* PaneCardView.swift in Sources */,
 				A1B2C3D400000001AAAA0001 /* TextSearch.swift in Sources */,
+				A1B2C3D400000001AAAA0002 /* ScrollFollow.swift in Sources */,
 				A1B2C3D4E5F60718293A0001 /* TerminalTextView.swift in Sources */,
 				EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */,
 				CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */,
