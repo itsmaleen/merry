@@ -520,7 +520,7 @@ struct WorkspaceLayoutView: View {
             hasNotification: appState.hasNotification(for: surface),
             isTranscribing: speechManager.isRecording,
             transcript: speechManager.transcript,
-            terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+            terminalText: surface.isBrowser ? "" : appState.cardText(for: surface),
             contentScale: contentScale,
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
@@ -593,7 +593,7 @@ struct WorkspaceLayoutView: View {
             hasNotification: appState.hasNotification(for: surface),
             isTranscribing: false,
             transcript: "",
-            terminalText: surface.isBrowser ? "" : (appState.surfaceContent[surface.id] ?? ""),
+            terminalText: surface.isBrowser ? "" : appState.cardText(for: surface),
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
             isWorking: appState.workingSurfaces.contains(surface.id)
@@ -774,6 +774,16 @@ struct WorkspaceLayoutView: View {
                         self.fetchContent(for: surface)
                     }
                 }
+                // Surface metadata otherwise only refreshes on an action or an
+                // event. That leaves a terminal where claude was just started
+                // looking like a plain shell — no conversation, no history
+                // affordance — until something else happens to reload the list.
+                // One cheap surface.list every 5th cycle keeps agent kind and
+                // titles current; setIfChanged means an unchanged list is not
+                // even a re-render.
+                if self.pollCycleCount % 5 == 0 {
+                    appState.refreshSurfaces()
+                }
             }
         }
     }
@@ -781,13 +791,19 @@ struct WorkspaceLayoutView: View {
     private func fetchContent(for surface: Surface) {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
-        } else {
-            // Live terminal mirror: deep read when focused (scrollback for plain
-            // shells), cheap preview otherwise. Claude conversation history is a
-            // separate on-demand full-screen viewer, not this inline content.
-            let lines = surface.id == appState.focusedSurfaceID
-                ? AppState.focusedHistoryLines : 50
-            appState.readSurfaceText(surface.id, lines: lines)
+            return
+        }
+        // Live terminal mirror: deep read when focused (scrollback for plain
+        // shells), cheap preview otherwise.
+        let lines = surface.id == appState.focusedSurfaceID
+            ? AppState.focusedHistoryLines : 50
+        appState.readSurfaceText(surface.id, lines: lines)
+        // A claude surface's card is its conversation, so keep the focused
+        // one's transcript current alongside the mirror. Unchanged transcripts
+        // answer from a fingerprint, so this poll is nearly free; background
+        // surfaces load theirs when they come into focus.
+        if surface.isClaudeAgent, surface.id == appState.focusedSurfaceID {
+            appState.loadClaudeTranscript(surface.id)
         }
     }
 

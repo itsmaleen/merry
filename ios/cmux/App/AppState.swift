@@ -54,13 +54,36 @@ final class AppState: ObservableObject {
     private var pendingNavigationTarget: (surfaceID: String, workspaceID: String?)?
 
     private var lastFocusedSurface: [String: String] = [:]
-    // Claude conversation transcripts, loaded on demand for the full-screen
-    // history viewer (kept separate from surfaceContent, which mirrors the live
-    // terminal). Keyed by surface ID.
+    // Claude conversation transcripts, kept separate from surfaceContent (which
+    // mirrors the live terminal). Keyed by surface ID.
     @Published var claudeTranscript: [String: String] = [:]
+    // What a claude surface's card renders: its transcript with the live
+    // terminal viewport appended. Composed here, once per change, rather than in
+    // the view — a SwiftUI body runs far more often than the text changes, and
+    // this string is tens of kilobytes.
+    @Published var claudeCardText: [String: String] = [:]
     // The session id the bridge resolved each surface's transcript to, keyed by
     // surface ID. Surfaced in the history viewer for diagnosing wrong-session reports.
     @Published var claudeTranscriptSession: [String: String] = [:]
+    // Fingerprint of the transcript rendering we already hold, echoed back to
+    // the bridge so an unchanged transcript costs a tiny response instead of
+    // re-sending the whole conversation on every poll.
+    private var claudeTranscriptFingerprint: [String: String] = [:]
+    // Every in-flight transcript request, so polls don't stack up. Deliberately
+    // NOT the published loading set: flipping that twice per poll would fire
+    // objectWillChange — and re-render the layout — every few seconds.
+    private var claudeTranscriptInFlight: Set<String> = []
+    // Per-surface request generation. The timeout safety net below fires 15s
+    // after ITS OWN request, by which time a newer request may hold the
+    // in-flight mark — clearing it then would let polls stack up and race. Each
+    // request stamps a generation and only clears state it still owns. Same
+    // guard applies to the response: two responses' detached trims can finish
+    // out of order, and applying the older one last leaves stale text pinned
+    // under a current fingerprint, which `unchanged` then keeps forever.
+    private var claudeTranscriptSeq: [String: Int] = [:]
+    private var claudeTranscriptAppliedSeq: [String: Int] = [:]
+    // In-flight requests the user is waiting on (history viewer open, explicit
+    // refresh), which are the only ones that show a spinner.
     @Published var claudeTranscriptLoading: Set<String> = []
     // Surfaces bound to a session whose transcript file is gone. Distinguishes
     // "this conversation's file no longer exists" from "nothing said yet" —
@@ -308,7 +331,12 @@ final class AppState: ObservableObject {
         pendingProbes = [:]
         browserURLs = [:]
         claudeTranscript = [:]
+        claudeCardText = [:]
         claudeTranscriptSession = [:]
+        claudeTranscriptFingerprint = [:]
+        claudeTranscriptInFlight = []
+        claudeTranscriptSeq = [:]
+        claudeTranscriptAppliedSeq = [:]
         claudeTranscriptLoading = []
         claudeTranscriptMissing = []
         presentedHistory = nil
@@ -359,8 +387,13 @@ final class AppState: ObservableObject {
         }
         // Immediately deep-read the newly focused surface so its content is
         // there right away instead of waiting for the next poll.
-        if surfaces.first(where: { $0.id == id })?.isBrowser != true {
+        let surface = surfaces.first(where: { $0.id == id })
+        if surface?.isBrowser != true {
             readSurfaceText(id, lines: Self.focusedHistoryLines)
+        }
+        // Same for a claude surface's conversation, which IS its card content.
+        if surface?.isClaudeAgent == true {
+            loadClaudeTranscript(id)
         }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
@@ -501,6 +534,8 @@ final class AppState: ObservableObject {
                     // dictionary still fires objectWillChange every poll.
                     guard previous != content else { return }
                     self.surfaceContent[surfaceID] = content
+                    // A claude card shows this viewport below its conversation.
+                    self.recomposeClaudeCard(surfaceID)
                 }
             }
         }
@@ -511,51 +546,146 @@ final class AppState: ObservableObject {
     /// stalls the socket or an attributed string UITextView can't lay out.
     static let focusedHistoryLines = 1500
 
-    /// Loads a claude surface's conversation history from its session transcript
-    /// (via the bridge's `claude.transcript`) into `claudeTranscript`, for the
-    /// full-screen history viewer. Claude runs as a full-screen TUI whose
-    /// terminal exposes no scrollback, so the transcript is the real history.
-    func loadClaudeTranscript(_ surfaceID: String) {
-        guard !claudeTranscriptLoading.contains(surfaceID) else { return }
-        claudeTranscriptLoading.insert(surfaceID)
+    /// Loads a claude surface's conversation from its session transcript (via
+    /// the bridge's `claude.transcript`). Claude runs as a full-screen TUI whose
+    /// terminal keeps no scrollback, so this — not the terminal mirror — is the
+    /// conversation, and it is what the surface's card renders.
+    ///
+    /// Safe to call on every poll: the bridge is handed the fingerprint of the
+    /// text we already hold and answers `unchanged` without re-sending it.
+    ///
+    /// - Parameter showsSpinner: whether the user is waiting on this request
+    ///   (history viewer, explicit refresh). Background polls pass false so they
+    ///   don't animate a spinner over content that is already on screen.
+    func loadClaudeTranscript(_ surfaceID: String, showsSpinner: Bool = false) {
+        guard !claudeTranscriptInFlight.contains(surfaceID) else { return }
+        claudeTranscriptInFlight.insert(surfaceID)
+        let seq = (claudeTranscriptSeq[surfaceID] ?? 0) + 1
+        claudeTranscriptSeq[surfaceID] = seq
+        if showsSpinner {
+            claudeTranscriptLoading.insert(surfaceID)
+        }
         var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 300]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
+        if let known = claudeTranscriptFingerprint[surfaceID] {
+            params["known_fingerprint"] = known
+        }
         // Safety net: BridgeClient drops pending completions on disconnect
-        // without calling them, so clear the loading flag on a timeout too —
-        // otherwise the viewer's spinner would hang forever. Both paths do an
-        // idempotent remove, so the race is harmless.
+        // without calling them, so clear the in-flight marks on a timeout too —
+        // otherwise the viewer's spinner would hang forever and polling would
+        // stop for this surface. Both paths do an idempotent remove, so the
+        // race is harmless.
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
-            self?.claudeTranscriptLoading.remove(surfaceID)
+            guard let self, self.claudeTranscriptSeq[surfaceID] == seq else { return }
+            self.claudeTranscriptInFlight.remove(surfaceID)
+            self.claudeTranscriptLoading.remove(surfaceID)
         }
         send(method: "claude.transcript", params: params) { [weak self] result in
             guard let self else { return }
-            self.claudeTranscriptLoading.remove(surfaceID)
-            let raw = result["text"] as? String ?? ""
+            if self.claudeTranscriptSeq[surfaceID] == seq {
+                self.claudeTranscriptInFlight.remove(surfaceID)
+                self.claudeTranscriptLoading.remove(surfaceID)
+            }
+            // BridgeClient fires this completion for ANY reply carrying our id,
+            // including `ok:false`, where `result` is empty. Every field would
+            // then read as "no session, no text" and blank a conversation that
+            // is on screen and still valid. A real answer always carries
+            // `supported`, so its absence means the request failed — keep what
+            // we have and let the next poll retry.
+            guard result["supported"] != nil else { return }
             let sessionID = result["session_id"] as? String ?? ""
             let missing = result["session_missing"] as? Bool ?? false
-            // Diagnostic: the surface we asked for vs the session the bridge
-            // resolved it to. If these ever look mismatched, this line names the
-            // exact ids to chase (the bridge maps surface → resume_binding →
-            // <checkpoint_id>.jsonl and echoes the resolved session_id back).
-            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) (\(raw.count) chars)\(missing ? " MISSING FILE" : "")")
             self.claudeTranscriptSession[surfaceID] = sessionID
             if missing {
                 self.claudeTranscriptMissing.insert(surfaceID)
             } else {
                 self.claudeTranscriptMissing.remove(surfaceID)
             }
-            // Trim off the main actor — transcripts can be hundreds of messages,
-            // and this runs every time the history viewer opens.
+            // Nothing resolved (no session yet, file gone) leaves this nil, which
+            // drops any stale fingerprint so the next poll asks for the full text.
+            let raw = result["fingerprint"] as? String
+            let fingerprint = (raw?.isEmpty == false) ? raw : nil
+            // The transcript we hold is still current — the bridge deliberately
+            // sent no text. Keep what's on screen.
+            if result["unchanged"] as? Bool == true {
+                // Same ordering rule as the apply path below: an older
+                // response must not put its fingerprint on newer text.
+                if let fingerprint, seq >= (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) {
+                    self.claudeTranscriptFingerprint[surfaceID] = fingerprint
+                }
+                return
+            }
+
+            let text = result["text"] as? String ?? ""
+            // Diagnostic: the surface we asked for vs the session the bridge
+            // resolved it to, and how. If these ever look mismatched, this line
+            // names the exact ids to chase. Logged only when the transcript
+            // actually changed, so a 3s poll doesn't flood the console.
+            let source = result["source"] as? String ?? ""
+            print("[Transcript] surface=\(surfaceID) -> session=\(sessionID) via \(source) (\(text.count) chars)\(missing ? " MISSING FILE" : "")")
+            // Trim off the main actor — transcripts run to tens of thousands of
+            // characters, and this lands on a poll that may overlap an animation.
             Task.detached(priority: .userInitiated) { [weak self] in
-                let text = Self.trimTerminalText(raw)
+                let trimmed = Self.trimTerminalText(text)
                 await MainActor.run {
-                    guard let self, self.claudeTranscript[surfaceID] != text else { return }
-                    self.claudeTranscript[surfaceID] = text
+                    guard let self else { return }
+                    // Detached trims are not ordered against each other, so a
+                    // response older than the newest applied one is dropped
+                    // rather than rolling the conversation back.
+                    guard seq > (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) else { return }
+                    self.claudeTranscriptAppliedSeq[surfaceID] = seq
+                    // The fingerprint is stamped with the text it describes. Set
+                    // earlier, a dropped-out-of-order response would leave the
+                    // newest fingerprint attached to older text, and every later
+                    // poll would answer `unchanged` and keep it there.
+                    if let fingerprint { self.claudeTranscriptFingerprint[surfaceID] = fingerprint }
+                    else { self.claudeTranscriptFingerprint.removeValue(forKey: surfaceID) }
+                    guard self.claudeTranscript[surfaceID] != trimmed else { return }
+                    self.claudeTranscript[surfaceID] = trimmed
+                    self.recomposeClaudeCard(surfaceID)
                 }
             }
         }
+    }
+
+    /// Divider between the conversation and the live terminal viewport on a
+    /// claude card. The viewport repeats claude's last screen, which is what
+    /// makes permission prompts and the input box visible from the phone.
+    private static let liveScreenDivider = "──────────  live screen  ──────────"
+
+    /// Rebuilds a claude surface's card text from its transcript and the live
+    /// terminal mirror. A no-op for surfaces with no transcript, whose cards
+    /// render the mirror alone.
+    private func recomposeClaudeCard(_ surfaceID: String) {
+        guard let transcript = claudeTranscript[surfaceID], !transcript.isEmpty else {
+            claudeCardText.removeValue(forKey: surfaceID)
+            return
+        }
+        let live = surfaceContent[surfaceID] ?? ""
+        let composed = live.isEmpty
+            ? transcript
+            : transcript + "\n\n" + Self.liveScreenDivider + "\n\n" + live
+        // Diff before assigning: a no-op write to a @Published dictionary still
+        // fires objectWillChange.
+        guard claudeCardText[surfaceID] != composed else { return }
+        claudeCardText[surfaceID] = composed
+    }
+
+    /// The text a surface's card renders. Claude surfaces show their
+    /// conversation with the live screen below it; everything else shows the
+    /// live terminal mirror.
+    ///
+    /// Gated on the surface's CURRENT kind, not on whether a transcript was
+    /// ever loaded: when claude exits, the surface goes back to being a plain
+    /// shell, and a cached conversation would otherwise stay pinned above its
+    /// output for the rest of the session.
+    func cardText(for surface: Surface) -> String {
+        guard surface.isClaudeAgent, let text = claudeCardText[surface.id] else {
+            return surfaceContent[surface.id] ?? ""
+        }
+        return text
     }
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
@@ -633,8 +763,26 @@ final class AppState: ObservableObject {
 
     func closeSurface(_ surfaceID: String) {
         send(method: "surface.close", params: ["surface_id": surfaceID]) { [weak self] _ in
+            self?.forgetClaudeTranscript(surfaceID)
             self?.refreshSurfaces()
         }
+    }
+
+    /// Releases everything cached for one surface's conversation. A transcript
+    /// and its composed card text are tens of kilobytes each, and nothing else
+    /// prunes them before the session resets.
+    ///
+    /// Driven by an explicit close rather than by a surface's absence from
+    /// `surfaces`: that list holds only the CURRENT workspace, so absence means
+    /// "not in view", not "gone".
+    private func forgetClaudeTranscript(_ surfaceID: String) {
+        claudeTranscript.removeValue(forKey: surfaceID)
+        claudeCardText.removeValue(forKey: surfaceID)
+        claudeTranscriptSession.removeValue(forKey: surfaceID)
+        claudeTranscriptFingerprint.removeValue(forKey: surfaceID)
+        claudeTranscriptSeq.removeValue(forKey: surfaceID)
+        claudeTranscriptAppliedSeq.removeValue(forKey: surfaceID)
+        claudeTranscriptMissing.remove(surfaceID)
     }
 
     func clearNotifications() {
@@ -802,8 +950,10 @@ extension AppState: BridgeClientDelegate {
 
     func clientDidDisconnect(_ client: BridgeClient, error: Error?) {
         connectionStatus = .reconnecting
-        // In-flight transcript RPCs will never complete now; clear their loading
-        // flags so the history viewer doesn't hang on a spinner.
+        // In-flight transcript RPCs will never complete now; clear their marks
+        // so the history viewer doesn't hang on a spinner and polling resumes
+        // for these surfaces once the bridge is back.
+        claudeTranscriptInFlight.removeAll()
         claudeTranscriptLoading.removeAll()
     }
 

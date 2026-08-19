@@ -124,6 +124,31 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   so for those it returns roughly the visible screen regardless of N. Used by
   the iOS live-view + scrollback rendering.
 
+**Agents (bridge-local, not proxied to cmux):**
+- `claude.transcript` — `{"surface_id":"...","max_messages":300,"known_fingerprint":"..."}`
+  → `{"supported":true,"text":"...","session_id":"...","session_missing":false,
+  "fingerprint":"...","unchanged":false,"source":"hook_store_surface"}`.
+
+  Renders the Claude session behind a surface from Claude Code's own session
+  JSONL, which is the conversation history — claude-code is a full-screen TUI
+  that keeps no terminal scrollback, so `surface.read_text` only ever returns
+  its current screen. The iOS app renders this as the surface's card content,
+  with the live screen appended below it.
+
+  The surface → transcript binding comes from cmux's hook session store
+  (`~/.cmuxterm/claude-hook-sessions.json`), where `cmux hooks claude <event>`
+  records the `transcript_path` Claude Code reports for each session along with
+  the surface it runs in. `source` says which strategy resolved the file:
+  `hook_store_surface` (the surface's current session), `hook_store_session`
+  (its `checkpoint_id`'s recorded path), `projects_glob` (derived under
+  `~/.claude/projects`), or `cwd_latest` (last resort, only when no session is
+  named anywhere). A surface bound to a session whose file is gone comes back
+  `session_missing` rather than showing a neighbouring session's conversation.
+
+  `fingerprint` identifies the rendering. Pass it back as `known_fingerprint`
+  and an unchanged transcript answers `unchanged: true` with no `text`, which is
+  what makes polling this on every refresh cycle cheap.
+
 **Browsers:**
 - `browser.url.get` — `{"surface_id":"..."}` → `{"url":"..."}` (browser surfaces)
 
