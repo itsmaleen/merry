@@ -1,0 +1,2 @@
+seems good and we could merge this
+we should also include a button to scroll all the way down because sometimes the surfaces aren't all the way at the bottom for wtv reason
