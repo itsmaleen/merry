@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
@@ -19,7 +18,7 @@ type Server struct {
 	poll          *poller.Poller
 	cmuxClient    *socket.Client
 	cmuxConnected func() bool
-	resolver      *claude.Resolver
+	agents        *agentTranscripts
 	httpServer    *http.Server
 }
 
@@ -34,7 +33,7 @@ func NewServer(
 		poll:          poll,
 		cmuxClient:    cmuxClient,
 		cmuxConnected: cmuxConnected,
-		resolver:      claude.NewResolver(),
+		agents:        newAgentTranscripts(),
 	}
 
 	mux := http.NewServeMux()
@@ -49,7 +48,7 @@ func NewServer(
 }
 
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
-	handleClient(w, r, s.token, s.poll, s.cmuxClient, s.cmuxConnected, s.resolver)
+	handleClient(w, r, s.token, s.poll, s.cmuxClient, s.cmuxConnected, s.agents)
 }
 
 // ListenAndServe binds to addr (e.g. ":47821") and serves until ctx is cancelled.

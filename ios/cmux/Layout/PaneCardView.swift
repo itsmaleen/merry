@@ -310,42 +310,44 @@ struct TranscriptSheetView: View {
             VStack(spacing: 0) {
                 header
                 Divider().overlay(Color.white.opacity(0.1))
-                body(for: appState.claudeTranscript[target.id] ?? "")
+                body(for: appState.agentTranscript[target.id] ?? "")
             }
         }
         .onAppear {
             // Always refetch on open so we show the latest session data, not a
             // stale cache from a previous viewing. Any cached text stays visible
             // (pinned to the bottom) until the fresh transcript replaces it.
-            appState.loadClaudeTranscript(target.id, showsSpinner: true)
+            appState.loadAgentTranscript(target.id, showsSpinner: true)
         }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Conversation history")
+                Text(appState.agentKind(for: target.id).map { "\($0) conversation" } ?? "Conversation history")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
                 Text(target.title)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.4))
                     .lineLimit(1)
-                // Diagnostic: the session the bridge resolved this surface to.
-                // Lets a "wrong session" report name the exact session at a glance.
-                if let session = appState.claudeTranscriptSession[target.id], !session.isEmpty {
-                    Text("session \(session.prefix(8))")
+                // Diagnostic: which session the bridge resolved this surface to.
+                // Lets a "wrong session" report name it at a glance — and for
+                // opencode, whose binding is inferred rather than handed over by
+                // cmux, the session's own title is the check that it inferred right.
+                if let session = appState.agentTranscriptSession[target.id], !session.isEmpty {
+                    Text(sessionLabel(session))
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.25))
                         .lineLimit(1)
                 }
             }
             Spacer()
-            Button { appState.loadClaudeTranscript(target.id, showsSpinner: true) } label: {
+            Button { appState.loadAgentTranscript(target.id, showsSpinner: true) } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 15))
             }
             .tint(.white.opacity(0.6))
-            .disabled(appState.claudeTranscriptLoading.contains(target.id))
+            .disabled(appState.agentTranscriptLoading.contains(target.id))
             Button { appState.presentedHistory = nil } label: {
                 Image(systemName: "xmark.circle.fill").font(.system(size: 22))
             }
@@ -355,22 +357,43 @@ struct TranscriptSheetView: View {
         .padding(.vertical, 12)
     }
 
+    /// The session line under the title: the agent's own name for the
+    /// conversation when it has one, else just the session id.
+    private func sessionLabel(_ session: String) -> String {
+        if let title = appState.agentSessionTitles[target.id], !title.isEmpty {
+            return "session \(session.prefix(8)) · \(title)"
+        }
+        return "session \(session.prefix(8))"
+    }
+
     @ViewBuilder
     private func body(for text: String) -> some View {
         if text.isEmpty {
             VStack(spacing: 10) {
-                if appState.claudeTranscriptLoading.contains(target.id) {
+                if appState.agentTranscriptLoading.contains(target.id) {
                     ProgressView().tint(.white.opacity(0.4))
                     Text("Loading history…")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.3))
-                } else if appState.claudeTranscriptMissing.contains(target.id) {
+                } else if appState.agentTranscriptMissing.contains(target.id) {
                     // Say so plainly rather than showing the newest session in
                     // the same folder, which is a different conversation.
                     Text("This surface's session file is missing")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.35))
-                    Text("cmux binds this surface to session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), whose transcript is no longer on disk.")
+                    Text("cmux binds this surface to session \(appState.agentTranscriptSession[target.id]?.prefix(8) ?? ""), whose transcript is no longer on disk.")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                } else if appState.agentKind(for: target.id) == "opencode" {
+                    // An opencode surface carries no cmux session binding, so
+                    // its conversation is identified from the surface's title —
+                    // which a freshly started opencode doesn't have yet.
+                    Text("No session identified yet")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                    Text("This opencode surface hasn't named its session. It appears here once the session has a title.")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.25))
                         .multilineTextAlignment(.center)
