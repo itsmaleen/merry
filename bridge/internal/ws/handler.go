@@ -7,7 +7,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
@@ -46,7 +45,7 @@ func handleClient(
 	poll *poller.Poller,
 	cmuxClient *socket.Client,
 	cmuxConnected func() bool,
-	resolver *claude.Resolver,
+	agents *agentTranscripts,
 ) {
 	if !validateBearer(r, token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -116,103 +115,18 @@ func handleClient(
 				return
 			}
 			var resp commandResponse
-			if cmd.Method == "claude.transcript" {
-				resp = handleClaudeTranscript(cmd, cmuxClient, resolver)
-			} else {
+			switch cmd.Method {
+			// `claude.transcript` is the name the first client shipped with; it
+			// now answers for every agent the bridge can read.
+			case "agent.transcript", "claude.transcript":
+				resp = agents.handle(cmd, cmuxClient)
+			default:
 				resp = proxyCommand(cmd, cmuxClient, poll)
 			}
 			if err := wsjson.Write(ctx, conn, resp); err != nil {
 				return
 			}
 		}
-	}
-}
-
-func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver *claude.Resolver) commandResponse {
-	surfaceID, _ := cmd.Params["surface_id"].(string)
-
-	// Build surface.list params, forwarding workspace_id if provided.
-	listParams := map[string]any{}
-	if wsID, ok := cmd.Params["workspace_id"]; ok {
-		listParams["workspace_id"] = wsID
-	}
-
-	listResult, err := client.Send("surface.list", listParams)
-	if err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: err.Error(),
-			},
-		}
-	}
-
-	var listPayload struct {
-		Surfaces []map[string]any `json:"surfaces"`
-	}
-	if err := json.Unmarshal(listResult, &listPayload); err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: "parse surface.list: " + err.Error(),
-			},
-		}
-	}
-
-	var resumeBinding map[string]any
-	for _, s := range listPayload.Surfaces {
-		if id, _ := s["id"].(string); id == surfaceID {
-			resumeBinding, _ = s["resume_binding"].(map[string]any)
-			break
-		}
-	}
-
-	maxMessages := 200
-	if v, ok := cmd.Params["max_messages"].(float64); ok && v > 0 {
-		maxMessages = int(v)
-		if maxMessages > 2000 {
-			maxMessages = 2000 // bound client-supplied work
-		}
-	}
-
-	knownFingerprint, _ := cmd.Params["known_fingerprint"].(string)
-
-	res, err := resolver.Render(claude.Request{
-		SurfaceID:        surfaceID,
-		ResumeBinding:    resumeBinding,
-		MaxMessages:      maxMessages,
-		KnownFingerprint: knownFingerprint,
-	})
-	if err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: err.Error(),
-			},
-		}
-	}
-
-	result, _ := json.Marshal(map[string]any{
-		"supported":       res.Supported,
-		"text":            res.Text,
-		"session_id":      res.SessionID,
-		"session_missing": res.SessionMissing,
-		// Hand back on the next poll as known_fingerprint: an unchanged
-		// transcript then answers without re-reading or re-sending it.
-		"fingerprint": res.Fingerprint,
-		"unchanged":   res.Unchanged,
-		"source":      res.Source,
-	})
-	return commandResponse{
-		ID:     cmd.ID,
-		OK:     true,
-		Result: json.RawMessage(result),
 	}
 }
 

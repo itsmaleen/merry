@@ -124,21 +124,28 @@ Long-press the focused surface or double-tap volume up to open:
 
 Swipe left/right to switch between action sections.
 
-### Claude surfaces
+### Agent surfaces (Claude Code, opencode)
 
-A surface running Claude Code shows the **conversation itself** on its card —
-loaded from Claude's own session transcript as soon as the surface is focused,
-with claude's live screen (input box, permission prompts) below a divider. No
-separate step: claude-code is a full-screen TUI that keeps no terminal
-scrollback, so the terminal mirror alone would only ever show the last screen.
+A surface running an agent shows the **conversation itself** on its card —
+loaded from that agent's own session store as soon as the surface is focused,
+with the agent's live screen (input box, permission prompts) below a divider. No
+separate step: both are full-screen TUIs that keep no terminal scrollback, so the
+terminal mirror alone would only ever show the last screen.
 
 Pull past the top of a focused claude card to read the same conversation
 full-screen at a larger size.
 
-The bridge finds each surface's transcript through cmux's hook session store
-(`~/.cmuxterm/claude-hook-sessions.json`), which records the exact file Claude
-Code reported for that session — so surfaces sharing a working directory never
-show each other's conversation. See [shared/protocol.md](shared/protocol.md).
+For **Claude Code**, the bridge finds the transcript through cmux's hook session
+store (`~/.cmuxterm/claude-hook-sessions.json`), which records the exact file
+Claude reported for that session.
+
+**opencode** is not in cmux's metadata at all and keeps its conversation in
+SQLite, so the bridge recognises it by the process on the surface's tty and
+identifies the session by the surface's title plus working directory. A fresh
+opencode whose session has no title yet shows as unidentified rather than
+guessing — several opencode surfaces routinely share a directory, and surfaces
+must never show each other's conversation. See
+[shared/protocol.md](shared/protocol.md).
 
 ### Other controls
 

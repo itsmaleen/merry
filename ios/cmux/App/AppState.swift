@@ -54,25 +54,38 @@ final class AppState: ObservableObject {
     private var pendingNavigationTarget: (surfaceID: String, workspaceID: String?)?
 
     private var lastFocusedSurface: [String: String] = [:]
-    // Claude conversation transcripts, kept separate from surfaceContent (which
-    // mirrors the live terminal). Keyed by surface ID.
-    @Published var claudeTranscript: [String: String] = [:]
-    // What a claude surface's card renders: its transcript with the live
+    // Agent conversation transcripts (Claude Code, opencode), kept separate from
+    // surfaceContent (which mirrors the live terminal). Keyed by surface ID.
+    @Published var agentTranscript: [String: String] = [:]
+    // What an agent surface's card renders: its transcript with the live
     // terminal viewport appended. Composed here, once per change, rather than in
     // the view — a SwiftUI body runs far more often than the text changes, and
     // this string is tens of kilobytes.
-    @Published var claudeCardText: [String: String] = [:]
+    @Published var agentCardText: [String: String] = [:]
     // The session id the bridge resolved each surface's transcript to, keyed by
     // surface ID. Surfaced in the history viewer for diagnosing wrong-session reports.
-    @Published var claudeTranscriptSession: [String: String] = [:]
+    @Published var agentTranscriptSession: [String: String] = [:]
+    // Which agent each surface is running ("claude", "opencode"), as reported by
+    // the bridge. cmux names Claude Code in its surface metadata but nothing
+    // else, so this is the only way the phone knows an opencode surface is more
+    // than a plain terminal.
+    @Published var agentKinds: [String: String] = [:]
+    // The agent's own name for the conversation, when it has one. opencode
+    // titles its sessions; showing that is how you confirm the surface resolved
+    // to the conversation you're actually looking at.
+    @Published var agentSessionTitles: [String: String] = [:]
+    // Surfaces the bridge said have no agent, and when we last asked. A plain
+    // shell must not cost a transcript round-trip on every 3s poll, but it can
+    // become an agent at any moment, so the answer expires rather than sticking.
+    private var nonAgentSurfacesCheckedAt: [String: Date] = [:]
     // Fingerprint of the transcript rendering we already hold, echoed back to
     // the bridge so an unchanged transcript costs a tiny response instead of
     // re-sending the whole conversation on every poll.
-    private var claudeTranscriptFingerprint: [String: String] = [:]
+    private var agentTranscriptFingerprint: [String: String] = [:]
     // Every in-flight transcript request, so polls don't stack up. Deliberately
     // NOT the published loading set: flipping that twice per poll would fire
     // objectWillChange — and re-render the layout — every few seconds.
-    private var claudeTranscriptInFlight: Set<String> = []
+    private var agentTranscriptInFlight: Set<String> = []
     // Per-surface request generation. The timeout safety net below fires 15s
     // after ITS OWN request, by which time a newer request may hold the
     // in-flight mark — clearing it then would let polls stack up and race. Each
@@ -80,15 +93,15 @@ final class AppState: ObservableObject {
     // guard applies to the response: two responses' detached trims can finish
     // out of order, and applying the older one last leaves stale text pinned
     // under a current fingerprint, which `unchanged` then keeps forever.
-    private var claudeTranscriptSeq: [String: Int] = [:]
-    private var claudeTranscriptAppliedSeq: [String: Int] = [:]
+    private var agentTranscriptSeq: [String: Int] = [:]
+    private var agentTranscriptAppliedSeq: [String: Int] = [:]
     // In-flight requests the user is waiting on (history viewer open, explicit
     // refresh), which are the only ones that show a spinner.
-    @Published var claudeTranscriptLoading: Set<String> = []
+    @Published var agentTranscriptLoading: Set<String> = []
     // Surfaces bound to a session whose transcript file is gone. Distinguishes
     // "this conversation's file no longer exists" from "nothing said yet" —
     // both arrive as empty text.
-    @Published var claudeTranscriptMissing: Set<String> = []
+    @Published var agentTranscriptMissing: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
     private let bridgeStore = BridgeStore()
@@ -330,15 +343,18 @@ final class AppState: ObservableObject {
         for probe in pendingProbes.values { probe.cancel() }
         pendingProbes = [:]
         browserURLs = [:]
-        claudeTranscript = [:]
-        claudeCardText = [:]
-        claudeTranscriptSession = [:]
-        claudeTranscriptFingerprint = [:]
-        claudeTranscriptInFlight = []
-        claudeTranscriptSeq = [:]
-        claudeTranscriptAppliedSeq = [:]
-        claudeTranscriptLoading = []
-        claudeTranscriptMissing = []
+        agentTranscript = [:]
+        agentCardText = [:]
+        agentTranscriptSession = [:]
+        agentTranscriptFingerprint = [:]
+        agentTranscriptInFlight = []
+        agentTranscriptSeq = [:]
+        agentTranscriptAppliedSeq = [:]
+        agentTranscriptLoading = []
+        agentTranscriptMissing = []
+        agentKinds = [:]
+        agentSessionTitles = [:]
+        nonAgentSurfacesCheckedAt = [:]
         presentedHistory = nil
         lastFocusedSurface = [:]
     }
@@ -391,9 +407,12 @@ final class AppState: ObservableObject {
         if surface?.isBrowser != true {
             readSurfaceText(id, lines: Self.focusedHistoryLines)
         }
-        // Same for a claude surface's conversation, which IS its card content.
-        if surface?.isClaudeAgent == true {
-            loadClaudeTranscript(id)
+        // Same for an agent surface's conversation, which IS its card content.
+        // Asked for any terminal, not just a known agent: cmux names Claude Code
+        // in its metadata but nothing else, so an opencode surface looks exactly
+        // like a shell from here until the bridge says otherwise.
+        if surface?.isBrowser != true {
+            loadAgentTranscript(id)
         }
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
@@ -534,8 +553,8 @@ final class AppState: ObservableObject {
                     // dictionary still fires objectWillChange every poll.
                     guard previous != content else { return }
                     self.surfaceContent[surfaceID] = content
-                    // A claude card shows this viewport below its conversation.
-                    self.recomposeClaudeCard(surfaceID)
+                    // An agent card shows this viewport below its conversation.
+                    self.recomposeAgentCard(surfaceID)
                 }
             }
         }
@@ -546,10 +565,13 @@ final class AppState: ObservableObject {
     /// stalls the socket or an attributed string UITextView can't lay out.
     static let focusedHistoryLines = 1500
 
-    /// Loads a claude surface's conversation from its session transcript (via
-    /// the bridge's `claude.transcript`). Claude runs as a full-screen TUI whose
-    /// terminal keeps no scrollback, so this — not the terminal mirror — is the
-    /// conversation, and it is what the surface's card renders.
+    /// Loads a surface's agent conversation (via the bridge's `agent.transcript`).
+    ///
+    /// Claude Code and opencode both run as full-screen TUIs that keep no
+    /// terminal scrollback, so this — not the terminal mirror — is the
+    /// conversation, and it is what the surface's card renders. Safe to call on
+    /// a surface that turns out to have no agent: the bridge answers
+    /// `supported: false` and the surface is then asked only occasionally.
     ///
     /// Safe to call on every poll: the bridge is handed the fingerprint of the
     /// text we already hold and answers `unchanged` without re-sending it.
@@ -557,19 +579,19 @@ final class AppState: ObservableObject {
     /// - Parameter showsSpinner: whether the user is waiting on this request
     ///   (history viewer, explicit refresh). Background polls pass false so they
     ///   don't animate a spinner over content that is already on screen.
-    func loadClaudeTranscript(_ surfaceID: String, showsSpinner: Bool = false) {
-        guard !claudeTranscriptInFlight.contains(surfaceID) else { return }
-        claudeTranscriptInFlight.insert(surfaceID)
-        let seq = (claudeTranscriptSeq[surfaceID] ?? 0) + 1
-        claudeTranscriptSeq[surfaceID] = seq
+    func loadAgentTranscript(_ surfaceID: String, showsSpinner: Bool = false) {
+        guard !agentTranscriptInFlight.contains(surfaceID) else { return }
+        agentTranscriptInFlight.insert(surfaceID)
+        let seq = (agentTranscriptSeq[surfaceID] ?? 0) + 1
+        agentTranscriptSeq[surfaceID] = seq
         if showsSpinner {
-            claudeTranscriptLoading.insert(surfaceID)
+            agentTranscriptLoading.insert(surfaceID)
         }
         var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 300]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
-        if let known = claudeTranscriptFingerprint[surfaceID] {
+        if let known = agentTranscriptFingerprint[surfaceID] {
             params["known_fingerprint"] = known
         }
         // Safety net: BridgeClient drops pending completions on disconnect
@@ -578,15 +600,15 @@ final class AppState: ObservableObject {
         // stop for this surface. Both paths do an idempotent remove, so the
         // race is harmless.
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
-            guard let self, self.claudeTranscriptSeq[surfaceID] == seq else { return }
-            self.claudeTranscriptInFlight.remove(surfaceID)
-            self.claudeTranscriptLoading.remove(surfaceID)
+            guard let self, self.agentTranscriptSeq[surfaceID] == seq else { return }
+            self.agentTranscriptInFlight.remove(surfaceID)
+            self.agentTranscriptLoading.remove(surfaceID)
         }
-        send(method: "claude.transcript", params: params) { [weak self] result in
+        send(method: "agent.transcript", params: params) { [weak self] result in
             guard let self else { return }
-            if self.claudeTranscriptSeq[surfaceID] == seq {
-                self.claudeTranscriptInFlight.remove(surfaceID)
-                self.claudeTranscriptLoading.remove(surfaceID)
+            if self.agentTranscriptSeq[surfaceID] == seq {
+                self.agentTranscriptInFlight.remove(surfaceID)
+                self.agentTranscriptLoading.remove(surfaceID)
             }
             // BridgeClient fires this completion for ANY reply carrying our id,
             // including `ok:false`, where `result` is empty. Every field would
@@ -595,13 +617,36 @@ final class AppState: ObservableObject {
             // `supported`, so its absence means the request failed — keep what
             // we have and let the next poll retry.
             guard result["supported"] != nil else { return }
+
+            // The bridge decides which agent a surface is running: only Claude
+            // Code is named in cmux's own surface metadata, so opencode can be
+            // recognised nowhere but on the Mac (its process and its database).
+            guard result["supported"] as? Bool == true else {
+                // Not an agent surface — or no longer one, since an agent that
+                // exits leaves a shell behind whose output must not appear under
+                // the old conversation.
+                self.agentKinds.removeValue(forKey: surfaceID)
+                self.nonAgentSurfacesCheckedAt[surfaceID] = Date()
+                self.forgetAgentTranscript(surfaceID)
+                return
+            }
+            self.nonAgentSurfacesCheckedAt.removeValue(forKey: surfaceID)
+            if let kind = result["agent_kind"] as? String, !kind.isEmpty {
+                self.agentKinds[surfaceID] = kind
+            }
+
             let sessionID = result["session_id"] as? String ?? ""
             let missing = result["session_missing"] as? Bool ?? false
-            self.claudeTranscriptSession[surfaceID] = sessionID
-            if missing {
-                self.claudeTranscriptMissing.insert(surfaceID)
+            self.agentTranscriptSession[surfaceID] = sessionID
+            if let title = result["session_title"] as? String, !title.isEmpty {
+                self.agentSessionTitles[surfaceID] = title
             } else {
-                self.claudeTranscriptMissing.remove(surfaceID)
+                self.agentSessionTitles.removeValue(forKey: surfaceID)
+            }
+            if missing {
+                self.agentTranscriptMissing.insert(surfaceID)
+            } else {
+                self.agentTranscriptMissing.remove(surfaceID)
             }
             // Nothing resolved (no session yet, file gone) leaves this nil, which
             // drops any stale fingerprint so the next poll asks for the full text.
@@ -612,8 +657,8 @@ final class AppState: ObservableObject {
             if result["unchanged"] as? Bool == true {
                 // Same ordering rule as the apply path below: an older
                 // response must not put its fingerprint on newer text.
-                if let fingerprint, seq >= (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) {
-                    self.claudeTranscriptFingerprint[surfaceID] = fingerprint
+                if let fingerprint, seq >= (self.agentTranscriptAppliedSeq[surfaceID] ?? 0) {
+                    self.agentTranscriptFingerprint[surfaceID] = fingerprint
                 }
                 return
             }
@@ -634,33 +679,33 @@ final class AppState: ObservableObject {
                     // Detached trims are not ordered against each other, so a
                     // response older than the newest applied one is dropped
                     // rather than rolling the conversation back.
-                    guard seq > (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) else { return }
-                    self.claudeTranscriptAppliedSeq[surfaceID] = seq
+                    guard seq > (self.agentTranscriptAppliedSeq[surfaceID] ?? 0) else { return }
+                    self.agentTranscriptAppliedSeq[surfaceID] = seq
                     // The fingerprint is stamped with the text it describes. Set
                     // earlier, a dropped-out-of-order response would leave the
                     // newest fingerprint attached to older text, and every later
                     // poll would answer `unchanged` and keep it there.
-                    if let fingerprint { self.claudeTranscriptFingerprint[surfaceID] = fingerprint }
-                    else { self.claudeTranscriptFingerprint.removeValue(forKey: surfaceID) }
-                    guard self.claudeTranscript[surfaceID] != trimmed else { return }
-                    self.claudeTranscript[surfaceID] = trimmed
-                    self.recomposeClaudeCard(surfaceID)
+                    if let fingerprint { self.agentTranscriptFingerprint[surfaceID] = fingerprint }
+                    else { self.agentTranscriptFingerprint.removeValue(forKey: surfaceID) }
+                    guard self.agentTranscript[surfaceID] != trimmed else { return }
+                    self.agentTranscript[surfaceID] = trimmed
+                    self.recomposeAgentCard(surfaceID)
                 }
             }
         }
     }
 
-    /// Divider between the conversation and the live terminal viewport on a
-    /// claude card. The viewport repeats claude's last screen, which is what
+    /// Divider between the conversation and the live terminal viewport on an
+    /// agent card. The viewport repeats claude's last screen, which is what
     /// makes permission prompts and the input box visible from the phone.
     private static let liveScreenDivider = "──────────  live screen  ──────────"
 
-    /// Rebuilds a claude surface's card text from its transcript and the live
+    /// Rebuilds an agent surface's card text from its transcript and the live
     /// terminal mirror. A no-op for surfaces with no transcript, whose cards
     /// render the mirror alone.
-    private func recomposeClaudeCard(_ surfaceID: String) {
-        guard let transcript = claudeTranscript[surfaceID], !transcript.isEmpty else {
-            claudeCardText.removeValue(forKey: surfaceID)
+    private func recomposeAgentCard(_ surfaceID: String) {
+        guard let transcript = agentTranscript[surfaceID], !transcript.isEmpty else {
+            agentCardText.removeValue(forKey: surfaceID)
             return
         }
         let live = surfaceContent[surfaceID] ?? ""
@@ -669,24 +714,53 @@ final class AppState: ObservableObject {
             : transcript + "\n\n" + Self.liveScreenDivider + "\n\n" + live
         // Diff before assigning: a no-op write to a @Published dictionary still
         // fires objectWillChange.
-        guard claudeCardText[surfaceID] != composed else { return }
-        claudeCardText[surfaceID] = composed
+        guard agentCardText[surfaceID] != composed else { return }
+        agentCardText[surfaceID] = composed
     }
 
-    /// The text a surface's card renders. Claude surfaces show their
-    /// conversation with the live screen below it; everything else shows the
-    /// live terminal mirror.
+    /// The text a surface's card renders. Agent surfaces show their conversation
+    /// with the live screen below it; everything else shows the live terminal
+    /// mirror.
     ///
-    /// Gated on the surface's CURRENT kind, not on whether a transcript was
-    /// ever loaded: when claude exits, the surface goes back to being a plain
-    /// shell, and a cached conversation would otherwise stay pinned above its
-    /// output for the rest of the session.
+    /// Gated on whether an agent is running there NOW, not on whether a
+    /// transcript was ever loaded: when the agent exits, the surface goes back to
+    /// being a plain shell, and a cached conversation would otherwise stay pinned
+    /// above its output for the rest of the session.
     func cardText(for surface: Surface) -> String {
-        guard surface.isClaudeAgent, let text = claudeCardText[surface.id] else {
+        guard isAgentSurface(surface.id), let text = agentCardText[surface.id] else {
             return surfaceContent[surface.id] ?? ""
         }
         return text
     }
+
+    /// Whether a surface is running an agent whose conversation the bridge can
+    /// read. Answered by the bridge rather than by cmux's surface metadata,
+    /// which only ever names Claude Code.
+    func isAgentSurface(_ surfaceID: String) -> Bool {
+        agentKinds[surfaceID] != nil
+    }
+
+    /// The agent running on a surface, for labelling ("claude", "opencode").
+    func agentKind(for surfaceID: String) -> String? {
+        agentKinds[surfaceID]
+    }
+
+    /// Whether this poll should ask about a surface's conversation.
+    ///
+    /// Known agent surfaces are asked every time — an unchanged transcript is
+    /// answered from a fingerprint, so it costs almost nothing. Surfaces the
+    /// bridge called plain are asked occasionally instead: a shell shouldn't
+    /// cost a round-trip every few seconds, but `claude` or `opencode` typed
+    /// into it should still light up without waiting for a refocus.
+    func shouldPollAgentTranscript(_ surfaceID: String) -> Bool {
+        if isAgentSurface(surfaceID) { return true }
+        guard let checked = nonAgentSurfacesCheckedAt[surfaceID] else { return true }
+        return Date().timeIntervalSince(checked) >= Self.nonAgentRecheckInterval
+    }
+
+    /// How long a "this surface has no agent" answer is trusted before asking
+    /// again.
+    static let nonAgentRecheckInterval: TimeInterval = 15
 
     /// Trim trailing whitespace per line and remove blank trailing lines.
     /// Plain character ops, no regex — this runs over thousands of lines per
@@ -763,7 +837,7 @@ final class AppState: ObservableObject {
 
     func closeSurface(_ surfaceID: String) {
         send(method: "surface.close", params: ["surface_id": surfaceID]) { [weak self] _ in
-            self?.forgetClaudeTranscript(surfaceID)
+            self?.forgetAgentTranscript(surfaceID)
             self?.refreshSurfaces()
         }
     }
@@ -775,14 +849,15 @@ final class AppState: ObservableObject {
     /// Driven by an explicit close rather than by a surface's absence from
     /// `surfaces`: that list holds only the CURRENT workspace, so absence means
     /// "not in view", not "gone".
-    private func forgetClaudeTranscript(_ surfaceID: String) {
-        claudeTranscript.removeValue(forKey: surfaceID)
-        claudeCardText.removeValue(forKey: surfaceID)
-        claudeTranscriptSession.removeValue(forKey: surfaceID)
-        claudeTranscriptFingerprint.removeValue(forKey: surfaceID)
-        claudeTranscriptSeq.removeValue(forKey: surfaceID)
-        claudeTranscriptAppliedSeq.removeValue(forKey: surfaceID)
-        claudeTranscriptMissing.remove(surfaceID)
+    private func forgetAgentTranscript(_ surfaceID: String) {
+        agentTranscript.removeValue(forKey: surfaceID)
+        agentCardText.removeValue(forKey: surfaceID)
+        agentTranscriptSession.removeValue(forKey: surfaceID)
+        agentTranscriptFingerprint.removeValue(forKey: surfaceID)
+        agentTranscriptSeq.removeValue(forKey: surfaceID)
+        agentTranscriptAppliedSeq.removeValue(forKey: surfaceID)
+        agentTranscriptMissing.remove(surfaceID)
+        agentSessionTitles.removeValue(forKey: surfaceID)
     }
 
     func clearNotifications() {
@@ -953,8 +1028,8 @@ extension AppState: BridgeClientDelegate {
         // In-flight transcript RPCs will never complete now; clear their marks
         // so the history viewer doesn't hang on a spinner and polling resumes
         // for these surfaces once the bridge is back.
-        claudeTranscriptInFlight.removeAll()
-        claudeTranscriptLoading.removeAll()
+        agentTranscriptInFlight.removeAll()
+        agentTranscriptLoading.removeAll()
     }
 
     func clientDidReceiveMessage(_ client: BridgeClient, message: BridgeMessage) {
