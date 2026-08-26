@@ -20,7 +20,7 @@ struct ConnectionStatusBar: View {
                         .fill(statusColor)
                         .frame(width: 8, height: 8)
                 }
-                Text(appState.connectionStatus.label)
+                Text(appState.connectionStatus.label(backend: appState.backendKind))
                     .font(.caption)
                     .foregroundStyle(.primary)
             }

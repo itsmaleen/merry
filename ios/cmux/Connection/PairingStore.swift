@@ -6,12 +6,17 @@ struct PairingCredentials: Codable, Equatable {
     let port: Int
     let token: String
     let tailscaleHost: String?
+    /// The terminal runtime the bridge fronts ("cmux" or "herdr"), as advertised
+    /// in the pairing URL. Informational: the live value comes from the
+    /// `connected` payload. nil for pairings made before the bridge sent it.
+    let backend: String?
 
-    init(host: String, port: Int, token: String, tailscaleHost: String? = nil) {
+    init(host: String, port: Int, token: String, tailscaleHost: String? = nil, backend: String? = nil) {
         self.host = host
         self.port = port
         self.token = token
         self.tailscaleHost = tailscaleHost
+        self.backend = backend
     }
 }
 

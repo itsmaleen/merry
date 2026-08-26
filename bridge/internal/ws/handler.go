@@ -2,17 +2,21 @@ package ws
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
 )
 
-const bridgeVersion = "0.1.0"
+const bridgeVersion = "0.2.0"
+
+// protocolVersion 2 adds `backend`, `backend_connected` and `capabilities` to
+// the connected payload, renames cmux.connected/disconnected to
+// backend.connected/disconnected, and introduces surface.updated.
+const protocolVersion = 2
 
 type pushMessage struct {
 	Type string `json:"type"`
@@ -38,16 +42,8 @@ type rpcError struct {
 }
 
 // handleClient manages a single WebSocket connection for its lifetime.
-// It pushes notification events and proxies commands to the cmux socket.
-func handleClient(
-	w http.ResponseWriter,
-	r *http.Request,
-	token string,
-	poll *poller.Poller,
-	cmuxClient *socket.Client,
-	cmuxConnected func() bool,
-	resolver *claude.Resolver,
-) {
+// It pushes backend events and dispatches commands to the backend.
+func handleClient(w http.ResponseWriter, r *http.Request, token string, be backend.Backend) {
 	if !validateBearer(r, token) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -64,20 +60,30 @@ func handleClient(
 
 	ctx := r.Context()
 
-	// Send initial connected event
+	// Subscribe to backend events BEFORE reading the connection snapshot, so a
+	// transition between the two can't be missed: the snapshot says "up", the
+	// backend drops, and the subscription started too late to hear it. The
+	// channel is never closed by Unsubscribe — the handler exits via ctx
+	// cancellation or incoming closing.
+	hub := be.Hub()
+	events := hub.Subscribe()
+	defer hub.Unsubscribe(events)
+
+	info := be.Info()
+	connected := be.Connected()
+	// Send initial connected event. cmux_connected is kept for phones that
+	// predate protocol 2.
 	_ = wsjson.Write(ctx, conn, pushMessage{
 		Type: "connected",
 		Data: map[string]any{
-			"bridge_version":   bridgeVersion,
-			"cmux_connected":   cmuxConnected(),
-			"protocol_version": 1,
+			"bridge_version":    bridgeVersion,
+			"protocol_version":  protocolVersion,
+			"backend":           info.Kind,
+			"backend_connected": connected,
+			"cmux_connected":    connected,
+			"capabilities":      info.Capabilities,
 		},
 	})
-
-	// Subscribe to poller events. The channel is never closed by Unsubscribe —
-	// the handler exits via ctx cancellation or incoming closing.
-	events := poll.Subscribe()
-	defer poll.Unsubscribe(events)
 
 	// Channel for incoming commands from the client
 	incoming := make(chan commandRequest, 8)
@@ -115,129 +121,24 @@ func handleClient(
 			if !ok {
 				return
 			}
-			var resp commandResponse
-			if cmd.Method == "claude.transcript" {
-				resp = handleClaudeTranscript(cmd, cmuxClient, resolver)
-			} else {
-				resp = proxyCommand(cmd, cmuxClient, poll)
-			}
-			if err := wsjson.Write(ctx, conn, resp); err != nil {
+			if err := wsjson.Write(ctx, conn, dispatch(cmd, be)); err != nil {
 				return
 			}
 		}
 	}
 }
 
-func handleClaudeTranscript(cmd commandRequest, client *socket.Client, resolver *claude.Resolver) commandResponse {
-	surfaceID, _ := cmd.Params["surface_id"].(string)
-
-	// Build surface.list params, forwarding workspace_id if provided.
-	listParams := map[string]any{}
-	if wsID, ok := cmd.Params["workspace_id"]; ok {
-		listParams["workspace_id"] = wsID
-	}
-
-	listResult, err := client.Send("surface.list", listParams)
+// dispatch runs one command against the backend and shapes the response.
+func dispatch(cmd commandRequest, be backend.Backend) commandResponse {
+	result, err := be.Handle(cmd.Method, cmd.Params)
 	if err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: err.Error(),
-			},
+		code := "proxy_error"
+		var berr *backend.Error
+		if errors.As(err, &berr) {
+			code = berr.Code
+			return commandResponse{ID: cmd.ID, OK: false, Error: &rpcError{Code: code, Message: berr.Message}}
 		}
+		return commandResponse{ID: cmd.ID, OK: false, Error: &rpcError{Code: code, Message: err.Error()}}
 	}
-
-	var listPayload struct {
-		Surfaces []map[string]any `json:"surfaces"`
-	}
-	if err := json.Unmarshal(listResult, &listPayload); err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: "parse surface.list: " + err.Error(),
-			},
-		}
-	}
-
-	var resumeBinding map[string]any
-	for _, s := range listPayload.Surfaces {
-		if id, _ := s["id"].(string); id == surfaceID {
-			resumeBinding, _ = s["resume_binding"].(map[string]any)
-			break
-		}
-	}
-
-	maxMessages := 200
-	if v, ok := cmd.Params["max_messages"].(float64); ok && v > 0 {
-		maxMessages = int(v)
-		if maxMessages > 2000 {
-			maxMessages = 2000 // bound client-supplied work
-		}
-	}
-
-	knownFingerprint, _ := cmd.Params["known_fingerprint"].(string)
-
-	res, err := resolver.Render(claude.Request{
-		SurfaceID:        surfaceID,
-		ResumeBinding:    resumeBinding,
-		MaxMessages:      maxMessages,
-		KnownFingerprint: knownFingerprint,
-	})
-	if err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "transcript_error",
-				Message: err.Error(),
-			},
-		}
-	}
-
-	result, _ := json.Marshal(map[string]any{
-		"supported":       res.Supported,
-		"text":            res.Text,
-		"session_id":      res.SessionID,
-		"session_missing": res.SessionMissing,
-		// Hand back on the next poll as known_fingerprint: an unchanged
-		// transcript then answers without re-reading or re-sending it.
-		"fingerprint": res.Fingerprint,
-		"unchanged":   res.Unchanged,
-		"source":      res.Source,
-	})
-	return commandResponse{
-		ID:     cmd.ID,
-		OK:     true,
-		Result: json.RawMessage(result),
-	}
-}
-
-func proxyCommand(cmd commandRequest, client *socket.Client, poll *poller.Poller) commandResponse {
-	result, err := client.Send(cmd.Method, cmd.Params)
-	if err != nil {
-		return commandResponse{
-			ID: cmd.ID,
-			OK: false,
-			Error: &rpcError{
-				Code:    "proxy_error",
-				Message: err.Error(),
-			},
-		}
-	}
-
-	// After a successful notification.clear, reset the poller's seen-ID set
-	// so re-appearing notifications get pushed again.
-	if cmd.Method == "notification.clear" {
-		poll.ResetSeenIDs()
-	}
-
-	return commandResponse{
-		ID:     cmd.ID,
-		OK:     true,
-		Result: result,
-	}
+	return commandResponse{ID: cmd.ID, OK: true, Result: result}
 }
