@@ -1038,6 +1038,7 @@ final class AppState: ObservableObject {
 
 extension AppState: BridgeClientDelegate {
     func clientDidConnect(_ client: BridgeClient) {
+        guard client === self.client else { return }
         connectionStatus = .connected
         refreshWorkspaces {
             self.refreshSurfaces()
@@ -1051,6 +1052,9 @@ extension AppState: BridgeClientDelegate {
     }
 
     func clientDidDisconnect(_ client: BridgeClient, error: Error?) {
+        // A client replaced by connect(to:) can still emit its close callback;
+        // it must not flip the status of the bridge that replaced it.
+        guard client === self.client else { return }
         connectionStatus = .reconnecting
         // In-flight transcript RPCs will never complete now; clear their marks
         // so the history viewer doesn't hang on a spinner and polling resumes
@@ -1060,6 +1064,7 @@ extension AppState: BridgeClientDelegate {
     }
 
     func clientDidReceiveMessage(_ client: BridgeClient, message: BridgeMessage) {
+        guard client === self.client else { return }
         switch message {
         case .connected(let payload):
             connectionStatus = .connected(cmuxConnected: payload.isBackendConnected)

@@ -60,6 +60,15 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 
 	ctx := r.Context()
 
+	// Subscribe to backend events BEFORE reading the connection snapshot, so a
+	// transition between the two can't be missed: the snapshot says "up", the
+	// backend drops, and the subscription started too late to hear it. The
+	// channel is never closed by Unsubscribe — the handler exits via ctx
+	// cancellation or incoming closing.
+	hub := be.Hub()
+	events := hub.Subscribe()
+	defer hub.Unsubscribe(events)
+
 	info := be.Info()
 	connected := be.Connected()
 	// Send initial connected event. cmux_connected is kept for phones that
@@ -75,12 +84,6 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 			"capabilities":      info.Capabilities,
 		},
 	})
-
-	// Subscribe to backend events. The channel is never closed by Unsubscribe —
-	// the handler exits via ctx cancellation or incoming closing.
-	hub := be.Hub()
-	events := hub.Subscribe()
-	defer hub.Unsubscribe(events)
 
 	// Channel for incoming commands from the client
 	incoming := make(chan commandRequest, 8)

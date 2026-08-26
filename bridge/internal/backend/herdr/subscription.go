@@ -31,14 +31,11 @@ func (s *socketSubscription) readLine() ([]byte, error) {
 
 func (s *socketSubscription) close() { _ = s.conn.Close() }
 
-// subscribedEvents is everything the pane cache and notifications need.
-// `pane.agent_status_changed` would be the obvious choice for status, but it
-// must be filtered to one pane_id per subscription; `pane.updated` is global
-// and carries the full pane record, status included.
+// subscribedEvents is exactly what the pane cache consumes (see applyEvent).
+// Agent status is NOT here: herdr emits it as `pane.agent_status_changed`,
+// which must be subscribed per pane_id — see dialStatusSubscription.
 var subscribedEvents = []string{
-	"pane.created", "pane.updated", "pane.closed", "pane.moved", "pane.focused",
-	"workspace.created", "workspace.closed", "workspace.renamed", "workspace.focused",
-	"tab.focused", "layout.updated",
+	"pane.created", "pane.updated", "pane.closed", "pane.moved",
 }
 
 // dialSubscription opens the lifecycle event stream and waits for herdr's

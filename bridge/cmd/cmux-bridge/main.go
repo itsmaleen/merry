@@ -74,6 +74,10 @@ func resolveBackendKinds(cfg config) []string {
 		return []string{"herdr"}
 	case "all", "both", "cmux+herdr":
 		return []string{"cmux", "herdr"}
+	case "", "auto":
+	default:
+		// A typo must not silently widen to every runtime on the machine.
+		log.Fatalf("config: unknown backend %q (want cmux, herdr, all, or auto)", cfg.Backend)
 	}
 	var kinds []string
 	if _, err := os.Stat(cfg.SocketPath); err == nil {

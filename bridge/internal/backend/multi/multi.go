@@ -31,6 +31,9 @@ type Backend struct {
 	// "current workspace" lives in one runtime at a time). It follows
 	// workspace.select and starts as the first connected member.
 	current string
+	// transMu serializes member connection transitions so the aggregate
+	// up/down decision and its broadcast happen in one critical section.
+	transMu sync.Mutex
 }
 
 // New builds a composite of the given members, in priority order.
@@ -129,6 +132,8 @@ func (b *Backend) forward(ctx context.Context, m Member) {
 func (b *Backend) forwardEvent(m Member, ev backend.Event) {
 	switch ev.Type {
 	case "backend.connected":
+		b.transMu.Lock()
+		defer b.transMu.Unlock()
 		b.mu.Lock()
 		if b.current == "" {
 			b.current = m.Kind
@@ -136,9 +141,21 @@ func (b *Backend) forwardEvent(m Member, ev backend.Event) {
 		b.mu.Unlock()
 		b.hub.Broadcast(ev)
 	case "backend.disconnected":
+		b.transMu.Lock()
+		defer b.transMu.Unlock()
 		if !b.Connected() {
 			b.hub.Broadcast(ev)
+			return
 		}
+		// One runtime dropped while another is up: not a bridge-wide outage,
+		// but the phone may be sitting in the dead runtime's workspace. Tell it
+		// which member changed so it refreshes its lists (the dead member's
+		// workspaces disappear from workspace.list) and re-selects.
+		b.hub.Broadcast(backend.Event{Type: "backend.changed", Data: map[string]any{
+			"backend":   m.Kind,
+			"connected": false,
+			"remaining": b.connectedKinds(),
+		}})
 	default:
 		data, err := toMap(ev.Data)
 		if err != nil {
@@ -172,7 +189,9 @@ func (b *Backend) Handle(method string, params map[string]any) (json.RawMessage,
 		case "notification.list":
 			return b.fanOut(method, stripped, mergeNotifications)
 		case "notification.clear":
-			return b.fanOut(method, stripped, func(map[string]json.RawMessage) any { return map[string]any{"ok": true} })
+			// Strict: a clear that only reached one runtime must not report
+			// success, or the phone drops alerts the other runtime still holds.
+			return b.fanOutStrict(method, stripped, func(map[string]json.RawMessage) any { return map[string]any{"ok": true} })
 		}
 		kind = b.currentKind()
 		if kind == "" {
@@ -184,20 +203,32 @@ func (b *Backend) Handle(method string, params map[string]any) (json.RawMessage,
 	if m == nil {
 		return nil, backend.Errorf("unknown_backend", "no backend "+kind)
 	}
-	if method == "workspace.select" {
-		b.mu.Lock()
-		b.current = kind
-		b.mu.Unlock()
-	}
 	raw, err := m.Backend.Handle(method, stripped)
 	if err != nil {
 		return nil, err
 	}
+	if method == "workspace.select" {
+		// Only a select that succeeded moves the current runtime; a failed one
+		// must leave id-less commands pointed where they were.
+		b.mu.Lock()
+		b.current = kind
+		b.mu.Unlock()
+	}
 	return prefixResult(kind, raw)
 }
 
-// fanOut runs a command on every connected member and merges the results.
+// fanOut runs a command on every connected member and merges the results;
+// one member failing is tolerated as long as another answered.
 func (b *Backend) fanOut(method string, params map[string]any, merge func(map[string]json.RawMessage) any) (json.RawMessage, error) {
+	return b.fanOutWith(method, params, merge, false)
+}
+
+// fanOutStrict is fanOut where any connected member failing fails the call.
+func (b *Backend) fanOutStrict(method string, params map[string]any, merge func(map[string]json.RawMessage) any) (json.RawMessage, error) {
+	return b.fanOutWith(method, params, merge, true)
+}
+
+func (b *Backend) fanOutWith(method string, params map[string]any, merge func(map[string]json.RawMessage) any, strict bool) (json.RawMessage, error) {
 	results := map[string]json.RawMessage{}
 	var lastErr error
 	for _, m := range b.members {
@@ -211,10 +242,10 @@ func (b *Backend) fanOut(method string, params map[string]any, merge func(map[st
 		}
 		results[m.Kind] = raw
 	}
+	if lastErr != nil && (strict || len(results) == 0) {
+		return nil, lastErr
+	}
 	if len(results) == 0 {
-		if lastErr != nil {
-			return nil, lastErr
-		}
 		return nil, backend.Errorf("backend_unavailable", "no runtime is connected")
 	}
 	out, err := json.Marshal(merge(results))
@@ -222,6 +253,16 @@ func (b *Backend) fanOut(method string, params map[string]any, merge func(map[st
 		return nil, backend.Errorf("internal", err.Error())
 	}
 	return out, nil
+}
+
+func (b *Backend) connectedKinds() []string {
+	var out []string
+	for _, m := range b.members {
+		if m.Backend.Connected() {
+			out = append(out, m.Kind)
+		}
+	}
+	return out
 }
 
 func (b *Backend) currentKind() string {

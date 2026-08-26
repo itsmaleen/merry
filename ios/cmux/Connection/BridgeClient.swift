@@ -256,7 +256,10 @@ final class BridgeClient: NSObject {
             }
         case "notification.cleared":
             return .notificationCleared
-        case "cmux.connected", "backend.connected":
+        case "cmux.connected", "backend.connected", "backend.changed":
+            // backend.changed: one runtime of a composite bridge came or went
+            // while another stayed up — same response as a (re)connect: refetch
+            // the lists, which no longer include the dead runtime's workspaces.
             return .backendConnected
         case "cmux.disconnected", "backend.disconnected":
             return .backendDisconnected

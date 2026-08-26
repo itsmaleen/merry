@@ -118,6 +118,19 @@ Sent when the bridge loses its runtime connection. (Protocol 1: `cmux.disconnect
 }
 ```
 
+### backend.changed
+
+Composite bridges only: one runtime dropped (or returned) while another stayed
+up. Not a bridge-wide outage — the phone refetches its lists, from which the
+dead runtime's workspaces are now absent, and re-selects if it was in one.
+
+```json
+{
+  "type": "backend.changed",
+  "data": { "backend": "herdr", "connected": false, "remaining": ["cmux"] }
+}
+```
+
 ### surface.updated
 
 Sent by backends with the `agent_status` capability when a surface's agent

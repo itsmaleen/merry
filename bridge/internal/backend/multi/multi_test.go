@@ -189,6 +189,26 @@ func TestCurrentFollowsWorkspaceSelect(t *testing.T) {
 	}
 }
 
+func TestSelectFailureLeavesCurrentAlone(t *testing.T) {
+	b, _, h := setup()
+	delete(h.results, "workspace.select")
+	if _, err := b.Handle("workspace.select", map[string]any{"workspace_id": "herdr:w1"}); err == nil {
+		t.Fatal("expected the select to fail")
+	}
+	raw, _ := b.Handle("workspace.current", nil)
+	if decode(t, raw)["workspace_id"] != "cmux:ws-uuid" {
+		t.Fatalf("current moved despite failed select: %s", raw)
+	}
+}
+
+func TestNotificationClearIsStrict(t *testing.T) {
+	b, _, h := setup()
+	delete(h.results, "notification.clear")
+	if _, err := b.Handle("notification.clear", nil); err == nil {
+		t.Fatal("clear that failed on one runtime must not report success")
+	}
+}
+
 func TestNotificationsMergeAndClearFanOut(t *testing.T) {
 	b, c, h := setup()
 	raw, err := b.Handle("notification.list", nil)
@@ -245,9 +265,13 @@ func TestEventsAreNamespacedAndDisconnectGated(t *testing.T) {
 		t.Fatalf("surface.updated = %v", d)
 	}
 
-	// One member dropping while the other is up is not a bridge-wide outage.
+	// One member dropping while the other is up is not a bridge-wide outage,
+	// but the phone is told which member changed so it can refresh.
 	h.connected = false
 	h.hub.Broadcast(backend.Event{Type: "backend.disconnected", Data: map[string]any{"backend": "herdr"}})
+	if ev := next(); ev.Type != "backend.changed" || ev.Data.(map[string]any)["backend"] != "herdr" {
+		t.Fatalf("expected backend.changed for herdr, got %v", ev)
+	}
 	none()
 	c.connected = false
 	c.hub.Broadcast(backend.Event{Type: "backend.disconnected", Data: map[string]any{"backend": "cmux"}})
