@@ -6,19 +6,19 @@ struct WorkspaceListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if appState.workspaces.isEmpty {
+                if appState.visibleWorkspaces.isEmpty {
                     ContentUnavailableView(
                         "No workspaces",
                         systemImage: "rectangle.3.group",
-                        description: Text("Connect to cmux to see your workspaces.")
+                        description: Text("Connect to a bridge to see your workspaces.")
                     )
                 } else {
-                    List(appState.workspaces) { workspace in
+                    List(appState.visibleWorkspaces) { workspace in
                         Button {
                             appState.selectWorkspace(workspace.id)
                         } label: {
                             HStack {
-                                Text(workspace.title)
+                                Text(appState.displayTitle(for: workspace))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 if workspace.id == appState.currentWorkspaceID {

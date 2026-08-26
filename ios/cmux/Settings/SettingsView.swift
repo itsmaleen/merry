@@ -22,8 +22,23 @@ struct SettingsView: View {
 
                 if let creds = appState.selectedBridge?.credentials {
                     Section("Connection") {
-                        LabeledContent("Status", value: appState.connectionStatus.label)
+                        LabeledContent("Status", value: appState.connectionStatus.label(backend: appState.backendKind))
+                        LabeledContent("Runtime", value: appState.backendKind)
                         remoteAccess(creds)
+                    }
+                }
+
+                if appState.isComposite {
+                    Section("Show workspaces from") {
+                        Picker("Runtime", selection: $appState.runtimeFilter) {
+                            ForEach(RuntimeFilter.allCases) { filter in
+                                Text(filter.label).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text("This bridge fronts both cmux and herdr. Pick one to see only its workspaces, or All to see both side by side. Also available from the sidebar menu.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -130,10 +145,14 @@ struct SettingsView: View {
 
     private func bridgeSubtitle(_ bridge: SavedBridge) -> String {
         let c = bridge.credentials
-        if let ts = c.tailscaleHost, !ts.isEmpty {
-            return "\(c.host):\(c.port) · remote"
+        let reach = (c.tailscaleHost?.isEmpty == false) ? "remote" : "LAN only"
+        // The active bridge reports its runtime live; others show what their
+        // pairing URL said, if anything.
+        let backend = bridge.id == appState.selectedBridgeID ? appState.backendKind : c.backend
+        if let backend, !backend.isEmpty {
+            return "\(c.host):\(c.port) · \(reach) · \(backend)"
         }
-        return "\(c.host):\(c.port) · LAN only"
+        return "\(c.host):\(c.port) · \(reach)"
     }
 
     // MARK: - Remote-access explainer for the active bridge

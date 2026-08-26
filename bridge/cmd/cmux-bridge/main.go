@@ -14,13 +14,15 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/cmux"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/herdr"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/multi"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/mdns"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/pair"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
 	"tailscale.com/tsnet"
@@ -34,8 +36,16 @@ const (
 )
 
 type config struct {
+	// Backend is "cmux", "herdr", "all", or "auto" (the default). auto fronts
+	// every runtime whose socket answers — both at once when both are running,
+	// each namespaced (cmux:…, herdr:…) — and falls back to cmux when neither
+	// does so the existing error paths explain what is missing. all fronts
+	// both regardless, reconnecting to whichever is down.
+	Backend           string `json:"backend"`
 	SocketPath        string `json:"socket_path"`
 	SocketPassword    string `json:"socket_password"`
+	HerdrSocketPath   string `json:"herdr_socket_path"`
+	HerdrSession      string `json:"herdr_session"`
 	BridgePort        int    `json:"bridge_port"`
 	PollIntervalMs    int    `json:"poll_interval_ms"`
 	Tailscale         bool   `json:"tailscale"`
@@ -44,6 +54,7 @@ type config struct {
 
 func defaultConfig() config {
 	return config{
+		Backend:           "auto",
 		SocketPath:        "",
 		SocketPassword:    "",
 		BridgePort:        defaultPort,
@@ -51,6 +62,67 @@ func defaultConfig() config {
 		Tailscale:         false,
 		TailscaleHostname: "cmux-bridge",
 	}
+}
+
+// resolveBackendKinds turns cfg.Backend into the concrete runtimes to front,
+// in priority order.
+func resolveBackendKinds(cfg config) []string {
+	switch strings.ToLower(strings.TrimSpace(cfg.Backend)) {
+	case "cmux":
+		return []string{"cmux"}
+	case "herdr":
+		return []string{"herdr"}
+	case "all", "both", "cmux+herdr":
+		return []string{"cmux", "herdr"}
+	}
+	var kinds []string
+	if _, err := os.Stat(cfg.SocketPath); err == nil {
+		if err := cmux.New(cmux.Config{SocketPath: cfg.SocketPath, Password: cfg.SocketPassword}).Ping(); err == nil || cmux.IsAuthRequired(err) {
+			kinds = append(kinds, "cmux")
+		}
+	}
+	if err := herdr.New(herdr.Config{SocketPath: cfg.HerdrSocketPath}).Ping(); err == nil {
+		kinds = append(kinds, "herdr")
+	}
+	if len(kinds) == 0 {
+		return []string{"cmux"}
+	}
+	return kinds
+}
+
+// openBackend builds the configured backend(s) without connecting them. More
+// than one kind yields a composite that namespaces every id by runtime.
+func openBackend(kinds []string, cfg config) backend.Backend {
+	members := make([]multi.Member, 0, len(kinds))
+	for _, kind := range kinds {
+		switch kind {
+		case "herdr":
+			members = append(members, multi.Member{Kind: "herdr", Backend: herdr.New(herdr.Config{
+				SocketPath:    cfg.HerdrSocketPath,
+				BridgeVersion: ws.BridgeVersion(),
+			})})
+		default:
+			members = append(members, multi.Member{Kind: "cmux", Backend: cmux.New(cmux.Config{
+				SocketPath:    cfg.SocketPath,
+				Password:      cfg.SocketPassword,
+				PollInterval:  time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+				BridgeVersion: ws.BridgeVersion(),
+			})})
+		}
+	}
+	if len(members) == 1 {
+		return members[0].Backend
+	}
+	return multi.New(members...)
+}
+
+func hasKind(kinds []string, kind string) bool {
+	for _, k := range kinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func configDir() string {
@@ -91,6 +163,8 @@ func saveConfig(dir string, cfg config) error {
 func main() {
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
+	backendFlag := flag.String("backend", "", "terminal runtime(s) to front: cmux, herdr, all, or auto (overrides config)")
+	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
 	flag.Parse()
 
 	// cmux only accepts control-socket connections from the user that runs cmux;
@@ -106,6 +180,9 @@ func main() {
 	}
 
 	dir := configDir()
+	if *configDirFlag != "" {
+		dir = *configDirFlag
+	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		log.Fatalf("config: %v", err)
@@ -116,24 +193,37 @@ func main() {
 		cfg.Tailscale = true
 	}
 
-	// Resolve socket path
+	if *backendFlag != "" {
+		cfg.Backend = *backendFlag
+	}
+
+	// Resolve socket paths
 	if cfg.SocketPath == "" {
 		cfg.SocketPath = socket.DetectSocketPath()
 	}
+	if cfg.HerdrSocketPath == "" {
+		if cfg.HerdrSession != "" {
+			cfg.HerdrSocketPath = herdr.SocketPathForSession(cfg.HerdrSession)
+		} else {
+			cfg.HerdrSocketPath = herdr.DefaultSocketPath()
+		}
+	}
+	kinds := resolveBackendKinds(cfg)
 
 	if *pairMode {
-		runPair(dir, cfg)
+		runPair(dir, cfg, kinds)
 		return
 	}
 
-	runDaemon(dir, cfg)
+	runDaemon(dir, cfg, kinds)
 }
 
 // runPair handles --pair: connect to cmux (prompting for password if needed),
 // display the QR code, and exit.
-func runPair(dir string, cfg config) {
+func runPair(dir string, cfg config, kinds []string) {
+	kind := strings.Join(kinds, "+")
 	// Prompt for password if not configured
-	if cfg.SocketPassword == "" {
+	if hasKind(kinds, "cmux") && cfg.SocketPassword == "" {
 		fmt.Print("cmux socket password (leave empty if not using password mode): ")
 		var pw string
 		_, _ = fmt.Scanln(&pw)
@@ -152,19 +242,19 @@ func runPair(dir string, cfg config) {
 	// connection and then reject every RPC — e.g. when the bridge runs as the
 	// wrong uid or the socket password is wrong. Pinging here surfaces that at
 	// pairing time instead of leaving a daemon that silently flaps afterward.
-	client := socket.NewClient(cfg.SocketPath, cfg.SocketPassword)
-	if err := client.Connect(); err != nil {
-		log.Fatalf("cannot connect to cmux socket: %v\nMake sure cmux is running and the socket path is correct (%s)", err, cfg.SocketPath)
+	be := openBackend(kinds, cfg)
+	if err := be.Ping(); err != nil {
+		switch {
+		case !hasKind(kinds, "cmux"):
+			log.Fatalf("cannot reach herdr at %s: %v\nMake sure herdr is running (run `herdr` in a terminal) or set herdr_socket_path / herdr_session in %s", cfg.HerdrSocketPath, err, filepath.Join(dir, configFileName))
+		default:
+			log.Fatalf("cannot reach cmux at %s: %v\n"+
+				"Make sure cmux is running and the socket path is correct. An \"Access denied\" error means the "+
+				"bridge is running as the wrong user (do not run as root — cmux only accepts connections from the "+
+				"user running cmux); otherwise the socket password is wrong.", cfg.SocketPath, err)
+		}
 	}
-	if _, err := client.Send("system.ping", nil); err != nil {
-		client.Close()
-		log.Fatalf("connected to the cmux socket but it rejected a test request: %v\n"+
-			"An \"Access denied\" error means the bridge is running as the wrong user (do not run "+
-			"as root — cmux only accepts connections from the user running cmux); otherwise the "+
-			"socket password is wrong.", err)
-	}
-	client.Close()
-	fmt.Println("Connected to cmux.")
+	fmt.Printf("Connected to %s.\n", kind)
 
 	token, err := pair.LoadOrCreateToken(dir)
 	if err != nil {
@@ -191,7 +281,7 @@ func runPair(dir string, cfg config) {
 		}
 	}
 
-	if err := pair.PrintQR("", cfg.BridgePort, token, tailscaleHost); err != nil {
+	if err := pair.PrintQR("", cfg.BridgePort, token, tailscaleHost, kind); err != nil {
 		log.Fatalf("qr: %v", err)
 	}
 }
@@ -284,8 +374,11 @@ func startTailscaleForPairing(dir string, cfg config) string {
 }
 
 // runDaemon starts the bridge in daemon mode with reconnect loop.
-func runDaemon(dir string, cfg config) {
-	if cfg.SocketPassword == "" {
+func runDaemon(dir string, cfg config, kinds []string) {
+	kind := strings.Join(kinds, "+")
+	// Only a cmux-only bridge treats an unreachable cmux socket as fatal; under
+	// a composite the cmux member simply reconnects when cmux comes back.
+	if hasKind(kinds, "cmux") && len(kinds) == 1 && cfg.SocketPassword == "" {
 		// Probe the socket; if it responds with auth_required, fail fast
 		client := socket.NewClient(cfg.SocketPath, "")
 		if err := client.Connect(); err != nil {
@@ -293,7 +386,7 @@ func runDaemon(dir string, cfg config) {
 		}
 		_, probeErr := client.Send("system.ping", nil)
 		client.Close()
-		if probeErr != nil && isAuthRequired(probeErr) {
+		if probeErr != nil && cmux.IsAuthRequired(probeErr) {
 			log.Fatalf("cmux socket requires a password but none is configured.\nRun with --pair to configure the password.")
 		}
 	}
@@ -303,82 +396,19 @@ func runDaemon(dir string, cfg config) {
 		log.Fatalf("token: %v", err)
 	}
 
-	log.Printf("cmux-bridge %s starting on port %d", ws.BridgeVersion(), cfg.BridgePort)
-	log.Printf("socket: %s", cfg.SocketPath)
+	log.Printf("cmux-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
+	if hasKind(kinds, "herdr") {
+		log.Printf("herdr socket: %s", cfg.HerdrSocketPath)
+	}
+	if hasKind(kinds, "cmux") {
+		log.Printf("cmux socket: %s", cfg.SocketPath)
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	cmuxClient := socket.NewClient(cfg.SocketPath, cfg.SocketPassword)
-	var cmuxConnected atomic.Bool
-
-	poll := poller.New(cmuxClient, time.Duration(cfg.PollIntervalMs)*time.Millisecond)
-
-	stopPoller := make(chan struct{})
-	go func() {
-		<-ctx.Done()
-		close(stopPoller)
-	}()
-	go poll.Run(stopPoller)
-
-	// Reconnect loop
-	go func() {
-		backoff := time.Second
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			err := cmuxClient.Connect()
-			if err != nil {
-				log.Printf("cmux: connect error: %v (retry in %s)", err, backoff)
-				if cmuxConnected.Load() {
-					cmuxConnected.Store(false)
-					poll.Broadcast(poller.Event{
-						Type: "cmux.disconnected",
-						Data: map[string]any{"reason": "socket_unavailable"},
-					})
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(backoff):
-				}
-				if backoff < 30*time.Second {
-					backoff *= 2
-				}
-				continue
-			}
-
-			log.Printf("cmux: connected")
-			backoff = time.Second
-			cmuxConnected.Store(true)
-			poll.Broadcast(poller.Event{
-				Type: "cmux.connected",
-				Data: map[string]any{"bridge_version": ws.BridgeVersion()},
-			})
-
-		pingLoop:
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(5 * time.Second):
-					if _, err := cmuxClient.Send("system.ping", nil); err != nil {
-						log.Printf("cmux: connection lost: %v", err)
-						cmuxConnected.Store(false)
-						poll.Broadcast(poller.Event{
-							Type: "cmux.disconnected",
-							Data: map[string]any{"reason": "socket_unavailable"},
-						})
-						break pingLoop
-					}
-				}
-			}
-		}
-	}()
+	be := openBackend(kinds, cfg)
+	go be.Run(ctx)
 
 	// Start mDNS advertisement (LAN discovery)
 	stopMDNS, err := mdns.Advertise(cfg.BridgePort)
@@ -424,16 +454,8 @@ func runDaemon(dir string, cfg config) {
 	}
 
 	// Start WebSocket server on all listeners
-	server := ws.NewServer(token, poll, cmuxClient, func() bool { return cmuxConnected.Load() })
+	server := ws.NewServer(token, be)
 	if err := server.Serve(ctx, listeners...); err != nil {
 		log.Fatalf("ws server: %v", err)
 	}
-}
-
-func isAuthRequired(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return strings.Contains(s, "auth_required") || strings.Contains(s, "Authentication required")
 }

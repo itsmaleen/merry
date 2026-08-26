@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
 	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
 )
 
@@ -20,76 +21,41 @@ type Notification struct {
 	IsRead      bool   `json:"is_read"`
 }
 
-// Event is emitted by the poller to subscribers.
-// Data is any so that non-notification events (cmux.connected, cmux.disconnected)
-// can also be broadcast through the same channel.
-type Event struct {
-	Type string
-	Data any
-}
+// Event is the push-event type the poller publishes; it is the backend Hub's.
+type Event = backend.Event
 
-// Poller polls notification.list on an interval and broadcasts new events.
+// Poller polls cmux's notification.list on an interval and publishes each
+// unseen notification to the Hub as a notification.created event.
 type Poller struct {
 	client   *socket.Client
 	interval time.Duration
+	hub      *backend.Hub
 
-	mu          sync.Mutex
-	subscribers []chan Event
-	seenIDs     map[string]struct{}
+	mu      sync.Mutex
+	seenIDs map[string]struct{}
 	// Bumped by ResetSeenIDs. A poll captures it before its network call and
 	// discards its result if it changed meanwhile, so a notification.list issued
 	// before a clear can't repopulate seenIDs with pre-clear IDs afterward.
 	generation uint64
 }
 
-func New(client *socket.Client, interval time.Duration) *Poller {
+func New(client *socket.Client, interval time.Duration, hub *backend.Hub) *Poller {
+	if hub == nil {
+		hub = backend.NewHub()
+	}
 	return &Poller{
 		client:   client,
 		interval: interval,
+		hub:      hub,
 		seenIDs:  make(map[string]struct{}),
 	}
 }
 
-// Subscribe returns a buffered channel that receives events.
-// Slow consumers drop events rather than blocking the poller.
-func (p *Poller) Subscribe() <-chan Event {
-	ch := make(chan Event, 32)
-	p.mu.Lock()
-	p.subscribers = append(p.subscribers, ch)
-	p.mu.Unlock()
-	return ch
-}
+// Hub returns the hub this poller publishes to.
+func (p *Poller) Hub() *backend.Hub { return p.hub }
 
-// Unsubscribe removes a subscriber. The channel is NOT closed — closing a
-// channel that the poller might concurrently be sending to causes a panic.
-// The WS handler detects disconnection via other signals (ctx, incoming closed).
-func (p *Poller) Unsubscribe(ch <-chan Event) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for i, sub := range p.subscribers {
-		if sub == ch {
-			p.subscribers = append(p.subscribers[:i], p.subscribers[i+1:]...)
-			return
-		}
-	}
-}
-
-// Broadcast sends an event to all current subscribers directly.
-// Used to push cmux connection state changes.
-func (p *Poller) Broadcast(ev Event) {
-	p.mu.Lock()
-	subs := make([]chan Event, len(p.subscribers))
-	copy(subs, p.subscribers)
-	p.mu.Unlock()
-
-	for _, sub := range subs {
-		select {
-		case sub <- ev:
-		default:
-			// slow consumer; drop
-		}
-	}
-}
+// Broadcast publishes an event to every subscriber of the poller's hub.
+func (p *Poller) Broadcast(ev Event) { p.hub.Broadcast(ev) }
 
 // Run starts the polling loop. It blocks until stop is closed.
 func (p *Poller) Run(stop <-chan struct{}) {
@@ -127,39 +93,32 @@ func (p *Poller) poll() {
 		return
 	}
 
-	newOnes, subs := p.ingest(payload.Notifications, gen)
+	newOnes, ok := p.ingest(payload.Notifications, gen)
+	if !ok {
+		return
+	}
 	for _, n := range newOnes {
-		ev := Event{Type: "notification.created", Data: n}
-		for _, sub := range subs {
-			select {
-			case sub <- ev:
-			default:
-				// slow consumer; drop
-			}
-		}
+		p.hub.Broadcast(Event{Type: "notification.created", Data: n})
 	}
 }
 
-// ingest records unseen notifications and returns the new ones plus a snapshot
-// of subscribers to deliver to. If the generation changed since the poll began
-// (a notification.clear happened mid-flight), the whole batch is discarded so
-// stale IDs don't get re-marked as seen.
-func (p *Poller) ingest(notifs []Notification, gen uint64) ([]Notification, []chan Event) {
+// ingest records unseen notifications and returns the new ones. ok is false
+// when the generation changed since the poll began (a notification.clear
+// happened mid-flight): the whole batch is discarded so stale IDs don't get
+// re-marked as seen.
+func (p *Poller) ingest(notifs []Notification, gen uint64) (newOnes []Notification, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.generation != gen {
-		return nil, nil
+		return nil, false
 	}
-	var newOnes []Notification
 	for _, n := range notifs {
 		if _, seen := p.seenIDs[n.ID]; !seen {
 			p.seenIDs[n.ID] = struct{}{}
 			newOnes = append(newOnes, n)
 		}
 	}
-	subs := make([]chan Event, len(p.subscribers))
-	copy(subs, p.subscribers)
-	return newOnes, subs
+	return newOnes, true
 }
 
 // ResetSeenIDs clears the seen-ID set. Called after notification.clear so that

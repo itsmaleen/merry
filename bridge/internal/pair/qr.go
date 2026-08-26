@@ -43,7 +43,9 @@ func LoadOrCreateToken(configDir string) (string, error) {
 
 // PrintQR generates and prints the pairing QR code to stdout.
 // tailscaleHost is optional; if non-empty it's included in the QR URL.
-func PrintQR(host string, port int, token string, tailscaleHost string) error {
+// backend names the runtime the bridge fronts ("cmux", "herdr"); it is
+// informational for the phone, which learns the live value on connect.
+func PrintQR(host string, port int, token string, tailscaleHost string, backend string) error {
 	if host == "" {
 		host = primaryLANIP()
 	}
@@ -51,6 +53,9 @@ func PrintQR(host string, port int, token string, tailscaleHost string) error {
 	url := fmt.Sprintf("cmux-bridge://pair?host=%s&port=%d&token=%s", host, port, token)
 	if tailscaleHost != "" {
 		url += "&tailscale_host=" + tailscaleHost
+	}
+	if backend != "" {
+		url += "&backend=" + backend
 	}
 
 	qr, err := qrcode.New(url, qrcode.Medium)

@@ -6,20 +6,71 @@ enum BridgeMessage {
     case connected(ConnectedPayload)
     case notificationCreated(BridgeNotification)
     case notificationCleared
-    case cmuxConnected
-    case cmuxDisconnected
+    /// The bridge (re)connected to its terminal runtime (cmux or herdr).
+    case backendConnected
+    /// The bridge lost its terminal runtime.
+    case backendDisconnected
+    /// A surface's runtime-detected agent status or title changed (protocol 2,
+    /// backends with the `agent_status` capability).
+    case surfaceUpdated(SurfaceUpdate)
     case commandResponse(CommandResponse)
+    /// A push type this client doesn't know. Ignored rather than mis-parsed, so
+    /// a newer bridge can add events without an older phone reacting to them.
+    case ignored
+}
+
+/// What the runtime behind the bridge can do, from the `connected` payload.
+/// Absent on protocol-1 bridges, which are always cmux.
+struct BackendCapabilities: Decodable, Equatable {
+    let browser: Bool
+    let agentStatus: Bool
+    let notifications: String
+
+    enum CodingKeys: String, CodingKey {
+        case browser
+        case agentStatus = "agent_status"
+        case notifications
+    }
+
+    static let cmux = BackendCapabilities(browser: true, agentStatus: false, notifications: "polled")
 }
 
 struct ConnectedPayload: Decodable {
     let bridgeVersion: String
-    let cmuxConnected: Bool
     let protocolVersion: Int
+    /// "cmux" or "herdr"; nil from a protocol-1 bridge (cmux).
+    let backend: String?
+    let backendConnected: Bool?
+    /// Protocol-1 name for backendConnected; still sent by protocol-2 bridges.
+    let cmuxConnected: Bool?
+    let capabilities: BackendCapabilities?
 
     enum CodingKeys: String, CodingKey {
         case bridgeVersion = "bridge_version"
-        case cmuxConnected = "cmux_connected"
         case protocolVersion = "protocol_version"
+        case backend
+        case backendConnected = "backend_connected"
+        case cmuxConnected = "cmux_connected"
+        case capabilities
+    }
+
+    var isBackendConnected: Bool { backendConnected ?? cmuxConnected ?? false }
+    var backendKind: String { backend ?? "cmux" }
+    var effectiveCapabilities: BackendCapabilities { capabilities ?? .cmux }
+}
+
+struct SurfaceUpdate: Decodable {
+    let surfaceID: String
+    let workspaceID: String?
+    let agentStatus: String?
+    let agent: String?
+    let title: String?
+
+    enum CodingKeys: String, CodingKey {
+        case surfaceID = "surface_id"
+        case workspaceID = "workspace_id"
+        case agentStatus = "agent_status"
+        case agent, title
     }
 }
 
@@ -205,10 +256,16 @@ final class BridgeClient: NSObject {
             }
         case "notification.cleared":
             return .notificationCleared
-        case "cmux.connected":
-            return .cmuxConnected
-        case "cmux.disconnected":
-            return .cmuxDisconnected
+        case "cmux.connected", "backend.connected":
+            return .backendConnected
+        case "cmux.disconnected", "backend.disconnected":
+            return .backendDisconnected
+        case "surface.updated":
+            if let updateData = try? JSONSerialization.data(withJSONObject: data),
+               let update = try? JSONDecoder().decode(SurfaceUpdate.self, from: updateData) {
+                return .surfaceUpdated(update)
+            }
+            return .ignored
         default:
             break
         }
@@ -227,7 +284,10 @@ final class BridgeClient: NSObject {
             return .commandResponse(CommandResponse(id: id, ok: ok, result: result, error: cmdError))
         }
 
-        return .notificationCleared // fallback
+        // Not a command response and not a push we know: ignore it. (This used
+        // to fall back to .notificationCleared, which wiped the list on any
+        // unknown push.)
+        return .ignored
     }
 
     private func handleDisconnect(error: Error?) {

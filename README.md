@@ -190,6 +190,42 @@ always enable it (so `cmux-bridge` alone runs with the tailnet listener).
 > (`launchctl unload ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist`),
 > pair, then reinstall with `./scripts/install-bridge.sh --tailscale`.
 
+## Using herdr instead of cmux
+
+The bridge can front [herdr](https://herdr.dev) (the terminal runtime for
+coding agents) instead of the cmux app. Nothing changes on the phone: a herdr
+pane shows up as a surface, a herdr workspace as a workspace, and the layout
+tab mirrors the workspace's active herdr tab.
+
+```bash
+# herdr running (its socket lives at ~/.config/herdr/herdr.sock)
+cmux-bridge --backend herdr --pair     # or set "backend": "herdr" in config.json
+```
+
+With `"backend": "auto"` (the default) the bridge fronts **every runtime that
+answers** — when cmux and herdr are both running, the phone sees both sets of
+workspaces under one bridge, and notifications from both arrive. `"all"` does
+the same without probing, so a runtime that is down is picked up when it comes
+back. On the phone, the sidebar menu (and Settings → "Show workspaces from")
+switches between **All** (both, labelled ` · cmux` / ` · herdr`), **cmux**, and
+**herdr** instantly — it's a view filter, the bridge keeps serving both. Config keys: `backend`,
+`herdr_socket_path`, `herdr_session` (a named herdr session). Run a second
+bridge beside the installed one with `--config-dir` (its `config.json` sets a
+different `bridge_port`).
+
+What you get on herdr that cmux doesn't have: herdr's own agent detection
+(`working` / `blocked` / `done`) drives the working indicator and produces
+notifications the moment an agent stops for input — no polling. Conversation
+history for a Claude pane needs herdr's Claude integration so the pane knows
+its session id:
+
+```bash
+herdr integration install claude
+```
+
+Without it the bridge falls back to the newest transcript in the pane's
+directory. herdr has no browser surfaces, so that affordance is hidden.
+
 ## Logs and debugging
 
 ```bash

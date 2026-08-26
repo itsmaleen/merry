@@ -19,7 +19,7 @@ func ids(ns []Notification) []string {
 }
 
 func TestIngestDedupes(t *testing.T) {
-	p := New(nil, 0)
+	p := New(nil, 0, nil)
 	gen := p.generation
 
 	first, _ := p.ingest(notifs("a", "b"), gen)
@@ -39,7 +39,7 @@ func TestIngestDedupes(t *testing.T) {
 }
 
 func TestResetSeenIDsReEmits(t *testing.T) {
-	p := New(nil, 0)
+	p := New(nil, 0, nil)
 	gen := p.generation
 	p.ingest(notifs("a"), gen)
 
@@ -56,16 +56,16 @@ func TestResetSeenIDsReEmits(t *testing.T) {
 // discarded — it must not re-mark the just-cleared IDs as seen (which would
 // suppress the re-emit the clear is meant to produce).
 func TestIngestDiscardsStaleGeneration(t *testing.T) {
-	p := New(nil, 0)
+	p := New(nil, 0, nil)
 	staleGen := p.generation // captured before the clear
 
 	// A clear happens while the poll's notification.list is in flight.
 	p.ResetSeenIDs()
 
 	// The in-flight result arrives with the pre-clear generation → discarded.
-	discarded, subs := p.ingest(notifs("a", "b"), staleGen)
-	if discarded != nil || subs != nil {
-		t.Fatalf("stale-generation ingest returned %v/%v, want nil/nil", ids(discarded), subs)
+	discarded, ok := p.ingest(notifs("a", "b"), staleGen)
+	if discarded != nil || ok {
+		t.Fatalf("stale-generation ingest returned %v/ok=%v, want nil/false", ids(discarded), ok)
 	}
 	// seenIDs must remain empty, so a subsequent fresh poll re-emits.
 	fresh, _ := p.ingest(notifs("a", "b"), p.generation)

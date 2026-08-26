@@ -805,7 +805,7 @@ struct WorkspaceLayoutView: View {
     // MARK: - Workspace pills
 
     private func workspaceLabel(for ws: Workspace, at index: Int) -> String {
-        let title = ws.title
+        let title = appState.displayTitle(for: ws)
         // Only fall back to a positional label if cmux gave us nothing usable:
         // the raw id, or something UUID-shaped. The length floor keeps short
         // hexy-looking real titles ("cafe", "dead-beef") from being swallowed.
@@ -825,7 +825,7 @@ struct WorkspaceLayoutView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(Array(appState.workspaces.enumerated()), id: \.element.id) { index, ws in
+                    ForEach(Array(appState.visibleWorkspaces.enumerated()), id: \.element.id) { index, ws in
                         let isActive = ws.id == appState.currentWorkspaceID
                         let hasNotif = workspaceHasNotification(ws)
 

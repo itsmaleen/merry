@@ -96,6 +96,11 @@ struct MainTabView: View {
 
     private var sidebarPanel: some View {
         VStack(alignment: .leading, spacing: 2) {
+            if appState.isComposite {
+                runtimeSwitcher
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            }
             ForEach(SidebarTab.allCases) { tab in
                 Button {
                     appState.selectedTab = tab
@@ -153,6 +158,35 @@ struct MainTabView: View {
                 topTrailingRadius: 16
             )
         )
+    }
+
+    /// All / cmux / herdr — which runtime's workspaces the app shows when the
+    /// bridge fronts both. Tapping keeps the sidebar open so the change is seen.
+    private var runtimeSwitcher: some View {
+        HStack(spacing: 4) {
+            ForEach(RuntimeFilter.allCases) { filter in
+                let isActive = appState.runtimeFilter == filter
+                Button {
+                    appState.runtimeFilter = filter
+                    revealSidebar() // restart the auto-dismiss timer
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: filter.icon)
+                            .font(.system(size: 10))
+                        Text(filter.label)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    }
+                    .foregroundStyle(isActive ? .black : .white.opacity(0.6))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        Capsule().fill(isActive ? Color.white : Color.white.opacity(0.08))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Actions

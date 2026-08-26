@@ -1,8 +1,48 @@
 # cmux-companion WebSocket Protocol
 
-Version: 1
+Version: 2
 
 All messages are JSON, newline-delimited over WebSocket text frames.
+
+## Backends
+
+The bridge fronts one terminal runtime — a **backend** — on the Mac: `cmux`
+(the cmux app's control socket) or `herdr` (herdr.dev's socket API). The phone
+speaks the one vocabulary below regardless; the cmux backend proxies it
+verbatim (it *is* cmux's API), the herdr backend translates it
+(`bridge/internal/backend/herdr`). The `connected` payload names the backend
+and its capabilities so the phone can hide what the runtime can't serve.
+
+Backend selection: `"backend"` in `~/.config/cmux-bridge/config.json`
+(`"cmux"`, `"herdr"`, `"all"`, or the default `"auto"`, which fronts every
+runtime whose socket answers) or `cmux-bridge --backend herdr`. herdr's socket
+is `~/.config/herdr/herdr.sock` by default; override with `"herdr_socket_path"`
+or name a herdr session with `"herdr_session"`.
+
+**Composite (both at once).** When more than one runtime is fronted the bridge
+reports `backend: "cmux+herdr"` and every id the phone sees is namespaced by
+runtime — `cmux:<uuid>`, `herdr:w1:p1` — in results *and* in push events, with
+the namespace stripped again on the way in. `workspace.list` and
+`notification.list` merge both runtimes (each workspace record gains a
+`backend` field naming its runtime; the phone uses it to label and to filter
+the list to one runtime); `notification.clear` and
+`system.ping` reach both; a command carrying an id goes to that id's runtime;
+commands carrying none (`workspace.current`, an unscoped `surface.list`) go to
+the runtime of the last `workspace.select`. `backend.disconnected` is only
+pushed once no runtime is left. `capabilities` is the union.
+
+Under herdr a phone **surface is a herdr pane** (`w1:p1`), a phone **workspace
+is a herdr workspace**, and `pane.list` reports the layout of the workspace's
+active herdr tab. Every surface carries `agent_status` and, for a pane running a
+recognised agent, `agent` plus a `resume_binding` mirroring cmux's shape
+(`kind` = the agent, `checkpoint_id` = the native session id when herdr's
+integration for that agent is installed).
+
+Protocol 2 changes: `connected` gains `backend`, `backend_connected`,
+`capabilities`; `cmux.connected`/`cmux.disconnected` become
+`backend.connected`/`backend.disconnected`; `surface.updated` is new;
+`agent.transcript` is accepted as an alias of `claude.transcript`. Clients must
+ignore push types they don't know.
 
 ## Authentication
 
@@ -50,25 +90,51 @@ client change.
 }
 ```
 
-### cmux.connected
+Under herdr, notifications are synthesised by the bridge from agent-status
+transitions: a pane whose agent becomes `blocked` produces one with body
+"Needs your input", one that becomes `done` produces "Finished". `title` is the
+pane's title (Claude Code's conversation topic), `subtitle` the agent name.
 
-Sent when the bridge (re)connects to the cmux socket.
+### backend.connected
+
+Sent when the bridge (re)connects to its terminal runtime. (Protocol 1 called
+this `cmux.connected`; clients should accept both.)
 
 ```json
 {
-  "type": "cmux.connected",
-  "data": { "bridge_version": "0.1.0" }
+  "type": "backend.connected",
+  "data": { "backend": "herdr", "bridge_version": "0.2.0" }
 }
 ```
 
-### cmux.disconnected
+### backend.disconnected
 
-Sent when the bridge loses its cmux socket connection.
+Sent when the bridge loses its runtime connection. (Protocol 1: `cmux.disconnected`.)
 
 ```json
 {
-  "type": "cmux.disconnected",
-  "data": { "reason": "socket_unavailable" }
+  "type": "backend.disconnected",
+  "data": { "backend": "herdr", "reason": "socket_unavailable" }
+}
+```
+
+### surface.updated
+
+Sent by backends with the `agent_status` capability when a surface's agent
+status changes (or it is first observed). The phone treats `agent_status ==
+"working"` as the surface's working indicator instead of diffing successive
+reads, and refetches `surface.list` to pick up the title.
+
+```json
+{
+  "type": "surface.updated",
+  "data": {
+    "surface_id": "w1:p1",
+    "workspace_id": "w1",
+    "agent_status": "blocked",
+    "agent": "claude",
+    "title": "Fix auth middleware"
+  }
 }
 ```
 
@@ -80,12 +146,25 @@ Sent immediately after WebSocket handshake + auth succeeds.
 {
   "type": "connected",
   "data": {
-    "bridge_version": "0.1.0",
+    "bridge_version": "0.2.0",
+    "protocol_version": 2,
+    "backend": "herdr",
+    "backend_connected": true,
     "cmux_connected": true,
-    "protocol_version": 1
+    "capabilities": {
+      "browser": false,
+      "agent_status": true,
+      "notifications": "push"
+    }
   }
 }
 ```
+
+`cmux_connected` duplicates `backend_connected` for protocol-1 clients.
+`capabilities.browser` — the runtime has browser surfaces (`surface.create
+{type:"browser"}`, `browser.url.get`); `agent_status` — surfaces carry a
+runtime-detected `agent_status` and `surface.updated` is pushed;
+`notifications` — `"polled"` (runtime keeps a list) or `"push"` (synthesised).
 
 ## Client → Server: Commands
 
@@ -123,6 +202,11 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   claude-code) repaint a fixed viewport and keep little/no terminal scrollback,
   so for those it returns roughly the visible screen regardless of N. Used by
   the iOS live-view + scrollback rendering.
+  Under herdr this is `pane.read {source:"recent"}`; for a pane running a
+  recognised agent N is clamped to the pane's viewport rows (returned as
+  `lines`), because a deeper read on an idle alternate-screen agent makes herdr
+  scroll the user's live pane to page its history. Agent history comes from
+  `claude.transcript`.
 
 **Agents (bridge-local, not proxied to cmux):**
 - `claude.transcript` — `{"surface_id":"...","max_messages":300,"known_fingerprint":"..."}`
@@ -149,6 +233,14 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   and an unchanged transcript answers `unchanged: true` with no `text`, which is
   what makes polling this on every refresh cycle cheap.
 
+  `agent.transcript` is an accepted alias. Under herdr the binding comes from
+  herdr's own Claude integration (`herdr integration install claude`), which
+  reports the session id herdr exposes as the pane's `agent_session`; the
+  bridge then finds `<id>.jsonl` under `~/.claude/projects` (`source:
+  "projects_glob"`). Without the integration there is no session id and the
+  bridge falls back to the newest transcript for the pane's cwd
+  (`cwd_latest`).
+
 **Browsers:**
 - `browser.url.get` — `{"surface_id":"..."}` → `{"url":"..."}` (browser surfaces)
 
@@ -162,6 +254,10 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
 **Input:**
 - `surface.send_text` — `{"surface_id":"...","text":"ls\n"}`
 - `surface.send_key` — `{"surface_id":"...","key":"ctrl+c"}`
+  Under herdr a trailing `\n` in `send_text` is delivered as the Enter key
+  (`pane.send_input {text, keys:["enter"]}`), and `send_key` maps
+  `escape`→`esc`, `return`→`enter`, `cmd+shift+enter`→`pane.zoom toggle`;
+  other `cmd+` chords return `invalid_params`.
 
 **Notifications:**
 - `notification.list` — list all notifications

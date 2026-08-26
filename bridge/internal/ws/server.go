@@ -8,33 +8,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
 )
 
 // Server is the WebSocket HTTP server.
 type Server struct {
-	token         string
-	poll          *poller.Poller
-	cmuxClient    *socket.Client
-	cmuxConnected func() bool
-	resolver      *claude.Resolver
-	httpServer    *http.Server
+	token      string
+	backend    backend.Backend
+	httpServer *http.Server
 }
 
-func NewServer(
-	token string,
-	poll *poller.Poller,
-	cmuxClient *socket.Client,
-	cmuxConnected func() bool,
-) *Server {
+func NewServer(token string, be backend.Backend) *Server {
 	s := &Server{
-		token:         token,
-		poll:          poll,
-		cmuxClient:    cmuxClient,
-		cmuxConnected: cmuxConnected,
-		resolver:      claude.NewResolver(),
+		token:   token,
+		backend: be,
 	}
 
 	mux := http.NewServeMux()
@@ -49,7 +36,7 @@ func NewServer(
 }
 
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
-	handleClient(w, r, s.token, s.poll, s.cmuxClient, s.cmuxConnected, s.resolver)
+	handleClient(w, r, s.token, s.backend)
 }
 
 // ListenAndServe binds to addr (e.g. ":47821") and serves until ctx is cancelled.

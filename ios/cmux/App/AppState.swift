@@ -39,6 +39,28 @@ final class AppState: ObservableObject {
     private var readSeq: [String: Int] = [:]
     private var appliedReadSeq: [String: Int] = [:]
     @Published var browserURLs: [String: String] = [:]
+    // Which terminal runtime the connected bridge fronts ("cmux" or "herdr")
+    // and what it can do. Set from the `connected` payload; a protocol-1 bridge
+    // is cmux. Views hide affordances the runtime can't serve (browser
+    // surfaces) and prefer its agent status over read-diffing when it has one.
+    @Published var backendKind: String = "cmux"
+    @Published var capabilities: BackendCapabilities = .cmux
+    // Which runtime's workspaces to show when the bridge fronts more than one
+    // (a composite bridge reports backend "cmux+herdr" and namespaces every id
+    // by runtime). Purely a phone-side view filter: switching is instant and
+    // the bridge keeps serving both. Persisted across launches.
+    @Published var runtimeFilter: RuntimeFilter = RuntimeFilter.stored {
+        didSet {
+            guard runtimeFilter != oldValue else { return }
+            UserDefaults.standard.set(runtimeFilter.rawValue, forKey: RuntimeFilter.storageKey)
+            enforceRuntimeFilter()
+        }
+    }
+    // Runtime-reported agent status per surface (idle/working/blocked/done/
+    // unknown), from surface.list and surface.updated pushes. Only populated
+    // when the backend has the agent_status capability; a surface present here
+    // takes its working indicator from this instead of the read-diff vote.
+    @Published var agentStatus: [String: String] = [:]
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
     @Published var selectedTab: SidebarTab = .layout
@@ -134,6 +156,13 @@ final class AppState: ObservableObject {
     }
 
     private func applyNavigation(surfaceID: String, workspaceID: String?) {
+        // An alert from the runtime the filter hides: show that runtime rather
+        // than selecting a workspace the strip can't display.
+        if let runtime = runtime(ofID: workspaceID ?? surfaceID),
+           let target = RuntimeFilter(rawValue: runtime),
+           runtimeFilter != .all, runtimeFilter != target {
+            runtimeFilter = target
+        }
         // Focus only after the workspace switch lands: selectWorkspace's
         // completion restores that workspace's last-remembered focus, which
         // would overwrite an eagerly applied one — and focusSurface records
@@ -153,6 +182,46 @@ final class AppState: ObservableObject {
         // That surface is now on screen, so its pending notifications are stale.
         if notifications.contains(where: { $0.surfaceID == surfaceID }) {
             notifications.removeAll { $0.surfaceID == surfaceID }
+        }
+    }
+
+    // MARK: - Runtimes
+
+    /// The runtimes behind the connected bridge, e.g. ["cmux", "herdr"].
+    var availableRuntimes: [String] {
+        backendKind.split(separator: "+").map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// Whether the bridge fronts more than one runtime, so the filter applies.
+    var isComposite: Bool { availableRuntimes.count > 1 }
+
+    /// The workspaces the current runtime filter lets through.
+    var visibleWorkspaces: [Workspace] {
+        guard isComposite, let runtime = runtimeFilter.runtime else { return workspaces }
+        return workspaces.filter { $0.backend == runtime }
+    }
+
+    /// A workspace's label, tagged with its runtime when both are on screen.
+    func displayTitle(for ws: Workspace) -> String {
+        guard isComposite, runtimeFilter == .all, let backend = ws.backend else { return ws.title }
+        return "\(ws.title) · \(backend)"
+    }
+
+    /// The runtime an id (workspace or surface) belongs to, from its namespace.
+    func runtime(ofID id: String) -> String? {
+        guard isComposite, let colon = id.firstIndex(of: ":") else { return nil }
+        let prefix = String(id[..<colon])
+        return availableRuntimes.contains(prefix) ? prefix : nil
+    }
+
+    /// Keeps the current workspace inside the filter: when the filter hides it,
+    /// the first visible workspace takes over.
+    private func enforceRuntimeFilter() {
+        guard isComposite, connectionStatus.isConnected else { return }
+        let visible = visibleWorkspaces
+        if let current = currentWorkspaceID, visible.contains(where: { $0.id == current }) { return }
+        if let first = visible.first {
+            selectWorkspace(first.id)
         }
     }
 
@@ -213,7 +282,8 @@ final class AppState: ObservableObject {
         else { return }
 
         let tailscaleHost = components.queryItems?.first(where: { $0.name == "tailscale_host" })?.value
-        let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost)
+        let backend = components.queryItems?.first(where: { $0.name == "backend" })?.value
+        let credentials = PairingCredentials(host: host, port: port, token: token, tailscaleHost: tailscaleHost, backend: backend)
 
         // A bridge we already trust (same token) is just refreshing its network
         // coordinates — update it in place and switch to it, no confirmation.
@@ -324,6 +394,7 @@ final class AppState: ObservableObject {
         localFocusedSurfaceID = nil
         surfaceContent = [:]
         workingSurfaces = []
+        agentStatus = [:]
         lastReadDepth = [:]
         readSeq = [:]
         appliedReadSeq = [:]
@@ -430,10 +501,11 @@ final class AppState: ObservableObject {
     }
 
     func cycleWorkspace() {
-        guard !workspaces.isEmpty else { return }
-        let currentIndex = workspaces.firstIndex(where: { $0.id == currentWorkspaceID }) ?? -1
-        let nextIndex = (currentIndex + 1) % workspaces.count
-        selectWorkspace(workspaces[nextIndex].id)
+        let list = visibleWorkspaces
+        guard !list.isEmpty else { return }
+        let currentIndex = list.firstIndex(where: { $0.id == currentWorkspaceID }) ?? -1
+        let nextIndex = (currentIndex + 1) % list.count
+        selectWorkspace(list[nextIndex].id)
     }
 
     func cyclePane() {
@@ -526,7 +598,11 @@ final class AppState: ObservableObject {
                     // surface is working; an identical read means idle. A poll
                     // at a new depth changed the text without implying
                     // activity, so it doesn't vote.
-                    if self.lastReadDepth[surfaceID] == lines || previous == nil {
+                    // A backend that reports agent status (herdr) is
+                    // authoritative for surfaces it has classified; only
+                    // unclassified ones fall back to the diff heuristic.
+                    if self.agentStatus[surfaceID] == nil,
+                       self.lastReadDepth[surfaceID] == lines || previous == nil {
                         self.setWorking(previous != nil && previous != content, for: surfaceID)
                     }
                     self.lastReadDepth[surfaceID] = lines
@@ -738,7 +814,7 @@ final class AppState: ObservableObject {
             // otherwise `workspaces` still contains the just-closed one.
             self?.refreshWorkspaces {
                 guard let self, self.currentWorkspaceID == id else { return }
-                if let next = self.workspaces.first(where: { $0.id != id }) {
+                if let next = self.visibleWorkspaces.first(where: { $0.id != id }) {
                     self.selectWorkspace(next.id)
                 }
             }
@@ -797,9 +873,12 @@ final class AppState: ObservableObject {
         // list or an unset current ID depending on which reply arrives first.
         // Both callbacks run on the main actor, so `pending` needs no locking.
         var pending = 2
-        let step = {
+        let step = { [weak self] in
             pending -= 1
-            if pending == 0 { completion?() }
+            if pending == 0 {
+                self?.enforceRuntimeFilter()
+                completion?()
+            }
         }
         send(method: "workspace.list", params: [:]) { [weak self] result in
             if let list = result["workspaces"] as? [[String: Any]] {
@@ -808,7 +887,10 @@ final class AppState: ObservableObject {
             step()
         }
         send(method: "workspace.current", params: [:]) { [weak self] result in
-            if let id = result["id"] as? String, id != self?.currentWorkspaceID {
+            // cmux answers with the id under `workspace_id` (and the record
+            // under `workspace`); herdr and the composite also give `id`.
+            if let id = (result["id"] as? String) ?? (result["workspace_id"] as? String),
+               id != self?.currentWorkspaceID {
                 self?.currentWorkspaceID = id
             }
             step()
@@ -823,6 +905,7 @@ final class AppState: ObservableObject {
         send(method: "surface.list", params: params) { [weak self] result in
             if let list = result["surfaces"] as? [[String: Any]] {
                 self?.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
+                self?.applyAgentStatuses()
                 // Validate remembered surface still exists
                 if let localID = self?.localFocusedSurfaceID,
                    self?.surfaces.contains(where: { $0.id == localID }) == false {
@@ -836,6 +919,24 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Mirrors runtime-reported agent statuses from the surface list into
+    /// `agentStatus` and the working indicator. No-op for a backend without the
+    /// capability, whose surfaces carry no status.
+    private func applyAgentStatuses() {
+        guard capabilities.agentStatus else { return }
+        for surface in surfaces {
+            guard let status = surface.agentStatus else { continue }
+            applyAgentStatus(status, for: surface.id)
+        }
+    }
+
+    private func applyAgentStatus(_ status: String, for surfaceID: String) {
+        if agentStatus[surfaceID] != status {
+            agentStatus[surfaceID] = status
+        }
+        setWorking(status == "working", for: surfaceID)
+    }
+
     private func refreshSurfacesAndFocusNew(previousIDs: Set<String>) {
         var params: [String: Any] = [:]
         if let id = currentWorkspaceID {
@@ -845,6 +946,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             if let list = result["surfaces"] as? [[String: Any]] {
                 self.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
+                self.applyAgentStatuses()
                 if let newSurface = self.surfaces.first(where: { !previousIDs.contains($0.id) }) {
                     self.focusSurface(newSurface.id)
                 } else if self.focusedSurfaceID == nil, let first = self.surfaces.first {
@@ -960,7 +1062,9 @@ extension AppState: BridgeClientDelegate {
     func clientDidReceiveMessage(_ client: BridgeClient, message: BridgeMessage) {
         switch message {
         case .connected(let payload):
-            connectionStatus = .connected(cmuxConnected: payload.cmuxConnected)
+            connectionStatus = .connected(cmuxConnected: payload.isBackendConnected)
+            if backendKind != payload.backendKind { backendKind = payload.backendKind }
+            if capabilities != payload.effectiveCapabilities { capabilities = payload.effectiveCapabilities }
         case .notificationCreated(let n):
             notifications.insert(n, at: 0)
             print("[Notification] id=\(n.id) surfaceID=\(n.surfaceID ?? "nil") workspaceID=\(n.workspaceID ?? "nil") title=\(n.title)")
@@ -968,16 +1072,27 @@ extension AppState: BridgeClientDelegate {
             scheduleLocalNotification(n)
         case .notificationCleared:
             notifications = []
-        case .cmuxConnected:
+        case .backendConnected:
             connectionStatus = .connected(cmuxConnected: true)
             refreshWorkspaces {
                 self.refreshSurfaces()
                 self.refreshPanes()
             }
-        case .cmuxDisconnected:
+        case .backendDisconnected:
             connectionStatus = .connected(cmuxConnected: false)
             panes = []
-        case .commandResponse:
+        case .surfaceUpdated(let update):
+            if capabilities.agentStatus, let status = update.agentStatus {
+                applyAgentStatus(status, for: update.surfaceID)
+            }
+            // The title (Claude's conversation topic, an agent starting or
+            // exiting) is part of the surface record; refetch the list so the
+            // card header follows it. Coalesced by setIfChanged when nothing
+            // visible changed.
+            if update.workspaceID == nil || update.workspaceID == currentWorkspaceID {
+                refreshSurfaces()
+            }
+        case .commandResponse, .ignored:
             break
         }
     }
@@ -1020,6 +1135,9 @@ struct Workspace: Identifiable {
     /// active conversation topic, else the working directory) — matches what the
     /// cmux UI shows. Falls back through older fields, then the id.
     let title: String
+    /// The runtime this workspace lives in ("cmux" / "herdr"), set by a
+    /// composite bridge. nil from a single-runtime bridge.
+    let backend: String?
 
     init?(_ dict: [String: Any]) {
         guard let id = dict["id"] as? String else { return nil }
@@ -1030,11 +1148,46 @@ struct Workspace: Identifiable {
             .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
             ?? id
+        self.backend = dict["backend"] as? String
     }
 
     // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
     static func sameContent(_ a: Workspace, _ b: Workspace) -> Bool {
-        a.id == b.id && a.title == b.title
+        a.id == b.id && a.title == b.title && a.backend == b.backend
+    }
+}
+
+/// Which runtime's workspaces the phone shows from a composite bridge.
+enum RuntimeFilter: String, CaseIterable, Identifiable {
+    case all
+    case cmux
+    case herdr
+
+    static let storageKey = "runtimeFilter"
+
+    static var stored: RuntimeFilter {
+        RuntimeFilter(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .all
+    }
+
+    var id: String { rawValue }
+
+    /// The runtime name this filter admits; nil for all.
+    var runtime: String? { self == .all ? nil : rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .cmux: return "cmux"
+        case .herdr: return "herdr"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2"
+        case .cmux: return "macwindow"
+        case .herdr: return "terminal"
+        }
     }
 }
 
@@ -1044,9 +1197,12 @@ struct Surface: Identifiable {
     let type: String
     let workspaceID: String?
     let isFocused: Bool
-    /// Agent kind from cmux's resume_binding (e.g. "claude"), when this surface
-    /// is running an agent. Used to offer conversation-transcript history.
+    /// Agent kind from the runtime's resume_binding (e.g. "claude"), when this
+    /// surface is running an agent. Used to offer conversation-transcript history.
     let agentKind: String?
+    /// Runtime-detected agent status (idle/working/blocked/done/unknown), from
+    /// backends with the agent_status capability (herdr). nil from cmux.
+    let agentStatus: String?
 
     var isBrowser: Bool { type == "browser" }
     var isClaudeAgent: Bool { agentKind == "claude" }
@@ -1059,13 +1215,14 @@ struct Surface: Identifiable {
         self.workspaceID = dict["workspace_id"] as? String
         self.isFocused = dict["is_focused"] as? Bool ?? false
         self.agentKind = (dict["resume_binding"] as? [String: Any])?["kind"] as? String
+        self.agentStatus = dict["agent_status"] as? String
     }
 
     // Deliberately NOT an Equatable conformance; see AppState.setIfChanged.
     static func sameContent(_ a: Surface, _ b: Surface) -> Bool {
         a.id == b.id && a.title == b.title && a.type == b.type
             && a.workspaceID == b.workspaceID && a.isFocused == b.isFocused
-            && a.agentKind == b.agentKind
+            && a.agentKind == b.agentKind && a.agentStatus == b.agentStatus
     }
 }
 
@@ -1137,13 +1294,17 @@ enum ConnectionStatus: Equatable {
         return false
     }
 
-    var label: String {
+    var label: String { label(backend: "cmux") }
+
+    /// The status text, naming the runtime the bridge fronts when it is the
+    /// part that's down.
+    func label(backend: String) -> String {
         switch self {
         case .disconnected: return "Disconnected"
         case .connecting: return "Connecting…"
         case .reconnecting: return "Reconnecting…"
-        case .connected(let cmux):
-            return cmux ? "Connected" : "Bridge connected (cmux offline)"
+        case .connected(let runtimeUp):
+            return runtimeUp ? "Connected" : "Bridge connected (\(backend) offline)"
         }
     }
 
