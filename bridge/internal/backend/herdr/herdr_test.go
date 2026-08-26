@@ -511,9 +511,18 @@ func TestRunConnectsFromSubscription(t *testing.T) {
 	if !cached {
 		t.Fatal("snapshot did not seed the pane cache")
 	}
-	statusMu.Lock()
-	dials := append([]string(nil), statusDials...)
-	statusMu.Unlock()
+	// The per-pane dial runs on its own goroutine after the snapshot; give it
+	// a moment rather than asserting the instant backend.connected lands.
+	var dials []string
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		statusMu.Lock()
+		dials = append([]string(nil), statusDials...)
+		statusMu.Unlock()
+		if len(dials) > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	if len(dials) != 1 || dials[0] != "w1:p1" {
 		t.Fatalf("status subscriptions opened for %v, want [w1:p1]", dials)
 	}

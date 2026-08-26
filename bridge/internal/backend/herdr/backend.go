@@ -298,6 +298,12 @@ func (b *Backend) consume(ctx context.Context, sub subscription) {
 			if !ok {
 				return
 			}
+			// A line that raced the cancellation belongs to a subscription
+			// that is already dead (pane closed, backend reconnecting); the
+			// select may still pick it over ctx.Done, so re-check here.
+			if ctx.Err() != nil {
+				return
+			}
 			b.applyEvent(line)
 		}
 	}
@@ -364,7 +370,10 @@ func (b *Backend) applyEvent(line []byte) {
 		}
 		p, err := b.pane(data.PaneID)
 		if err != nil {
-			p = paneInfo{PaneID: data.PaneID, WorkspaceID: data.WorkspaceID}
+			// herdr no longer knows this pane: the event is from a subscription
+			// that outlived its pane. Synthesising a record here would put a
+			// closed pane back in the cache and push a ghost surface.updated.
+			return
 		}
 		p.AgentStatus = data.AgentStatus
 		p.Agent = data.Agent

@@ -187,6 +187,11 @@ func main() {
 	if *configDirFlag != "" {
 		dir = *configDirFlag
 	}
+	// The directory holds the pairing token and the socket/port config; refuse
+	// one another user could have pre-populated (see pair.EnsurePrivateDir).
+	if err := pair.EnsurePrivateDir(dir); err != nil {
+		log.Fatalf("config: %v", err)
+	}
 	cfg, err := loadConfig(dir)
 	if err != nil {
 		log.Fatalf("config: %v", err)
