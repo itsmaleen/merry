@@ -97,9 +97,11 @@ struct MainTabView: View {
     private var sidebarPanel: some View {
         VStack(alignment: .leading, spacing: 2) {
             if appState.isComposite {
-                runtimeSwitcher
+                runtimeMenu
+                Divider()
+                    .overlay(Color.white.opacity(0.1))
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.vertical, 6)
             }
             ForEach(SidebarTab.allCases) { tab in
                 Button {
@@ -160,33 +162,47 @@ struct MainTabView: View {
         )
     }
 
-    /// All / cmux / herdr — which runtime's workspaces the app shows when the
-    /// bridge fronts both. Tapping keeps the sidebar open so the change is seen.
-    private var runtimeSwitcher: some View {
-        HStack(spacing: 4) {
-            ForEach(RuntimeFilter.allCases) { filter in
-                let isActive = appState.runtimeFilter == filter
-                Button {
-                    appState.runtimeFilter = filter
+    /// Which runtime's workspaces the app shows when the bridge fronts both:
+    /// one sidebar row, styled like the tab rows, that drops down All / cmux /
+    /// herdr with a check on the current choice. Picking one keeps the sidebar
+    /// open so the change is seen.
+    private var runtimeMenu: some View {
+        Menu {
+            Picker("Runtime", selection: Binding(
+                get: { appState.runtimeFilter },
+                set: { newValue in
+                    appState.runtimeFilter = newValue
                     revealSidebar() // restart the auto-dismiss timer
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: filter.icon)
-                            .font(.system(size: 10))
-                        Text(filter.label)
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    }
-                    .foregroundStyle(isActive ? .black : .white.opacity(0.6))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        Capsule().fill(isActive ? Color.white : Color.white.opacity(0.08))
-                    )
                 }
-                .buttonStyle(.plain)
+            )) {
+                ForEach(RuntimeFilter.allCases) { filter in
+                    Label(filter.label, systemImage: filter.icon).tag(filter)
+                }
             }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: appState.runtimeFilter.icon)
+                    .font(.system(size: 13))
+                    .frame(width: 20)
+                Text("Runtime")
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                Spacer()
+                Text(appState.runtimeFilter.label)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .foregroundStyle(.white.opacity(0.5))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        // Opening the menu shouldn't race the auto-dismiss timer; a
+        // simultaneous gesture restarts it without stealing the tap from Menu.
+        .simultaneousGesture(TapGesture().onEnded { revealSidebar() })
     }
 
     // MARK: - Actions
