@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "98d7bdab9a0e",
+  "strategy": "manual-commit",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "bridge/internal/ws/handler.go",
+    "shared/protocol.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/98/d7bdab9a0e/0/metadata.json",
+      "transcript": "/98/d7bdab9a0e/0/full.jsonl",
+      "compact_transcript": "/98/d7bdab9a0e/0/transcript.jsonl",
+      "content_hash": "/98/d7bdab9a0e/0/content_hash.txt",
+      "prompt": "/98/d7bdab9a0e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46891,
+    "cache_creation_tokens": 3253814,
+    "cache_read_tokens": 85606055,
+    "output_tokens": 284345,
+    "api_call_count": 200
+  }
+}
