@@ -9,17 +9,17 @@ from your phone. Fronts [cmux](https://github.com/manaflow-ai/cmux) and
 
 ```
 [cmux Mac app]  ─┐
-                 ├─ Unix socket ─  [cmux-bridge]  ─ WebSocket/LAN ─  [merry iOS app]
+                 ├─ Unix socket ─  [merry-bridge]  ─ WebSocket/LAN ─  [merry iOS app]
 [herdr daemon]  ─┘
 ```
 
-- **`bridge/`** — Go binary (`cmux-bridge`) that connects to the local cmux
+- **`bridge/`** — Go binary (`merry-bridge`) that connects to the local cmux
   and/or herdr socket and exposes a WebSocket server on the LAN. See
   [Using herdr](#using-herdr-instead-of-cmux) for the backend options.
 - **`ios/`** — SwiftUI iPhone app (landscape, iOS 17+)
 - **`shared/`** — Protocol documentation
 
-> The binary, config directory, bundle id, and `cmux-bridge://` pairing scheme
+> The binary, config directory, bundle id, and `merry-bridge://` pairing scheme
 > keep their `cmux` names for compatibility with existing installs and pairings;
 > only the product name changed.
 
@@ -41,8 +41,8 @@ from your phone. Fronts [cmux](https://github.com/manaflow-ai/cmux) and
 
 ```bash
 cd bridge
-go build -o cmux-bridge ./cmd/cmux-bridge
-sudo mv cmux-bridge /usr/local/bin/
+go build -o merry-bridge ./cmd/merry-bridge
+sudo mv merry-bridge /usr/local/bin/
 ```
 
 Or use the install script (builds + sets up LaunchAgent for auto-start on login).
@@ -64,7 +64,7 @@ silently keeping the old binary alive — see [Troubleshooting](#troubleshooting
 This only needs to be done once. It connects to cmux's socket, generates a token, and shows a QR code.
 
 ```bash
-cmux-bridge --pair
+merry-bridge --pair
 ```
 
 You'll be prompted for the cmux socket password (if password mode is enabled in cmux Settings > Socket Control). Then a QR code appears in the terminal — keep it visible for the next step.
@@ -80,16 +80,16 @@ On first launch, tap "Scan QR Code" and scan the QR from step 2.
 After pairing, start the bridge (it stays running and the iOS app auto-connects):
 
 ```bash
-cmux-bridge
+merry-bridge
 ```
 
-If you used `install-bridge.sh`, the LaunchAgent starts it automatically on login. Otherwise, run `cmux-bridge` manually or add it to your shell startup.
+If you used `install-bridge.sh`, the LaunchAgent starts it automatically on login. Otherwise, run `merry-bridge` manually or add it to your shell startup.
 
 ### Troubleshooting
 
-- **iOS shows "reconnecting"** — make sure `cmux-bridge` is running and cmux is open
-- **Bridge shows "cannot connect to cmux socket"** — make sure cmux is running with socket control enabled, then re-pair with `cmux-bridge --pair`
-- **Need to re-pair** — run `cmux-bridge --pair` again and scan the new QR code from the iOS app (Settings > Pair new device)
+- **iOS shows "reconnecting"** — make sure `merry-bridge` is running and cmux is open
+- **Bridge shows "cannot connect to cmux socket"** — make sure cmux is running with socket control enabled, then re-pair with `merry-bridge --pair`
+- **Need to re-pair** — run `merry-bridge --pair` again and scan the new QR code from the iOS app (Settings > Pair new device)
 - **Rebuilt the bridge but nothing changed / Tailscale never starts** — a stale
   daemon may still be holding the port. The bridge binds LAN **before** starting
   the Tailscale listener and treats a LAN bind failure as fatal, so a leftover
@@ -100,7 +100,7 @@ If you used `install-bridge.sh`, the LaunchAgent starts it automatically on logi
   reinstalling:
 
   ```bash
-  pkill -f /usr/local/bin/cmux-bridge
+  pkill -f /usr/local/bin/merry-bridge
   lsof -nP -iTCP:47821 -sTCP:LISTEN     # should print nothing
   ./scripts/install-bridge.sh --tailscale
   ```
@@ -108,9 +108,9 @@ If you used `install-bridge.sh`, the LaunchAgent starts it automatically on logi
   Confirm both listeners are up:
 
   ```bash
-  grep -E "ws: listening|tailscale: listening" ~/Library/Logs/cmux-bridge.log | tail -2
+  grep -E "ws: listening|tailscale: listening" ~/Library/Logs/merry-bridge.log | tail -2
   # ws: listening on :47821 (LAN)
-  # tailscale: listening on cmux-bridge.<tailnet>.ts.net:47821
+  # tailscale: listening on merry-bridge.<tailnet>.ts.net:47821
   ```
 
 ## Usage
@@ -180,17 +180,17 @@ To access cmux from outside your LAN (e.g., phone on cellular), enable Tailscale
 
 ```bash
 # First time: pair with --tailscale to include tailnet hostname in QR
-cmux-bridge --pair --tailscale
+merry-bridge --pair --tailscale
 
 # Run with Tailscale enabled
-cmux-bridge --tailscale
+merry-bridge --tailscale
 
 # Or install the LaunchAgent with Tailscale always on
 ./scripts/install-bridge.sh --tailscale
 ```
 
 On first `--tailscale` run, a browser opens for Tailscale OAuth login (one-time).
-The bridge joins your tailnet as `cmux-bridge.your-tailnet.ts.net` (an embedded
+The bridge joins your tailnet as `merry-bridge.your-tailnet.ts.net` (an embedded
 [`tsnet`](https://tailscale.com/kb/1244/tsnet) node, independent of the system
 Tailscale app on the Mac).
 
@@ -203,18 +203,18 @@ before enabling it), the phone has no tailnet address and can only reach the
 bridge on Wi‑Fi. **Re-pair with `--tailscale` to fix remote access:**
 
 ```bash
-cmux-bridge --pair --tailscale   # regenerates the QR with the .ts.net host
+merry-bridge --pair --tailscale   # regenerates the QR with the .ts.net host
 ```
 
 then re-scan from the iOS app (Settings > Pair new device). No other phone-side
 config is needed.
 
-You can also set `"tailscale": true` in `~/.config/cmux-bridge/config.json` to
-always enable it (so `cmux-bridge` alone runs with the tailnet listener).
+You can also set `"tailscale": true` in `~/.config/merry-bridge/config.json` to
+always enable it (so `merry-bridge` alone runs with the tailnet listener).
 
-> Note: `cmux-bridge --pair` and the running daemon share the same tsnet state
+> Note: `merry-bridge --pair` and the running daemon share the same tsnet state
 > dir. If pairing complains the state is locked, stop the daemon first
-> (`launchctl unload ~/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist`),
+> (`launchctl unload ~/Library/LaunchAgents/com.itsmaleen.merry-bridge.plist`),
 > pair, then reinstall with `./scripts/install-bridge.sh --tailscale`.
 
 ## Using herdr instead of cmux
@@ -226,7 +226,7 @@ tab mirrors the workspace's active herdr tab.
 
 ```bash
 # herdr running (its socket lives at ~/.config/herdr/herdr.sock)
-cmux-bridge --backend herdr --pair     # or set "backend": "herdr" in config.json
+merry-bridge --backend herdr --pair     # or set "backend": "herdr" in config.json
 ```
 
 With `"backend": "auto"` (the default) the bridge fronts **every runtime that
@@ -257,25 +257,25 @@ directory. herdr has no browser surfaces, so that affordance is hidden.
 
 ```bash
 # Bridge logs
-tail -f ~/Library/Logs/cmux-bridge.log
+tail -f ~/Library/Logs/merry-bridge.log
 
 # Re-pair (regenerates QR)
-cmux-bridge --pair
+merry-bridge --pair
 
 # Restart bridge (if installed as LaunchAgent). Re-running the install script is
 # the reliable way — it also clears any stale/orphaned instance holding the port:
 ./scripts/install-bridge.sh --tailscale
 
 # Manual restart (note: this does NOT kill a process reparented to launchd — if
-# the port stays busy, `pkill -f /usr/local/bin/cmux-bridge` first):
-launchctl kickstart -k "gui/$(id -u)/com.itsmaleen.cmux-bridge"
+# the port stays busy, `pkill -f /usr/local/bin/merry-bridge` first):
+launchctl kickstart -k "gui/$(id -u)/com.itsmaleen.merry-bridge"
 ```
 
 ## Project structure
 
 ```
 bridge/
-  cmd/cmux-bridge/     Entry point
+  cmd/merry-bridge/     Entry point
   internal/
     socket/            cmux Unix socket client
     ws/                WebSocket server + auth

@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/cmux"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend/cmux"
+	"github.com/itsmaleen/merry/bridge/internal/claude"
 )
 
 // Handle translates one phone command onto herdr's API. Method names and

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-BINARY="/usr/local/bin/cmux-bridge"
-PLIST_LABEL="com.itsmaleen.cmux-bridge"
+BINARY="/usr/local/bin/merry-bridge"
+PLIST_LABEL="com.itsmaleen.merry-bridge"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 ENABLE_TAILSCALE="${1:---no-tailscale}"
 
@@ -21,7 +21,7 @@ fi
 # Keep logs out of world-readable /tmp — daemon stdout/stderr may carry
 # diagnostic detail; ~/Library/Logs is user-owned.
 LOG_DIR="$HOME/Library/Logs"
-LOG_PATH="$LOG_DIR/cmux-bridge.log"
+LOG_PATH="$LOG_DIR/merry-bridge.log"
 mkdir -p "$LOG_DIR"
 
 # Clean up ROOT-owned leftovers from a historical `sudo ./install-bridge.sh`
@@ -33,7 +33,7 @@ mkdir -p "$LOG_DIR"
 # LaunchAgent fail to even start (launchd exits it with EX_CONFIG / 78, no
 # output). We only invoke sudo when something root-owned is actually found, so a
 # clean machine never gets prompted.
-TS_STATE="$HOME/.config/cmux-bridge/tailscale/tailscaled.state"
+TS_STATE="$HOME/.config/merry-bridge/tailscale/tailscaled.state"
 is_root_owned() { [ -e "$1" ] && [ "$(stat -f %u "$1" 2>/dev/null)" = "0" ]; }
 NEEDS_ROOT_CLEANUP=0
 [ -n "$(pgrep -u 0 -f "$BINARY" 2>/dev/null || true)" ] && NEEDS_ROOT_CLEANUP=1
@@ -56,7 +56,7 @@ fi
 
 # Build to a temp path, then install to /usr/local/bin — using sudo only if the
 # destination isn't user-writable (so the rest of the script stays non-root).
-echo "Building cmux-bridge..."
+echo "Building merry-bridge..."
 TMP_BIN="$(mktemp)"
 bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
 chmod +x "$TMP_BIN"
@@ -115,6 +115,17 @@ EOF
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
 pkill -f "$BINARY" 2>/dev/null || true
 
+# Migration: retire the pre-rename cmux-bridge install if it's still around, or
+# its daemon keeps holding :$BRIDGE_PORT and the renamed one can't bind. Leaves
+# the shared ~/.config (token, tailscale state) in place — the new binary keeps
+# using it via configDir()'s legacy fallback.
+LEGACY_LABEL="com.itsmaleen.cmux-bridge"
+LEGACY_PLIST="$HOME/Library/LaunchAgents/${LEGACY_LABEL}.plist"
+launchctl bootout "gui/$(id -u)/${LEGACY_LABEL}" 2>/dev/null || true
+launchctl unload "$LEGACY_PLIST" 2>/dev/null || true
+pkill -f "/usr/local/bin/cmux-bridge" 2>/dev/null || true
+rm -f "$LEGACY_PLIST" 2>/dev/null || true
+
 # Wait for the listen port to actually free up before starting the new instance.
 BRIDGE_PORT="${BRIDGE_PORT:-47821}"
 for _ in 1 2 3 4 5; do
@@ -149,12 +160,12 @@ else
 fi
 
 echo ""
-echo "cmux-bridge installed and started."
+echo "merry-bridge installed and started."
 echo "Logs: tail -f $LOG_PATH"
 echo ""
 echo "To pair with the iOS app, run:"
 if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
-    echo "  cmux-bridge --pair --tailscale   # embeds the .ts.net host for remote access"
+    echo "  merry-bridge --pair --tailscale   # embeds the .ts.net host for remote access"
 else
-    echo "  cmux-bridge --pair"
+    echo "  merry-bridge --pair"
 fi

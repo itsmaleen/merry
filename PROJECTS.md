@@ -5,7 +5,7 @@
 **Goal:** Working Go bridge that connects to the cmux socket, polls for notifications, and exposes a WebSocket server on the local network with QR-code pairing.
 
 **Deliverables:**
-- `cmux-bridge` binary (single static binary, no dependencies)
+- `merry-bridge` binary (single static binary, no dependencies)
 - LaunchAgent plist + install script
 - QR pairing flow in terminal
 

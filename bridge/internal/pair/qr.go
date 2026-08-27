@@ -131,7 +131,7 @@ func PrintQR(host string, port int, token string, tailscaleHost string, backend 
 		host = primaryLANIP()
 	}
 
-	url := fmt.Sprintf("cmux-bridge://pair?host=%s&port=%d&token=%s", host, port, token)
+	url := fmt.Sprintf("merry-bridge://pair?host=%s&port=%d&token=%s", host, port, token)
 	if tailscaleHost != "" {
 		url += "&tailscale_host=" + tailscaleHost
 	}
@@ -161,7 +161,7 @@ func PrintQR(host string, port int, token string, tailscaleHost string, backend 
 	} else {
 		fmt.Println("⚠ LAN ONLY: this pairing has NO Tailscale host — the phone will only")
 		fmt.Println("  connect on the same Wi-Fi and will show \"reconnecting\" elsewhere.")
-		fmt.Println("  For remote access, re-run:  cmux-bridge --pair --tailscale")
+		fmt.Println("  For remote access, re-run:  merry-bridge --pair --tailscale")
 	}
 	fmt.Println()
 

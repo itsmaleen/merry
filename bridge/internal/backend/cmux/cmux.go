@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/poller"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/claude"
+	"github.com/itsmaleen/merry/bridge/internal/poller"
+	"github.com/itsmaleen/merry/bridge/internal/socket"
 )
 
 // Config selects the cmux socket.

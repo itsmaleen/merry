@@ -22,34 +22,28 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>dev.itsmaleen.cmux-bridge</string>
+			<string>dev.itsmaleen.merry-bridge</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>cmux-bridge</string>
+				<string>merry-bridge</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_merry-bridge._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan the pairing QR code shown by the bridge on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Used to discover and connect to the bridge running on your Mac over the local network.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_cmux-bridge._tcp</string>
-	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used for voice input to send text to your terminal sessions.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Used to transcribe your voice and send it as text.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
 </dict>
 </plist>

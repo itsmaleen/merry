@@ -12,7 +12,7 @@ final class BridgeDiscovery: NSObject {
 
     func start() {
         browser.delegate = self
-        browser.searchForServices(ofType: "_cmux-bridge._tcp.", inDomain: "local.")
+        browser.searchForServices(ofType: "_merry-bridge._tcp.", inDomain: "local.")
     }
 
     func stop() {

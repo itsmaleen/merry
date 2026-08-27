@@ -297,10 +297,10 @@ final class AppState: ObservableObject {
     /// Handles a pairing URL. `trusted` is true when the user initiated the
     /// pairing inside the app (scanning a QR from the pairing sheet, or manual
     /// entry) — those are explicit actions and are committed directly. It is
-    /// false for an external `cmux-bridge://` deep link opened by another app,
+    /// false for an external `merry-bridge://` deep link opened by another app,
     /// where a new bridge must be confirmed before it can take over input.
     func handlePairingURL(_ url: URL, trusted: Bool = false) {
-        guard url.scheme == "cmux-bridge",
+        guard url.scheme == "merry-bridge",
               url.host == "pair",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = components.queryItems?.first(where: { $0.name == "host" })?.value,

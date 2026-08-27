@@ -17,21 +17,25 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/cmux"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/herdr"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/multi"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/mdns"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/pair"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend/cmux"
+	"github.com/itsmaleen/merry/bridge/internal/backend/herdr"
+	"github.com/itsmaleen/merry/bridge/internal/backend/multi"
+	"github.com/itsmaleen/merry/bridge/internal/mdns"
+	"github.com/itsmaleen/merry/bridge/internal/pair"
+	"github.com/itsmaleen/merry/bridge/internal/socket"
+	"github.com/itsmaleen/merry/bridge/internal/ws"
 	"tailscale.com/tsnet"
 )
 
 const (
 	defaultPort         = 47821
 	defaultPollInterval = 1000
-	configDirName       = "cmux-bridge"
+	configDirName       = "merry-bridge"
+	// legacyConfigDirName is the pre-rename directory. configDir() keeps using
+	// it when the new one doesn't exist yet, so renaming the product doesn't
+	// force a re-pair or discard the tailnet node.
+	legacyConfigDirName = "cmux-bridge"
 	configFileName      = "config.json"
 )
 
@@ -60,7 +64,7 @@ func defaultConfig() config {
 		BridgePort:        defaultPort,
 		PollIntervalMs:    defaultPollInterval,
 		Tailscale:         false,
-		TailscaleHostname: "cmux-bridge",
+		TailscaleHostname: "merry-bridge",
 	}
 }
 
@@ -130,11 +134,21 @@ func hasKind(kinds []string, kind string) bool {
 }
 
 func configDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join("/tmp", configDirName)
+	base := "/tmp"
+	if home, err := os.UserHomeDir(); err == nil {
+		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(home, ".config", configDirName)
+	dir := filepath.Join(base, configDirName)
+	// Migration: if the new config dir hasn't been created yet but a legacy
+	// cmux-bridge one exists, keep using it (its token, config, and tailscale
+	// state) so the rename is transparent to an existing install.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		legacy := filepath.Join(base, legacyConfigDirName)
+		if _, err := os.Stat(legacy); err == nil {
+			return legacy
+		}
+	}
+	return dir
 }
 
 func loadConfig(dir string) (config, error) {
@@ -168,7 +182,7 @@ func main() {
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	backendFlag := flag.String("backend", "", "terminal runtime(s) to front: cmux, herdr, all, or auto (overrides config)")
-	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
+	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/merry-bridge); lets a second bridge run beside the installed one")
 	flag.Parse()
 
 	// cmux only accepts control-socket connections from the user that runs cmux;
@@ -285,7 +299,7 @@ func runPair(dir string, cfg config, kinds []string) {
 		restore()
 		if tailscaleHost == "" {
 			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n" +
-				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n" +
+				"Authorize it at the login URL printed above, then re-run `merry-bridge --pair --tailscale`.\n" +
 				"Refusing to print a LAN-only QR that would silently drop remote access.")
 		}
 	}
@@ -296,7 +310,7 @@ func runPair(dir string, cfg config, kinds []string) {
 }
 
 // launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh.
-const launchdLabel = "com.itsmaleen.cmux-bridge"
+const launchdLabel = "com.itsmaleen.merry-bridge"
 
 // pauseDaemonForPairing stops the launchd-managed bridge daemon so it releases
 // the tsnet state directory during --tailscale pairing, returning a function
@@ -405,7 +419,7 @@ func runDaemon(dir string, cfg config, kinds []string) {
 		log.Fatalf("token: %v", err)
 	}
 
-	log.Printf("cmux-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
+	log.Printf("merry-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
 	if hasKind(kinds, "herdr") {
 		log.Printf("herdr socket: %s", cfg.HerdrSocketPath)
 	}

@@ -181,7 +181,7 @@ struct SettingsView: View {
             } label: {
                 Text("Remote access")
             }
-            Text("This pairing is LAN-only, so the app can't connect off Wi-Fi. To enable remote access, run `cmux-bridge --pair --tailscale` on your Mac and scan the new QR with “Pair new device”.")
+            Text("This pairing is LAN-only, so the app can't connect off Wi-Fi. To enable remote access, run `merry-bridge --pair --tailscale` on your Mac and scan the new QR with “Pair new device”.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
