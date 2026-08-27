@@ -1,21 +1,34 @@
-# cmux-companion
+# merry
 
-iPhone companion app for [cmux](https://github.com/manaflow-ai/cmux) — mirror notifications, control workspaces, navigate surfaces, and send voice commands from your phone.
+iPhone companion for AI coding agents — mirror notifications, control
+workspaces, navigate surfaces, paste photos and files, and send voice commands
+from your phone. Fronts [cmux](https://github.com/manaflow-ai/cmux) and
+[herdr](https://herdr.dev), together or on their own.
 
 ## Architecture
 
 ```
-[cmux Mac app]  <── Unix socket ──>  [cmux-bridge]  <── WebSocket/LAN ──>  [iOS app]
+[cmux Mac app]  ─┐
+                 ├─ Unix socket ─  [cmux-bridge]  ─ WebSocket/LAN ─  [merry iOS app]
+[herdr daemon]  ─┘
 ```
 
-- **`bridge/`** — Go binary that connects to the local cmux socket and exposes a WebSocket server on the LAN
+- **`bridge/`** — Go binary (`cmux-bridge`) that connects to the local cmux
+  and/or herdr socket and exposes a WebSocket server on the LAN. See
+  [Using herdr](#using-herdr-instead-of-cmux) for the backend options.
 - **`ios/`** — SwiftUI iPhone app (landscape, iOS 17+)
 - **`shared/`** — Protocol documentation
 
+> The binary, config directory, bundle id, and `cmux-bridge://` pairing scheme
+> keep their `cmux` names for compatibility with existing installs and pairings;
+> only the product name changed.
+
 ## Prerequisites
 
-- [cmux](https://github.com/manaflow-ai/cmux) with socket control enabled:
-  **Settings > Socket Control > Password mode**
+- A supported runtime on the Mac:
+  - [cmux](https://github.com/manaflow-ai/cmux) with socket control enabled
+    (**Settings > Socket Control > Password mode**), and/or
+  - [herdr](https://herdr.dev) running (`herdr`)
 - Go 1.21+ (to build the bridge)
 - Xcode 15+ (to build the iOS app)
 - macOS 13+

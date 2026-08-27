@@ -370,7 +370,7 @@ struct TranscriptSheetView: View {
                     Text("This surface's session file is missing")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.35))
-                    Text("cmux binds this surface to session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), whose transcript is no longer on disk.")
+                    Text("This surface is bound to session \(appState.claudeTranscriptSession[target.id]?.prefix(8) ?? ""), whose transcript is no longer on disk.")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.25))
                         .multilineTextAlignment(.center)
