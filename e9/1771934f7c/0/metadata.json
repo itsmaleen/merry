@@ -1,0 +1,193 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_id": "e91771934f7c",
+  "session_id": "ea938f6e-b6d2-49ab-9140-671e4c768a5d",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-27T01:19:36.683176Z",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "91b929c15da3",
+  "token_usage": {
+    "input_tokens": 47038,
+    "cache_creation_tokens": 3352668,
+    "cache_read_tokens": 132980901,
+    "output_tokens": 346961,
+    "api_call_count": 274
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-loop-2026-08-24T16:09:28.568814Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "loop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "b493000446ad",
+      "timestamp": "2026-08-24T16:09:28.568814Z",
+      "native": {
+        "command": "/loop"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/loop",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-cross-review-2026-08-26T22:15:00.819801Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "cross-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "d5e4e0a17067",
+      "timestamp": "2026-08-26T22:15:00.819801Z",
+      "native": {
+        "command": "/cross-review"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/cross-review",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "prompt-skill-claude-code-cross-review-2026-08-27T01:06:20.376132Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "cross-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "4cadfbcffa79",
+      "timestamp": "2026-08-27T01:06:20.376132Z",
+      "native": {
+        "command": "/cross-review"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/cross-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 29
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 13853,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/scheduled_tasks.lock": 1,
+        ".claude/settings.local.json": 15,
+        ".claude/worktrees/opencode-sessions/.claude/settings.json": 84,
+        ".claude/worktrees/opencode-sessions/.cursor/hooks.json": 40,
+        ".claude/worktrees/opencode-sessions/.entire/.gitignore": 5,
+        ".claude/worktrees/opencode-sessions/.entire/settings.json": 4,
+        ".claude/worktrees/opencode-sessions/.gitignore": 13,
+        ".claude/worktrees/opencode-sessions/.opencode/plugins/entire.ts": 158,
+        ".claude/worktrees/opencode-sessions/PROJECTS.md": 73,
+        ".claude/worktrees/opencode-sessions/README.md": 258,
+        ".claude/worktrees/opencode-sessions/TODO.md": 79,
+        ".claude/worktrees/opencode-sessions/bridge/cmd/cmux-bridge/main.go": 439,
+        ".claude/worktrees/opencode-sessions/bridge/go.mod": 73,
+        ".claude/worktrees/opencode-sessions/bridge/go.sum": 305,
+        ".claude/worktrees/opencode-sessions/bridge/internal/claude/hookstore.go": 235,
+        ".claude/worktrees/opencode-sessions/bridge/internal/claude/hookstore_test.go": 491,
+        ".claude/worktrees/opencode-sessions/bridge/internal/claude/transcript.go": 495,
+        ".claude/worktrees/opencode-sessions/bridge/internal/claude/transcript_test.go": 375,
+        ".claude/worktrees/opencode-sessions/bridge/internal/mdns/advertise.go": 42,
+        ".claude/worktrees/opencode-sessions/bridge/internal/opencode/opencode.go": 358,
+        ".claude/worktrees/opencode-sessions/bridge/internal/opencode/opencode_test.go": 367,
+        ".claude/worktrees/opencode-sessions/bridge/internal/opencode/processes.go": 75,
+        ".claude/worktrees/opencode-sessions/bridge/internal/opencode/wal_test.go": 82,
+        ".claude/worktrees/opencode-sessions/bridge/internal/pair/qr.go": 116,
+        ".claude/worktrees/opencode-sessions/bridge/internal/poller/poller.go": 173,
+        ".claude/worktrees/opencode-sessions/bridge/internal/poller/poller_test.go": 75,
+        ".claude/worktrees/opencode-sessions/bridge/internal/socket/client.go": 264,
+        ".claude/worktrees/opencode-sessions/bridge/internal/socket/client_test.go": 276,
+        ".claude/worktrees/opencode-sessions/bridge/internal/transcriptrender/render.go": 143,
+        ".claude/worktrees/opencode-sessions/bridge/internal/transcriptrender/render_test.go": 90,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/auth.go": 23,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/auth_test.go": 58,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/handler.go": 157,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/server.go": 89,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/transcript.go": 281,
+        ".claude/worktrees/opencode-sessions/bridge/internal/ws/version.go": 3,
+        ".claude/worktrees/opencode-sessions/ios/cmux.xcodeproj/project.pbxproj": 483,
+        ".claude/worktrees/opencode-sessions/ios/cmux.xcodeproj/project.xcworkspace/contents.xcworkspacedata": 7,
+        ".claude/worktrees/opencode-sessions/ios/cmux/App/AppState.swift": 1234,
+        ".claude/worktrees/opencode-sessions/ios/cmux/App/ConnectionStatusBar.swift": 44,
+        ".claude/worktrees/opencode-sessions/ios/cmux/App/ContentView.swift": 13,
+        ".claude/worktrees/opencode-sessions/ios/cmux/App/MainTabView.swift": 207,
+        ".claude/worktrees/opencode-sessions/ios/cmux/App/cmuxApp.swift": 51,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Connection/BridgeClient.swift": 295,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Connection/BridgeDiscovery.swift": 59,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Connection/PairingStore.swift": 176,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Control/ControlView.swift": 7,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Control/SendTextView.swift": 76,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Control/SurfaceListView.swift": 38,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Control/WorkspaceListView.swift": 45,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Info.plist": 55,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Input/CommandDictionary.swift": 91,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Input/SpeechInputManager.swift": 103,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Input/TerminalInputBar.swift": 329,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Input/TranscriptEditorView.swift": 115,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Input/VolumeButtonHandler.swift": 171,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Layout/PaneCardView.swift": 413,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Layout/ScrollFollow.swift": 46,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Layout/TerminalTextView.swift": 495,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Layout/TextSearch.swift": 74,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Layout/WorkspaceLayoutView.swift": 1020,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Notifications/NotificationRow.swift": 23,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Notifications/NotificationsView.swift": 33,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Pairing/PairingView.swift": 110,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Pairing/QRScannerView.swift": 109,
+        ".claude/worktrees/opencode-sessions/ios/cmux/QuickActions/QuickActionStore.swift": 121,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Settings/QuickActionEditView.swift": 103,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Settings/QuickActionSettingsView.swift": 140,
+        ".claude/worktrees/opencode-sessions/ios/cmux/Settings/SettingsView.swift": 170,
+        ".claude/worktrees/opencode-sessions/ios/project.yml": 42,
+        ".claude/worktrees/opencode-sessions/ios/scripts/run-tests.sh": 18,
+        ".claude/worktrees/opencode-sessions/ios/scripts/test-scroll-follow.swift": 76,
+        ".claude/worktrees/opencode-sessions/ios/scripts/test-text-search.swift": 85,
+        ".claude/worktrees/opencode-sessions/plans/bridge-phase1.md": 164,
+        ".claude/worktrees/opencode-sessions/plans/bridge-phase2.md": 52,
+        ".claude/worktrees/opencode-sessions/plans/bridge-phase3.md": 82,
+        ".claude/worktrees/opencode-sessions/plans/cancel-speech-volume-down.md": 12,
+        ".claude/worktrees/opencode-sessions/plans/close-workspace-quick-action.md": 14,
+        ".claude/worktrees/opencode-sessions/plans/cmux-pr-subscribe.md": 62,
+        ".claude/worktrees/opencode-sessions/plans/cross-workspace-notifications.md": 118,
+        ".claude/worktrees/opencode-sessions/plans/fullscreen-quick-action.md": 14,
+        ".claude/worktrees/opencode-sessions/plans/ios-layout-view.md": 164,
+        ".claude/worktrees/opencode-sessions/plans/ios-phase1.md": 113,
+        ".claude/worktrees/opencode-sessions/plans/remember-focused-surface.md": 13,
+        ".claude/worktrees/opencode-sessions/plans/swipe-to-edit-transcript.md": 16,
+        ".claude/worktrees/opencode-sessions/plans/tailscale-integration.md": 180,
+        ".claude/worktrees/opencode-sessions/scripts/build.sh": 12,
+        ".claude/worktrees/opencode-sessions/scripts/install-bridge.sh": 160,
+        ".claude/worktrees/opencode-sessions/shared/protocol.md": 185
+      }
+    }
+  ]
+}
