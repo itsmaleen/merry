@@ -36,8 +36,8 @@ enum QuickActionBuilder {
             QuickAction(label: "Escape", icon: "escape", section: "Input") {
                 appState.sendKey("escape", to: sid)
             },
-            QuickAction(label: "Paste Image", icon: "photo.on.rectangle", section: "Input") {
-                appState.pasteImage(to: sid)
+            QuickAction(label: "Attach Image", icon: "photo.on.rectangle", section: "Input") {
+                appState.attachClipboardImage()
             },
             QuickAction(label: "Up Arrow", icon: "arrow.up", section: "Input") {
                 appState.sendKey("up", to: sid)
@@ -250,9 +250,15 @@ struct WorkspaceLayoutView: View {
                     TerminalInputBar(
                         surfaceTitle: surface.title,
                         isActive: $keyboardActive,
+                        onSend: { text, withEnter in
+                            appState.sendComposed(text: text, withEnter: withEnter, to: sid)
+                        },
                         onSendText: { appState.sendText($0, to: sid) },
-                        onSendEnter: { appState.sendText($0 + "\n", to: sid) },
-                        onSendKey: { appState.sendKey($0, to: sid) }
+                        onSendKey: { appState.sendKey($0, to: sid) },
+                        hasPendingImage: appState.pendingImage != nil,
+                        pendingThumbnail: appState.pendingImage?.thumbnail,
+                        onAttachImage: { appState.attachClipboardImage() },
+                        onRemoveImage: { appState.clearPendingImage() }
                     )
                     .padding(.bottom, 2)
                 }

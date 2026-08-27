@@ -18,6 +18,36 @@ enum ImagePaste {
         let bytes: Int
     }
 
+    /// An image attached to the compose bar, awaiting a message. Carries the
+    /// full encoded payload plus a small thumbnail for the preview chip, so the
+    /// chip never has to decode the (much larger) send payload to draw itself.
+    struct Attachment: Equatable {
+        let base64: String
+        let format: String
+        let bytes: Int
+        /// A small PNG for the preview chip.
+        let thumbnail: Data
+    }
+
+    /// Encodes a pasteboard image and a preview thumbnail together. Runs the
+    /// heavy redraw/encode once; call it off the main actor.
+    static func attachment(from image: UIImage) -> Attachment? {
+        guard let encoded = encode(image) else { return nil }
+        return Attachment(
+            base64: encoded.base64,
+            format: encoded.format,
+            bytes: encoded.bytes,
+            thumbnail: thumbnailPNG(image)
+        )
+    }
+
+    /// A small square-ish PNG preview (long edge ~160px) for the compose chip.
+    private static func thumbnailPNG(_ image: UIImage) -> Data {
+        let size = ImageScaling.targetSize(for: image.size, maxDimension: 160)
+        let thumb = size == image.size ? image : redraw(image, at: size)
+        return thumb.pngData() ?? Data()
+    }
+
     /// JPEG quality for photographs. High enough that text in a screenshot stays
     /// legible, low enough that a phone photo lands in the hundreds of KB.
     static let jpegQuality: CGFloat = 0.82

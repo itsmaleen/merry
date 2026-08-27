@@ -118,6 +118,11 @@ final class AppState: ObservableObject {
     // terminal alone — a path scrolls by, an error is silent.
     @Published var imagePasteStatus: String?
     private var imagePasteStatusClear: DispatchWorkItem?
+    // An image attached to the compose bar, waiting for the user to add a
+    // message and send. Held here (not in the input bar) so the "Paste Image"
+    // quick action and the bar's attach button feed the same pending slot, and
+    // so sending composes the image and the typed text into one message.
+    @Published var pendingImage: ImagePaste.Attachment?
     private let bridgeStore = BridgeStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -418,6 +423,7 @@ final class AppState: ObservableObject {
         presentedHistory = nil
         imagePasteStatusClear?.cancel()
         imagePasteStatus = nil
+        pendingImage = nil
         lastFocusedSurface = [:]
     }
 
@@ -797,51 +803,88 @@ final class AppState: ObservableObject {
         return lines.suffix(maxHistoryLines).joined(separator: "\n")
     }
 
-    /// Sends the image currently on the pasteboard to a surface.
-    ///
-    /// The bridge writes it to a file on the Mac and types the path in, which is
-    /// how a terminal agent receives an image at all — see the bridge's
-    /// `imagepaste` package. Nothing is submitted: the path lands in the prompt
-    /// and the user decides when to send it.
-    func pasteImage(to surfaceID: String) {
+    /// Attaches the image currently on the pasteboard to the compose bar. It is
+    /// NOT sent yet: it becomes `pendingImage`, shown as a chip, so the user can
+    /// type a message and send both together (see `sendComposed`). This is what
+    /// both the "Paste Image" quick action and the input bar's attach button do.
+    func attachClipboardImage() {
         guard let image = ImagePaste.pasteboardImage() else {
             showImagePasteStatus("No image on the clipboard")
             return
         }
-        showImagePasteStatus("Sending image…", autoClear: false)
+        showImagePasteStatus("Preparing image…", autoClear: false)
         // Encode off the main actor: a full-resolution photo is a redraw plus a
         // JPEG pass plus base64, which is far too much for a frame.
         Task.detached(priority: .userInitiated) { [weak self] in
-            let encoded = ImagePaste.encode(image)
+            let attachment = ImagePaste.attachment(from: image)
             await MainActor.run {
                 guard let self else { return }
-                guard let encoded else {
+                guard let attachment else {
                     self.showImagePasteStatus("Couldn't read that image")
                     return
                 }
-                var params: [String: Any] = [
-                    "surface_id": surfaceID,
-                    "image_base64": encoded.base64,
-                    "image_format": encoded.format,
-                ]
-                if let wsID = self.currentWorkspaceID {
-                    params["workspace_id"] = wsID
-                }
-                self.send(method: "surface.paste_image", params: params) { [weak self] result in
-                    guard let self else { return }
-                    // An error reply reaches this completion with an empty result
-                    // (see BridgeClient), so a missing path means it failed.
-                    guard result["path"] is String else {
-                        self.showImagePasteStatus("Image paste failed")
-                        return
-                    }
-                    let bytes = (result["bytes"] as? Int) ?? encoded.bytes
-                    self.showImagePasteStatus("Image sent (\(Self.byteLabel(bytes)))")
-                    // The path was typed into the prompt; show it without waiting
-                    // for the next poll.
-                    self.scheduleActivityProbe(for: surfaceID)
-                }
+                self.pendingImage = attachment
+                self.showImagePasteStatus("Image attached — add a message, then send")
             }
+        }
+    }
+
+    /// Removes the pending image without sending it.
+    func clearPendingImage() {
+        pendingImage = nil
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = nil
+    }
+
+    /// Sends a composed message to a surface: the pending image's path first (if
+    /// any), then the typed text, then Enter when `withEnter` — in that order,
+    /// as separate steps sequenced on the paste's completion, so the agent
+    /// receives the picture and the words as a single prompt.
+    ///
+    /// The bridge types the image path with a trailing space, so the text lands
+    /// right after it. Nothing is submitted until the Enter step, which only
+    /// runs for the `withEnter` (return) button.
+    func sendComposed(text: String, withEnter: Bool, to surfaceID: String) {
+        let trimmedIsEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let image = pendingImage
+
+        // Text-only: unchanged behaviour.
+        guard let image else {
+            guard !trimmedIsEmpty else { return }
+            sendText(withEnter ? text + "\n" : text, to: surfaceID)
+            return
+        }
+
+        // Clear the chip immediately; the send is in flight.
+        pendingImage = nil
+        showImagePasteStatus("Sending image…", autoClear: false)
+        var params: [String: Any] = [
+            "surface_id": surfaceID,
+            "image_base64": image.base64,
+            "image_format": image.format,
+        ]
+        if let wsID = currentWorkspaceID {
+            params["workspace_id"] = wsID
+        }
+        send(method: "surface.paste_image", params: params) { [weak self] result in
+            guard let self else { return }
+            // An error reply reaches this completion with an empty result (see
+            // BridgeClient), so a missing path means it failed. Restore the
+            // attachment so the user can retry rather than losing the image.
+            guard result["path"] is String else {
+                self.pendingImage = image
+                self.showImagePasteStatus("Image paste failed")
+                return
+            }
+            let bytes = (result["bytes"] as? Int) ?? image.bytes
+            // Now the path is in the prompt; append the message and submit.
+            if !trimmedIsEmpty {
+                self.sendText(withEnter ? text + "\n" : text, to: surfaceID)
+            } else if withEnter {
+                self.sendText("\n", to: surfaceID)
+            }
+            self.showImagePasteStatus("Image sent (\(Self.byteLabel(bytes)))")
+            self.scheduleActivityProbe(for: surfaceID)
         }
     }
 
