@@ -175,6 +175,11 @@ func errorResponse(id, code, message string) commandResponse {
 // goes in through the backend's own surface.send_text, so it works the same
 // for cmux, herdr, and a composite of both (whose namespaced ids the backend
 // resolves).
+//
+// The optional `text` is a message the user typed to go WITH the image; it is
+// appended after the path so the whole thing is ONE surface.send_text — one
+// message to the agent, not a path and a caption as two separate submissions.
+// `submit` appends the Enter that sends it.
 func handlePasteImage(cmd commandRequest, be backend.Backend, images *imagepaste.Store) commandResponse {
 	surfaceID, _ := cmd.Params["surface_id"].(string)
 	if surfaceID == "" {
@@ -201,10 +206,18 @@ func handlePasteImage(cmd commandRequest, be backend.Backend, images *imagepaste
 		return errorResponse(cmd.ID, "paste_image_error", err.Error())
 	}
 
-	// Type the path in. No newline: the user (or the agent's own composer) still
-	// owns when to submit, and a path that auto-submits would fire a half-written
-	// prompt.
-	params := map[string]any{"surface_id": surfaceID, "text": saved.Text}
+	// Compose one message: the shell-quoted path (which already ends in a
+	// space), then the user's caption, then Enter only when asked. Sending this
+	// as a single surface.send_text is what keeps the image and its message from
+	// arriving as two separate prompts.
+	text := saved.Text
+	if caption, _ := cmd.Params["text"].(string); caption != "" {
+		text += caption
+	}
+	if submit, _ := cmd.Params["submit"].(bool); submit {
+		text += "\n"
+	}
+	params := map[string]any{"surface_id": surfaceID, "text": text}
 	if wsID, ok := cmd.Params["workspace_id"]; ok {
 		params["workspace_id"] = wsID
 	}

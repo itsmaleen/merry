@@ -254,8 +254,13 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   bridge falls back to the newest transcript for the pane's cwd
   (`cwd_latest`).
 
-- `surface.paste_image` — `{"surface_id":"...","image_base64":"...","image_format":"png"}`
+- `surface.paste_image` — `{"surface_id":"...","image_base64":"...","image_format":"png","text":"what brand is this?","submit":true}`
   → `{"surface_id":"...","path":"/Users/…/pasted-….png","bytes":175,"format":"png"}`.
+
+  Optional `text` is a caption typed with the image, and `submit` (default
+  false) appends Enter. The bridge types the path, the caption, and the newline
+  as ONE `surface.send_text`, so an image and its caption reach the agent as a
+  single prompt rather than two separate messages.
 
   Bridge-local. A TUI reads bytes from a pty, so an image can't be handed to it
   directly. What a local clipboard-image paste does — and what cmux's own
