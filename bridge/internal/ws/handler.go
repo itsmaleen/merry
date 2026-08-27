@@ -135,9 +135,12 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 				return
 			}
 			var resp commandResponse
-			if cmd.Method == "surface.paste_image" {
+			switch cmd.Method {
+			case "surface.paste_image":
 				resp = handlePasteImage(cmd, be, images)
-			} else {
+			case "surface.paste_file":
+				resp = handlePasteFile(cmd, be, images)
+			default:
 				resp = dispatch(cmd, be)
 			}
 			if err := wsjson.Write(ctx, conn, resp); err != nil {
@@ -205,11 +208,43 @@ func handlePasteImage(cmd commandRequest, be backend.Backend, images *imagepaste
 	if err != nil {
 		return errorResponse(cmd.ID, "paste_image_error", err.Error())
 	}
+	return typeSavedPath(cmd, be, surfaceID, saved)
+}
 
-	// Compose one message: the shell-quoted path (which already ends in a
-	// space), then the user's caption, then Enter only when asked. Sending this
-	// as a single surface.send_text is what keeps the image and its message from
-	// arriving as two separate prompts.
+// handlePasteFile materializes an arbitrary file the phone attached (a PDF, a
+// log, an archive) and types its path into the surface, the same way as an
+// image — the file is stored as-is and Claude Code reads it from the path.
+// Backend-agnostic: the path goes in through the backend's surface.send_text.
+func handlePasteFile(cmd commandRequest, be backend.Backend, images *imagepaste.Store) commandResponse {
+	surfaceID, _ := cmd.Params["surface_id"].(string)
+	if surfaceID == "" {
+		return errorResponse(cmd.ID, "invalid_params", "surface_id is required")
+	}
+	encoded, _ := cmd.Params["data_base64"].(string)
+	if encoded == "" {
+		return errorResponse(cmd.ID, "invalid_params", "data_base64 is required")
+	}
+	if len(encoded) > imagepaste.MaxFileBytes/3*4+4 {
+		return errorResponse(cmd.ID, "file_too_large",
+			fmt.Sprintf("file exceeds the %d byte limit", imagepaste.MaxFileBytes))
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return errorResponse(cmd.ID, "invalid_params", "data_base64 is not valid base64")
+	}
+	filename, _ := cmd.Params["filename"].(string)
+	saved, err := images.SaveFile(data, filename)
+	if err != nil {
+		return errorResponse(cmd.ID, "paste_file_error", err.Error())
+	}
+	return typeSavedPath(cmd, be, surfaceID, saved)
+}
+
+// typeSavedPath composes one message from a materialized file: the shell-quoted
+// path (which already ends in a space), then the optional `text` caption, then
+// Enter when `submit` is set — sent as a SINGLE surface.send_text so the path
+// and its caption reach the agent as one prompt, not two.
+func typeSavedPath(cmd commandRequest, be backend.Backend, surfaceID string, saved imagepaste.Result) commandResponse {
 	text := saved.Text
 	if caption, _ := cmd.Params["text"].(string); caption != "" {
 		text += caption
@@ -224,7 +259,6 @@ func handlePasteImage(cmd commandRequest, be backend.Backend, images *imagepaste
 	if _, err := be.Handle("surface.send_text", params); err != nil {
 		return errorFor(cmd.ID, err)
 	}
-
 	result, _ := json.Marshal(map[string]any{
 		"surface_id": surfaceID,
 		"path":       saved.Path,

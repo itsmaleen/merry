@@ -18,26 +18,58 @@ enum ImagePaste {
         let bytes: Int
     }
 
-    /// An image attached to the compose bar, awaiting a message. Carries the
-    /// full encoded payload plus a small thumbnail for the preview chip, so the
-    /// chip never has to decode the (much larger) send payload to draw itself.
+    /// What kind of thing is attached, which decides how the bridge stores it:
+    /// an image is downscaled and pasted via `surface.paste_image`; any other
+    /// file is uploaded as-is via `surface.paste_file`.
+    enum Kind: Equatable { case image, file }
+
+    /// Something attached to the compose bar, awaiting a message. Carries the
+    /// full encoded payload plus a small thumbnail (images only) for the preview
+    /// chip, so the chip never decodes the much larger send payload to draw.
     struct Attachment: Equatable {
+        let kind: Kind
         let base64: String
         let format: String
         let bytes: Int
-        /// A small PNG for the preview chip.
-        let thumbnail: Data
+        /// A readable label for the chip: a filename for files, "Image" for a
+        /// pasted photo.
+        let label: String
+        /// A small PNG for the preview chip, when the attachment is an image.
+        let thumbnail: Data?
     }
 
-    /// Encodes a pasteboard image and a preview thumbnail together. Runs the
-    /// heavy redraw/encode once; call it off the main actor.
+    /// Encodes a pasteboard/library image and a preview thumbnail together. Runs
+    /// the heavy redraw/encode once; call it off the main actor.
     static func attachment(from image: UIImage) -> Attachment? {
         guard let encoded = encode(image) else { return nil }
         return Attachment(
+            kind: .image,
             base64: encoded.base64,
             format: encoded.format,
             bytes: encoded.bytes,
+            label: "Image",
             thumbnail: thumbnailPNG(image)
+        )
+    }
+
+    /// Builds an attachment from an arbitrary picked file. An image file goes
+    /// through the same downscale as a pasted photo (so a 12MP photo picked via
+    /// "File" doesn't blow the size limit); anything else is attached verbatim
+    /// and uploaded as-is.
+    static func attachment(fileData data: Data, filename: String) -> Attachment? {
+        guard !data.isEmpty else { return nil }
+        if let image = UIImage(data: data) {
+            return attachment(from: image)
+        }
+        let name = filename.isEmpty ? "file" : filename
+        let ext = (name as NSString).pathExtension.lowercased()
+        return Attachment(
+            kind: .file,
+            base64: data.base64EncodedString(),
+            format: ext,
+            bytes: data.count,
+            label: name,
+            thumbnail: nil
         )
     }
 

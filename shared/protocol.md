@@ -262,6 +262,18 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
   as ONE `surface.send_text`, so an image and its caption reach the agent as a
   single prompt rather than two separate messages.
 
+- `surface.paste_file` — `{"surface_id":"...","data_base64":"...","filename":"notes.pdf","text":"summarize this","submit":true}`
+  → `{"surface_id":"...","path":"/Users/…/pasted-….pdf","bytes":39,"format":"pdf"}`.
+
+  The same as `surface.paste_image` for any non-image file (a PDF, a log, an
+  archive): the bytes are stored as-is (not downscaled or sniffed) and the path
+  is typed in with the optional caption. The on-disk name is always generated;
+  `filename` contributes only a sanitized extension, so a hostile name can
+  neither traverse the filesystem nor choose where the bytes land. Same 12 MB
+  cap and 12-hour retention as pasted images. The iOS "Add File" menu sends
+  images through `surface.paste_image` (downscaled) and everything else through
+  this.
+
   Bridge-local. A TUI reads bytes from a pty, so an image can't be handed to it
   directly. What a local clipboard-image paste does — and what cmux's own
   `terminal.paste_image` does — is write the image to a file and type its path in

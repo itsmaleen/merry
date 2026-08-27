@@ -140,17 +140,19 @@ The bridge finds each surface's transcript through cmux's hook session store
 Code reported for that session — so surfaces sharing a working directory never
 show each other's conversation. See [shared/protocol.md](shared/protocol.md).
 
-### Sending an image
+### Sending a photo or file
 
-Copy an image on the phone, then **Paste Image** in the quick actions (Input
-section) sends it to the focused surface. The bridge writes it to a file on the
-Mac and types that path into the surface, which is how a terminal agent receives
-a picture at all — Claude Code reads the image from the path. Nothing is
-submitted: the path lands in the prompt and you decide when to send it.
+The **paperclip** in the compose bar (and the **Add File** quick action) attach
+a **Photo**, a **File** from the Files app, or the **clipboard image** to your
+message. The attachment shows as a chip; type a caption and send, and the image
+and your words arrive as one message. The bridge writes the file to the Mac and
+types its path into the surface, which is how a terminal agent receives a
+picture or document at all — Claude Code reads it from the path.
 
-Images are downscaled to a long edge of 1568px before sending (Claude resizes
-anything larger anyway), stored under the Mac's cache directory readable only by
-you, and deleted after 12 hours.
+Photos are downscaled to a long edge of 1568px before sending (Claude resizes
+anything larger anyway); other files are uploaded as-is (up to 12 MB). Both are
+stored under the Mac's cache directory readable only by you, and deleted after
+12 hours.
 
 ### Other controls
 

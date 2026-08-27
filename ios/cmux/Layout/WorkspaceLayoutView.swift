@@ -1,5 +1,7 @@
 import SwiftUI
 import AudioToolbox
+import PhotosUI
+import UniformTypeIdentifiers
 
 // MARK: - Quick action model
 
@@ -36,8 +38,8 @@ enum QuickActionBuilder {
             QuickAction(label: "Escape", icon: "escape", section: "Input") {
                 appState.sendKey("escape", to: sid)
             },
-            QuickAction(label: "Attach Image", icon: "photo.on.rectangle", section: "Input") {
-                appState.attachClipboardImage()
+            QuickAction(label: "Add File", icon: "paperclip", section: "Input") {
+                appState.requestAddFile()
             },
             QuickAction(label: "Up Arrow", icon: "arrow.up", section: "Input") {
                 appState.sendKey("up", to: sid)
@@ -202,6 +204,11 @@ struct WorkspaceLayoutView: View {
     // not a bool: every tap must land, including two in a row.
     @State private var scrollToBottomRequest = 0
     @FocusState private var searchFieldFocused: Bool
+    // "Add File" flow: the source menu, then whichever picker was chosen.
+    @State private var showAddMenu = false
+    @State private var showPhotoPicker = false
+    @State private var showFileImporter = false
+    @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
         ZStack {
@@ -255,10 +262,11 @@ struct WorkspaceLayoutView: View {
                         },
                         onSendText: { appState.sendText($0, to: sid) },
                         onSendKey: { appState.sendKey($0, to: sid) },
-                        hasPendingImage: appState.pendingImage != nil,
-                        pendingThumbnail: appState.pendingImage?.thumbnail,
-                        onAttachImage: { appState.attachClipboardImage() },
-                        onRemoveImage: { appState.clearPendingImage() }
+                        hasPendingAttachment: appState.pendingAttachment != nil,
+                        pendingThumbnail: appState.pendingAttachment?.thumbnail,
+                        pendingLabel: appState.pendingAttachment?.label ?? "",
+                        onAddFile: { showAddMenu = true },
+                        onRemoveAttachment: { appState.clearPendingImage() }
                     )
                     .padding(.bottom, 2)
                 }
@@ -291,6 +299,38 @@ struct WorkspaceLayoutView: View {
         .fullScreenCover(item: $appState.presentedHistory) { target in
             TranscriptSheetView(target: target)
                 .environmentObject(appState)
+        }
+        // Add File: choose a source, then attach it to the compose bar. The
+        // quick action funnels through appState.addFileRequested since the
+        // quick-action builder has no view state of its own.
+        .onChange(of: appState.addFileRequested) { _, requested in
+            if requested {
+                appState.addFileRequested = false
+                showAddMenu = true
+            }
+        }
+        .confirmationDialog("Add File", isPresented: $showAddMenu, titleVisibility: .visible) {
+            Button("Photo Library") { showPhotoPicker = true }
+            Button("Files") { showFileImporter = true }
+            if UIPasteboard.general.hasImages {
+                Button("Paste Image") { appState.attachClipboardImage() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    appState.attachPhoto(data: data)
+                }
+                photoItem = nil
+            }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+            if case let .success(urls) = result, let url = urls.first {
+                appState.attachFile(url: url)
+            }
         }
         .animation(.spring(response: 0.25, dampingFraction: 0.85), value: quickAction.isOpen)
         .onChange(of: searchQuery) { _, _ in

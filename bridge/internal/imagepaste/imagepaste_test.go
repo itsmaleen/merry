@@ -198,3 +198,60 @@ func TestPruneRemovesExpiredImagesOnly(t *testing.T) {
 		t.Fatal("prune deleted a file it did not write")
 	}
 }
+
+func TestSaveFileStoresArbitraryBytes(t *testing.T) {
+	store := newTestStore(t)
+	data := []byte("%PDF-1.7\nnot really a pdf but bytes are bytes\n")
+	res, err := store.SaveFile(data, "report.PDF")
+	if err != nil {
+		t.Fatalf("SaveFile: %v", err)
+	}
+	if filepath.Ext(res.Path) != ".pdf" {
+		t.Fatalf("want a lowercased .pdf extension, got %q", res.Path)
+	}
+	if res.Format != "pdf" {
+		t.Fatalf("format = %q, want pdf", res.Format)
+	}
+	if got, err := os.ReadFile(res.Path); err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("file does not contain the original bytes (err=%v)", err)
+	}
+	if info, err := os.Stat(res.Path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("file mode = %v (err=%v), want 0600", info.Mode().Perm(), err)
+	}
+}
+
+// A hostile filename can neither traverse out of the store dir nor carry a
+// funny extension: the on-disk name is always generated, and an unsafe or
+// missing extension is dropped rather than used.
+func TestSaveFileNeutralisesFilename(t *testing.T) {
+	store := newTestStore(t)
+	for _, name := range []string{
+		"../../etc/passwd",
+		"/tmp/evil",
+		"weird.name.with spaces.tar.gz", // last ext .gz is safe
+		"noext",
+		"trailing.",
+		"bad.<script>",
+	} {
+		res, err := store.SaveFile([]byte("x"), name)
+		if err != nil {
+			t.Fatalf("%q: %v", name, err)
+		}
+		if filepath.Dir(res.Path) != store.dir {
+			t.Fatalf("%q landed outside the store dir: %q", name, res.Path)
+		}
+		if base := filepath.Base(res.Path); !strings.HasPrefix(base, "pasted-") {
+			t.Fatalf("%q produced an ungenerated name: %q", name, base)
+		}
+	}
+}
+
+func TestSaveFileRejectsEmptyAndOversized(t *testing.T) {
+	store := newTestStore(t)
+	if _, err := store.SaveFile(nil, "x.bin"); err == nil {
+		t.Fatal("empty file should be rejected")
+	}
+	if _, err := store.SaveFile(make([]byte, MaxFileBytes+1), "x.bin"); err == nil {
+		t.Fatal("oversized file should be rejected")
+	}
+}

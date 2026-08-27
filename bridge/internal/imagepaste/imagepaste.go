@@ -106,6 +106,66 @@ func (s *Store) Save(data []byte) (Result, error) {
 	}, nil
 }
 
+// MaxFileBytes bounds a non-image attachment. Kept equal to MaxImageBytes so a
+// file plus its base64 still fits the WebSocket read limit the ws handler sets.
+const MaxFileBytes = MaxImageBytes
+
+// SaveFile writes an arbitrary uploaded file (a PDF, a log, a zip — whatever the
+// phone picked) under the store dir and returns its path, so the path can be
+// typed into a surface exactly like a pasted image.
+//
+// Unlike Save it does not sniff or transform the content — a file is stored
+// byte-for-byte — but the on-disk NAME is always generated, never the client's.
+// The supplied filename contributes only a sanitized extension, so a hostile
+// name can neither escape the directory nor choose where the bytes land.
+func (s *Store) SaveFile(data []byte, filename string) (Result, error) {
+	if len(data) == 0 {
+		return Result{}, errors.New("empty file")
+	}
+	if len(data) > MaxFileBytes {
+		return Result{}, fmt.Errorf("file is %d bytes, limit is %d", len(data), MaxFileBytes)
+	}
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return Result{}, err
+	}
+	s.prune()
+
+	ext := safeExt(filename)
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return Result{}, err
+	}
+	name := fmt.Sprintf("pasted-%s-%s%s",
+		time.Now().Format("20060102-150405"), hex.EncodeToString(nonce[:]), ext)
+	path := filepath.Join(s.dir, name)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return Result{}, err
+	}
+	return Result{
+		Path:   path,
+		Text:   ShellQuote(path) + " ",
+		Bytes:  len(data),
+		Format: strings.TrimPrefix(ext, "."),
+	}, nil
+}
+
+// safeExt returns a lowercase, dot-prefixed extension derived from filename, or
+// "" when there isn't a safe one. The generated name uses it verbatim, so it is
+// restricted to short runs of ASCII letters and digits — no dots, slashes, or
+// anything that could reshape the path.
+func safeExt(filename string) string {
+	ext := strings.ToLower(filepath.Ext(filepath.Base(filename)))
+	if len(ext) < 2 || len(ext) > 16 {
+		return ""
+	}
+	for _, r := range ext[1:] {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
+			return ""
+		}
+	}
+	return ext
+}
+
 // prune deletes images past their retention. Best-effort and bounded: a paste
 // should never fail because cleanup did.
 func (s *Store) prune() {

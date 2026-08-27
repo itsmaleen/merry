@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
@@ -122,11 +123,14 @@ final class AppState: ObservableObject {
     // message and send. Held here (not in the input bar) so the "Paste Image"
     // quick action and the bar's attach button feed the same pending slot, and
     // so sending composes the image and the typed text into one message.
-    @Published var pendingImage: ImagePaste.Attachment?
+    @Published var pendingAttachment: ImagePaste.Attachment?
+    // Flipped by the "Add File" quick action to ask the layout to open the
+    // Photo / File / Paste menu (the quick-action builder has no view state).
+    @Published var addFileRequested = false
     // An attach is encoding right now. A send issued during this window must
     // wait for the image rather than going out as text alone (which is how the
     // caption and image ended up as two messages).
-    private var imageAttachInFlight = false
+    private var attachInFlight = false
     private var deferredComposedSend: (text: String, withEnter: Bool, surfaceID: String)?
     private let bridgeStore = BridgeStore()
     private var client: BridgeClient?
@@ -428,8 +432,9 @@ final class AppState: ObservableObject {
         presentedHistory = nil
         imagePasteStatusClear?.cancel()
         imagePasteStatus = nil
-        pendingImage = nil
-        imageAttachInFlight = false
+        pendingAttachment = nil
+        addFileRequested = false
+        attachInFlight = false
         deferredComposedSend = nil
         lastFocusedSurface = [:]
     }
@@ -810,32 +815,55 @@ final class AppState: ObservableObject {
         return lines.suffix(maxHistoryLines).joined(separator: "\n")
     }
 
-    /// Attaches the image currently on the pasteboard to the compose bar. It is
-    /// NOT sent yet: it becomes `pendingImage`, shown as a chip, so the user can
-    /// type a message and send both together (see `sendComposed`). This is what
-    /// both the "Paste Image" quick action and the input bar's attach button do.
+    /// Asks the layout to present the Add-File source menu.
+    func requestAddFile() { addFileRequested = true }
+
+    /// Attaches the image currently on the pasteboard to the compose bar.
     func attachClipboardImage() {
         guard let image = ImagePaste.pasteboardImage() else {
             showImagePasteStatus("No image on the clipboard")
             return
         }
-        showImagePasteStatus("Preparing image…", autoClear: false)
-        imageAttachInFlight = true
-        // Encode off the main actor: a full-resolution photo is a redraw plus a
-        // JPEG pass plus base64, which is far too much for a frame.
+        prepareAttachment("Preparing image…") { ImagePaste.attachment(from: image) }
+    }
+
+    /// Attaches an image chosen from the photo library (raw file `data`).
+    func attachPhoto(data: Data) {
+        prepareAttachment("Preparing image…") {
+            UIImage(data: data).flatMap { ImagePaste.attachment(from: $0) }
+        }
+    }
+
+    /// Attaches a file chosen from the Files app. Reads the bytes under the
+    /// security scope the picker grants, then encodes off the main actor.
+    func attachFile(url: URL) {
+        prepareAttachment("Preparing file…") {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            return ImagePaste.attachment(fileData: data, filename: url.lastPathComponent)
+        }
+    }
+
+    /// Shared attach path: run a (possibly heavy) encode off the main actor, set
+    /// it as the pending attachment shown in the compose bar, and — if a send
+    /// fired while it was encoding — run that send now so the caption goes with
+    /// the attachment rather than as its own message.
+    private func prepareAttachment(_ status: String, _ build: @escaping @Sendable () -> ImagePaste.Attachment?) {
+        showImagePasteStatus(status, autoClear: false)
+        attachInFlight = true
         Task.detached(priority: .userInitiated) { [weak self] in
-            let attachment = ImagePaste.attachment(from: image)
+            let attachment = build()
             await MainActor.run {
                 guard let self else { return }
-                self.imageAttachInFlight = false
+                self.attachInFlight = false
                 if let attachment {
-                    self.pendingImage = attachment
-                    self.showImagePasteStatus("Image attached — add a message, then send")
+                    self.pendingAttachment = attachment
+                    let noun = attachment.kind == .image ? "Image" : "File"
+                    self.showImagePasteStatus("\(noun) attached — add a message, then send")
                 } else {
-                    self.showImagePasteStatus("Couldn't read that image")
+                    self.showImagePasteStatus("Couldn't read that file")
                 }
-                // A send fired while this was encoding: run it now that the
-                // image is (or isn't) attached, so the caption goes with it.
                 if let deferred = self.deferredComposedSend {
                     self.deferredComposedSend = nil
                     self.sendComposed(text: deferred.text, withEnter: deferred.withEnter, to: deferred.surfaceID)
@@ -844,71 +872,74 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Removes the pending image without sending it.
+    /// Removes the pending attachment without sending it.
     func clearPendingImage() {
-        pendingImage = nil
+        pendingAttachment = nil
         deferredComposedSend = nil
         imagePasteStatusClear?.cancel()
         imagePasteStatus = nil
     }
 
-    /// Sends a composed message to a surface: the pending image's path first (if
-    /// any), then the typed text, then Enter when `withEnter` — in that order,
-    /// as separate steps sequenced on the paste's completion, so the agent
-    /// receives the picture and the words as a single prompt.
-    ///
-    /// The bridge types the image path with a trailing space, so the text lands
-    /// right after it. Nothing is submitted until the Enter step, which only
-    /// runs for the `withEnter` (return) button.
+    /// Sends a composed message to a surface: the pending attachment's path
+    /// first (if any), then the typed text, then Enter when `withEnter` — all in
+    /// ONE bridge call so the file and its caption reach the agent as a single
+    /// prompt, never two.
     func sendComposed(text: String, withEnter: Bool, to surfaceID: String) {
         let trimmedIsEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        // An attach is still encoding: hold this send until the image lands so
-        // the caption and the image go out together, not as two messages.
-        if pendingImage == nil, imageAttachInFlight {
+        // An attach is still encoding: hold this send until it lands so the
+        // caption and the attachment go out together, not as two messages.
+        if pendingAttachment == nil, attachInFlight {
             deferredComposedSend = (text, withEnter, surfaceID)
             return
         }
 
-        let image = pendingImage
+        let attachment = pendingAttachment
 
         // Text-only: unchanged behaviour.
-        guard let image else {
+        guard let attachment else {
             guard !trimmedIsEmpty else { return }
             sendText(withEnter ? text + "\n" : text, to: surfaceID)
             return
         }
 
         // Clear the chip immediately; the send is in flight.
-        pendingImage = nil
-        showImagePasteStatus("Sending image…", autoClear: false)
-        // One request carries the image, the caption, and whether to submit, so
-        // the bridge types the path + text as a SINGLE message — the image and
-        // its caption must not arrive as two separate prompts.
-        var params: [String: Any] = [
-            "surface_id": surfaceID,
-            "image_base64": image.base64,
-            "image_format": image.format,
-            "submit": withEnter,
-        ]
+        pendingAttachment = nil
+        let noun = attachment.kind == .image ? "image" : "file"
+        showImagePasteStatus("Sending \(noun)…", autoClear: false)
+
+        // One request carries the payload, the caption, and whether to submit,
+        // so the bridge types the path + text as a SINGLE message.
+        var params: [String: Any] = ["surface_id": surfaceID, "submit": withEnter]
+        let method: String
+        switch attachment.kind {
+        case .image:
+            method = "surface.paste_image"
+            params["image_base64"] = attachment.base64
+            params["image_format"] = attachment.format
+        case .file:
+            method = "surface.paste_file"
+            params["data_base64"] = attachment.base64
+            params["filename"] = attachment.label
+        }
         if !trimmedIsEmpty {
             params["text"] = text
         }
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
-        send(method: "surface.paste_image", params: params) { [weak self] result in
+        send(method: method, params: params) { [weak self] result in
             guard let self else { return }
             // An error reply reaches this completion with an empty result (see
             // BridgeClient), so a missing path means it failed. Restore the
-            // attachment so the user can retry rather than losing the image.
+            // attachment so the user can retry rather than losing it.
             guard result["path"] is String else {
-                self.pendingImage = image
-                self.showImagePasteStatus("Image paste failed")
+                self.pendingAttachment = attachment
+                self.showImagePasteStatus("\(noun.capitalized) attach failed")
                 return
             }
-            let bytes = (result["bytes"] as? Int) ?? image.bytes
-            self.showImagePasteStatus("Image sent (\(Self.byteLabel(bytes)))")
+            let bytes = (result["bytes"] as? Int) ?? attachment.bytes
+            self.showImagePasteStatus("\(noun.capitalized) sent (\(Self.byteLabel(bytes)))")
             self.scheduleActivityProbe(for: surfaceID)
         }
     }
