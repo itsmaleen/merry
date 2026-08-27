@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "5287200fdb20",
+  "strategy": "manual-commit",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 20,
+  "files_touched": [
+    "ios/cmux/App/AppState.swift",
+    "ios/cmux/Layout/WorkspaceLayoutView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/52/87200fdb20/0/metadata.json",
+      "transcript": "/52/87200fdb20/0/full.jsonl",
+      "compact_transcript": "/52/87200fdb20/0/transcript.jsonl",
+      "content_hash": "/52/87200fdb20/0/content_hash.txt",
+      "prompt": "/52/87200fdb20/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46855,
+    "cache_creation_tokens": 3230802,
+    "cache_read_tokens": 75179161,
+    "output_tokens": 266643,
+    "api_call_count": 182
+  }
+}

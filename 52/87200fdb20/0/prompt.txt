@@ -1,0 +1,20 @@
+/loop go ahead and build all phases + test along the way
+
+---
+
+marlin@Marlins-MacBook-Pro-2 herdr-investigation % cmux-bridge --backend herdr --pair
+flag provided but not defined: -backend
+Usage of cmux-bridge:
+  -pair
+        generate QR code for iOS pairing and exit
+  -tailscale
+        enable Tailscale tailnet listener
+
+---
+
+looks like it connected but need to make sure that im able to connect to both cmux and herdr, looks like herdr wiped the cmux setup
+
+---
+
+let's make sure to have the setting switch available and also the options so like herdr, cmux or multi
+should also have an easy way to go between the 2 so might need to update the menu sidebar
