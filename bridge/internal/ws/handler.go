@@ -10,8 +10,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/imagepaste"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/imagepaste"
 )
 
 // maxIncomingMessageBytes bounds one client message. Sized from the largest

@@ -2,7 +2,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct cmuxApp: App {
+struct merryApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var quickActionStore = QuickActionStore()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate

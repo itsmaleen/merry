@@ -1,4 +1,4 @@
-name: cmux
+name: merry
 options:
   bundleIdPrefix: dev.itsmaleen
   deploymentTarget:
@@ -12,30 +12,30 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 
 targets:
-  cmux:
+  merry:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - cmux
+      - merry
     info:
-      path: cmux/Info.plist
+      path: merry/Info.plist
       properties:
-        CFBundleDisplayName: cmux
+        CFBundleDisplayName: merry
         CFBundleURLTypes:
           - CFBundleURLSchemes:
-              - cmux-bridge
-            CFBundleURLName: dev.itsmaleen.cmux-bridge
-        NSCameraUsageDescription: "Used to scan the QR code displayed by cmux-bridge for pairing."
-        NSLocalNetworkUsageDescription: "Used to discover and connect to cmux-bridge running on your Mac over the local network."
+              - merry-bridge
+            CFBundleURLName: dev.itsmaleen.merry-bridge
+        NSCameraUsageDescription: "Used to scan the pairing QR code shown by the bridge on your Mac."
+        NSLocalNetworkUsageDescription: "Used to discover and connect to the bridge running on your Mac over the local network."
         NSBonjourServices:
-          - _cmux-bridge._tcp
-        NSMicrophoneUsageDescription: "Used for voice input to send text to cmux surfaces."
-        NSSpeechRecognitionUsageDescription: "Used to transcribe your voice and send it as text to cmux."
+          - _merry-bridge._tcp
+        NSMicrophoneUsageDescription: "Used for voice input to send text to your terminal sessions."
+        NSSpeechRecognitionUsageDescription: "Used to transcribe your voice and send it as text."
         UILaunchScreen: {}
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.itsmaleen.cmux
+        PRODUCT_BUNDLE_IDENTIFIER: dev.itsmaleen.merry
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         DEVELOPMENT_TEAM: ""

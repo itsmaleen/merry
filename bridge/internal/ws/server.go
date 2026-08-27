@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/imagepaste"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/imagepaste"
 )
 
 // Server is the WebSocket HTTP server.

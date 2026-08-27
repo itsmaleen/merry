@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // fake is an in-memory backend recording calls and answering from a table.
