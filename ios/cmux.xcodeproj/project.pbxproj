@@ -39,9 +39,11 @@
 		CC3D4E5F60718293A4B5C6D7 /* QuickActionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F60718293A4B5C6D7E8 /* QuickActionSettingsView.swift */; };
 		EE5F60718293A4B5C6D7E8F9 /* QuickActionEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF60718293A4B5C6D7E8F90A /* QuickActionEditView.swift */; };
 		4B5C6D7E8F90A1B2C3D4E5F6 /* CommandDictionary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A4B5C6D7E8F90A1B2C3D4E5 /* CommandDictionary.swift */; };
+		A55E7C0100000000A55E7C01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A55E7C0100000000A55E7C02 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A55E7C0100000000A55E7C02 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		03FCD190109E1BB2DF408C67 /* PairingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingStore.swift; sourceTree = "<group>"; };
 		19AA3479B26A1B9C0FC037F7 /* cmuxApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = cmuxApp.swift; sourceTree = "<group>"; };
 		25B31A1E5DC665A71EAEC8C1 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				B2C723204E87E163A8AE865F /* Info.plist */,
+				A55E7C0100000000A55E7C02 /* Assets.xcassets */,
 				F09CF7A4DE5059AD10688349 /* App */,
 				54C761D6258345CD9D8F544B /* Connection */,
 				A5180A5AD87681933D3E3A2A /* Control */,
@@ -215,6 +218,7 @@
 			buildConfigurationList = B8D38E764907D8415FC65997 /* Build configuration list for PBXNativeTarget "cmux" */;
 			buildPhases = (
 				35CFA4F0D45E49F370ECBCDF /* Sources */,
+				A55E7C0100000000A55E7C03 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -301,6 +305,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A55E7C0100000000A55E7C03 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A55E7C0100000000A55E7C01 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 
 /* Begin XCBuildConfiguration section */
 		1553B07068B96981191CC8DF /* Debug */ = {
