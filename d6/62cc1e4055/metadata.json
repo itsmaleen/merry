@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "d662cc1e4055",
+  "strategy": "manual-commit",
+  "branch": "rename/merry",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "ios/cmux/App/MainTabView.swift"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d6/62cc1e4055/0/metadata.json",
+      "transcript": "/d6/62cc1e4055/0/full.jsonl",
+      "compact_transcript": "/d6/62cc1e4055/0/transcript.jsonl",
+      "content_hash": "/d6/62cc1e4055/0/content_hash.txt",
+      "prompt": "/d6/62cc1e4055/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 47134,
+    "cache_creation_tokens": 3403667,
+    "cache_read_tokens": 167338051,
+    "output_tokens": 379938,
+    "api_call_count": 322
+  }
+}
