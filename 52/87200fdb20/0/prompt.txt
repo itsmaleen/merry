@@ -1,20 +1,47 @@
-/loop go ahead and build all phases + test along the way
+in a new worktree, let's investigate herdr https://herdr.dev/ and see how we can build/extend a version where companion app can work for this
 
 ---
 
-marlin@Marlins-MacBook-Pro-2 herdr-investigation % cmux-bridge --backend herdr --pair
-flag provided but not defined: -backend
-Usage of cmux-bridge:
-  -pair
-        generate QR code for iOS pairing and exit
-  -tailscale
-        enable Tailscale tailnet listener
+now let's rebase main to the paste image feature so I can test
 
 ---
 
-looks like it connected but need to make sure that im able to connect to both cmux and herdr, looks like herdr wiped the cmux setup
+where's the worktree path
 
 ---
 
-let's make sure to have the setting switch available and also the options so like herdr, cmux or multi
-should also have an easy way to go between the 2 so might need to update the menu sidebar
+did you pull from main before the rebase because not seeing the herdr stuff that I should be seeing
+
+---
+
+I meant worktree for feat/paste-image
+
+---
+
+I meant worktree for feat/paste-image, where is that or is it just on main
+
+---
+
+how is the paste image feature supposed to work? I'd expect an insert media button and a paste option from input field
+
+---
+
+I dont think the paste image button worked
+[Transcript] surface=cmux:DF2E8D2E-1FB2-49E0-BAEA-AB9973E2D820 -> session=4fb353d8-1d09-4709-92e5-a57470d1b229 via  (0 chars) MISSING FILE
+
+---
+
+I dont think the paste image button worked
+stuck on "sending image" and seeing this log
+[Transcript] surface=cmux:DF2E8D2E-1FB2-49E0-BAEA-AB9973E2D820 -> session=4fb353d8-1d09-4709-92e5-a57470d1b229 via  (0 chars) MISSING FILE
+
+---
+
+[Image #2]
+
+---
+
+ok so the sending works, let's now rework the UX
+make the paste be available from text input as paste option (just like in text) and make sure that we're able to type something and add image to that message
+
+with the current flow the image is added to the input of the session but then when I try to send a message from the app it just sends the image without appending the message
