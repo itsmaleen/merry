@@ -99,7 +99,7 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 	})
 
 	// Channel for incoming commands from the client
-	incoming := make(chan commandRequest, 8)
+	incoming := make(chan commandRequest) // unbuffered: at most one large paste resident beyond the one being handled
 
 	// Read loop: decode incoming commands and forward to incoming channel
 	go func() {
@@ -208,7 +208,7 @@ func handlePasteImage(cmd commandRequest, be backend.Backend, images *imagepaste
 	if err != nil {
 		return errorResponse(cmd.ID, "paste_image_error", err.Error())
 	}
-	return typeSavedPath(cmd, be, surfaceID, saved)
+	return typeSavedPath(cmd, be, images, surfaceID, saved)
 }
 
 // handlePasteFile materializes an arbitrary file the phone attached (a PDF, a
@@ -237,14 +237,14 @@ func handlePasteFile(cmd commandRequest, be backend.Backend, images *imagepaste.
 	if err != nil {
 		return errorResponse(cmd.ID, "paste_file_error", err.Error())
 	}
-	return typeSavedPath(cmd, be, surfaceID, saved)
+	return typeSavedPath(cmd, be, images, surfaceID, saved)
 }
 
 // typeSavedPath composes one message from a materialized file: the shell-quoted
 // path (which already ends in a space), then the optional `text` caption, then
 // Enter when `submit` is set — sent as a SINGLE surface.send_text so the path
 // and its caption reach the agent as one prompt, not two.
-func typeSavedPath(cmd commandRequest, be backend.Backend, surfaceID string, saved imagepaste.Result) commandResponse {
+func typeSavedPath(cmd commandRequest, be backend.Backend, images *imagepaste.Store, surfaceID string, saved imagepaste.Result) commandResponse {
 	text := saved.Text
 	if caption, _ := cmd.Params["text"].(string); caption != "" {
 		text += caption
@@ -257,6 +257,9 @@ func typeSavedPath(cmd commandRequest, be backend.Backend, surfaceID string, sav
 		params["workspace_id"] = wsID
 	}
 	if _, err := be.Handle("surface.send_text", params); err != nil {
+		// The file never made it into the surface; don't leave it on disk for
+		// the full retention window.
+		images.Remove(saved.Path)
 		return errorFor(cmd.ID, err)
 	}
 	result, _ := json.Marshal(map[string]any{

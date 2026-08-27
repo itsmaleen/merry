@@ -55,13 +55,39 @@ type Store struct {
 	dir string
 }
 
-// NewStore creates a store under the user's cache directory.
+// NewStore creates a store under the user's cache directory. It prunes expired
+// files immediately — covering anything a previous process left behind past the
+// retention window — and then keeps pruning on a timer, so a sensitive file is
+// deleted after `retention` even if no further attachment is ever saved.
 func NewStore() *Store {
 	base, err := os.UserCacheDir()
 	if err != nil {
 		base = os.TempDir()
 	}
-	return &Store{dir: filepath.Join(base, dirName)}
+	s := &Store{dir: filepath.Join(base, dirName)}
+	s.prune()
+	go s.pruneLoop()
+	return s
+}
+
+// pruneLoop deletes expired files on a timer for the life of the process, so
+// retention doesn't depend on a future upload happening.
+func (s *Store) pruneLoop() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.prune()
+	}
+}
+
+// Remove deletes one stored file, used to clean up an upload whose dispatch to
+// the surface failed so a rejected paste doesn't linger for the full retention.
+func (s *Store) Remove(path string) {
+	// Only touch files inside the store dir, never a caller-influenced path.
+	if filepath.Dir(path) != s.dir {
+		return
+	}
+	_ = os.Remove(path)
 }
 
 // Save writes image bytes to a new file and returns what to type into a surface.

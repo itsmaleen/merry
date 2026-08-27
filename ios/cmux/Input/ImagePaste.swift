@@ -84,6 +84,12 @@ enum ImagePaste {
     /// legible, low enough that a phone photo lands in the hundreds of KB.
     static let jpegQuality: CGFloat = 0.82
 
+    /// Largest file the bridge accepts (mirrors imagepaste.MaxFileBytes). The
+    /// client rejects anything larger before base64-encoding it, so a huge file
+    /// neither exhausts memory nor exceeds the WebSocket frame limit and drops
+    /// the connection.
+    static let maxFileBytes = 12 * 1024 * 1024
+
     /// The image currently on the pasteboard, if any.
     ///
     /// Reading the pasteboard shows iOS's "Allow Paste?" prompt the first time,
