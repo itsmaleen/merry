@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import UIKit
 
 @MainActor
 final class AppState: ObservableObject {
@@ -113,6 +114,33 @@ final class AppState: ObservableObject {
     @Published var claudeTranscriptMissing: Set<String> = []
     // Non-nil while the full-screen conversation-history viewer is presented.
     @Published var presentedHistory: HistoryTarget?
+    // Short-lived confirmation or failure text for an image paste, shown over the
+    // focused card. Images are the one action whose result isn't obvious from the
+    // terminal alone — a path scrolls by, an error is silent.
+    @Published var imagePasteStatus: String?
+    private var imagePasteStatusClear: DispatchWorkItem?
+    // An image attached to the compose bar, waiting for the user to add a
+    // message and send. Held here (not in the input bar) so the "Paste Image"
+    // quick action and the bar's attach button feed the same pending slot, and
+    // so sending composes the image and the typed text into one message.
+    @Published var pendingAttachment: ImagePaste.Attachment?
+    // Flipped by the "Add File" quick action to ask the layout to open the
+    // Photo / File / Paste menu (the quick-action builder has no view state).
+    @Published var addFileRequested = false
+    // An attach is encoding right now. A send issued during this window must
+    // wait for the image rather than going out as text alone (which is how the
+    // caption and image ended up as two messages).
+    private var attachInFlight = false
+    // Carries the workspace the send was issued from, so a deferred send doesn't
+    // pair its original surface with whatever workspace is current when the
+    // attachment finally lands (which, on a composite bridge, can name a
+    // different runtime and be rejected).
+    private var deferredComposedSend: (text: String, withEnter: Bool, surfaceID: String, workspaceID: String?)?
+    // Monotonic token for the latest attach request. A detached encode that
+    // finishes after a newer selection — or after switching bridges — carries a
+    // stale generation and is dropped, so it can't overwrite the current
+    // attachment or resurrect one past a session reset.
+    private var attachGeneration = 0
     private let bridgeStore = BridgeStore()
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
@@ -411,6 +439,15 @@ final class AppState: ObservableObject {
         claudeTranscriptLoading = []
         claudeTranscriptMissing = []
         presentedHistory = nil
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = nil
+        pendingAttachment = nil
+        addFileRequested = false
+        attachInFlight = false
+        // Invalidate any in-flight encode so a task started for the previous
+        // bridge can't land an attachment (or a send) in the new session.
+        attachGeneration += 1
+        deferredComposedSend = nil
         lastFocusedSurface = [:]
     }
 
@@ -788,6 +825,202 @@ final class AppState: ObservableObject {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count > maxHistoryLines else { return text }
         return lines.suffix(maxHistoryLines).joined(separator: "\n")
+    }
+
+    /// Asks the layout to present the Add-File source menu.
+    func requestAddFile() { addFileRequested = true }
+
+    /// Attaches the image currently on the pasteboard to the compose bar.
+    func attachClipboardImage() {
+        guard let image = ImagePaste.pasteboardImage() else {
+            showImagePasteStatus("No image on the clipboard")
+            return
+        }
+        prepareAttachment("Preparing image…") {
+            ImagePaste.attachment(from: image).map { .ready($0) } ?? .unreadable
+        }
+    }
+
+    /// Attaches an image chosen from the photo library (raw file `data`).
+    func attachPhoto(data: Data) {
+        prepareAttachment("Preparing image…") {
+            guard let image = UIImage(data: data), let att = ImagePaste.attachment(from: image) else {
+                return .unreadable
+            }
+            return .ready(att)
+        }
+    }
+
+    /// Attaches a file chosen from the Files app. Reads the bytes under the
+    /// security scope the picker grants — bounded so a huge file can't exhaust
+    /// memory — then encodes off the main actor.
+    func attachFile(url: URL) {
+        prepareAttachment("Preparing file…") {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return .unreadable }
+            defer { try? handle.close() }
+            // Read one byte past the limit: if we get it, the file is too big.
+            let data = (try? handle.read(upToCount: ImagePaste.maxFileBytes + 1)) ?? Data()
+            if data.count > ImagePaste.maxFileBytes { return .tooLarge }
+            guard let att = ImagePaste.attachment(fileData: data, filename: url.lastPathComponent) else {
+                return .unreadable
+            }
+            return .ready(att)
+        }
+    }
+
+    /// The result of preparing an attachment off the main actor.
+    private enum AttachOutcome {
+        case ready(ImagePaste.Attachment)
+        case tooLarge
+        case unreadable
+    }
+
+    /// Shared attach path: run a (possibly heavy) encode off the main actor,
+    /// then — only if this is still the newest attach request — set the pending
+    /// attachment and, when a send fired while it was encoding, run that send so
+    /// the caption goes with the attachment. A stale result (a newer selection
+    /// started, or the session was reset) is dropped.
+    private func prepareAttachment(_ status: String, _ build: @escaping @Sendable () -> AttachOutcome) {
+        showImagePasteStatus(status, autoClear: false)
+        attachGeneration += 1
+        let generation = attachGeneration
+        attachInFlight = true
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let outcome = build()
+            await MainActor.run {
+                guard let self, self.attachGeneration == generation else { return }
+                self.attachInFlight = false
+                switch outcome {
+                case .ready(let attachment):
+                    self.pendingAttachment = attachment
+                    let noun = attachment.kind == .image ? "Image" : "File"
+                    self.showImagePasteStatus("\(noun) attached — add a message, then send")
+                    // Replay a send deferred while this was encoding — only on
+                    // success, so a failed attach never sends the caption alone.
+                    if let deferred = self.deferredComposedSend {
+                        self.deferredComposedSend = nil
+                        self.sendComposed(text: deferred.text, withEnter: deferred.withEnter,
+                                          to: deferred.surfaceID, workspaceID: deferred.workspaceID)
+                    }
+                case .tooLarge:
+                    self.deferredComposedSend = nil
+                    self.showImagePasteStatus("That file is over \(Self.byteLabel(ImagePaste.maxFileBytes)) — too large to send")
+                case .unreadable:
+                    self.deferredComposedSend = nil
+                    self.showImagePasteStatus("Couldn't read that file")
+                }
+            }
+        }
+    }
+
+    /// Removes the pending attachment without sending it, and invalidates any
+    /// in-flight encode so it can't resurrect one.
+    func clearPendingImage() {
+        pendingAttachment = nil
+        deferredComposedSend = nil
+        attachGeneration += 1
+        attachInFlight = false
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = nil
+    }
+
+    /// Sends a composed message to a surface: the pending attachment's path
+    /// first (if any), then the typed text, then Enter when `withEnter` — all in
+    /// ONE bridge call so the file and its caption reach the agent as a single
+    /// prompt, never two.
+    func sendComposed(text: String, withEnter: Bool, to surfaceID: String) {
+        sendComposed(text: text, withEnter: withEnter, to: surfaceID, workspaceID: currentWorkspaceID)
+    }
+
+    private func sendComposed(text: String, withEnter: Bool, to surfaceID: String, workspaceID: String?) {
+        let trimmedIsEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        // An attach is still encoding: hold this send until it lands so the
+        // caption and the attachment go out together, not as two messages. Keep
+        // the FIRST deferred send; ignore piled-up ones rather than losing the
+        // earlier caption to the later.
+        if pendingAttachment == nil, attachInFlight {
+            if deferredComposedSend == nil {
+                deferredComposedSend = (text, withEnter, surfaceID, workspaceID)
+            }
+            return
+        }
+
+        let attachment = pendingAttachment
+
+        // Text-only: unchanged behaviour.
+        guard let attachment else {
+            guard !trimmedIsEmpty else { return }
+            sendText(withEnter ? text + "\n" : text, to: surfaceID)
+            return
+        }
+
+        // Don't consume the attachment if we can't actually send: keep the chip
+        // and tell the user, rather than clearing it into a dropped request.
+        guard connectionStatus.isConnected else {
+            showImagePasteStatus("Not connected — try again in a moment")
+            return
+        }
+
+        // Clear the chip immediately; the send is in flight.
+        pendingAttachment = nil
+        let noun = attachment.kind == .image ? "image" : "file"
+        showImagePasteStatus("Sending \(noun)…", autoClear: false)
+
+        // One request carries the payload, the caption, and whether to submit,
+        // so the bridge types the path + text as a SINGLE message. No
+        // workspace_id: the namespaced surface_id already routes it, and pairing
+        // it with a now-current workspace from a different runtime would be
+        // rejected by a composite bridge.
+        var params: [String: Any] = ["surface_id": surfaceID, "submit": withEnter]
+        let method: String
+        switch attachment.kind {
+        case .image:
+            method = "surface.paste_image"
+            params["image_base64"] = attachment.base64
+            params["image_format"] = attachment.format
+        case .file:
+            method = "surface.paste_file"
+            params["data_base64"] = attachment.base64
+            params["filename"] = attachment.label
+        }
+        if !trimmedIsEmpty {
+            params["text"] = text
+        }
+        send(method: method, params: params) { [weak self] result in
+            guard let self else { return }
+            // An error reply reaches this completion with an empty result (see
+            // BridgeClient), so a missing path means it failed. Restore the
+            // attachment so the user can retry — but only if nothing newer has
+            // taken the slot, so a late failure can't clobber a fresh selection.
+            guard result["path"] is String else {
+                if self.pendingAttachment == nil {
+                    self.pendingAttachment = attachment
+                }
+                self.showImagePasteStatus("\(noun.capitalized) attach failed")
+                return
+            }
+            let bytes = (result["bytes"] as? Int) ?? attachment.bytes
+            self.showImagePasteStatus("\(noun.capitalized) sent (\(Self.byteLabel(bytes)))")
+            self.scheduleActivityProbe(for: surfaceID)
+        }
+    }
+
+    private func showImagePasteStatus(_ text: String, autoClear: Bool = true) {
+        imagePasteStatusClear?.cancel()
+        imagePasteStatus = text
+        guard autoClear else { return }
+        let clear = DispatchWorkItem { [weak self] in self?.imagePasteStatus = nil }
+        imagePasteStatusClear = clear
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: clear)
+    }
+
+    nonisolated private static func byteLabel(_ bytes: Int) -> String {
+        bytes >= 1024 * 1024
+            ? String(format: "%.1f MB", Double(bytes) / (1024 * 1024))
+            : "\(max(1, bytes / 1024)) KB"
     }
 
     func readBrowserURL(_ surfaceID: String) {

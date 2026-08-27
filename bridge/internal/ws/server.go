@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/cmux-companion/bridge/internal/imagepaste"
 )
 
 // Server is the WebSocket HTTP server.
 type Server struct {
 	token      string
 	backend    backend.Backend
+	images     *imagepaste.Store
 	httpServer *http.Server
 }
 
@@ -22,6 +24,7 @@ func NewServer(token string, be backend.Backend) *Server {
 	s := &Server{
 		token:   token,
 		backend: be,
+		images:  imagepaste.NewStore(),
 	}
 
 	mux := http.NewServeMux()
@@ -36,7 +39,7 @@ func NewServer(token string, be backend.Backend) *Server {
 }
 
 func (s *Server) wsHandler(w http.ResponseWriter, r *http.Request) {
-	handleClient(w, r, s.token, s.backend)
+	handleClient(w, r, s.token, s.backend, s.images)
 }
 
 // ListenAndServe binds to addr (e.g. ":47821") and serves until ctx is cancelled.

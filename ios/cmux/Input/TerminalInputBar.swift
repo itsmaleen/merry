@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// An always-available "remote keyboard" docked under the focused terminal.
 ///
@@ -13,11 +14,23 @@ struct TerminalInputBar: View {
     /// Reflects keyboard/compose focus up to the parent so it can give the
     /// focused terminal the whole screen while typing.
     @Binding var isActive: Bool
-    var onSendText: (String) -> Void   // send text only (no newline)
-    var onSendEnter: (String) -> Void  // send text + Enter (run it)
+    var onSend: (String, Bool) -> Void // send the composed message (text, withEnter); pending image, if any, goes first
+    var onSendText: (String) -> Void   // type literal text into the terminal (control chips)
     var onSendKey: (String) -> Void    // send a control/navigation key
+    // Attachment (image or file), owned by AppState so the quick action and this
+    // bar share one pending slot. When set, a preview chip shows and Send is
+    // enabled even with an empty draft.
+    var hasPendingAttachment: Bool = false
+    var pendingThumbnail: Data? = nil   // an image preview; nil for a non-image file
+    var pendingLabel: String = ""       // "Image" or a filename
+    var onAddFile: () -> Void = {}      // opens the Photo / File / Paste menu
+    var onRemoveAttachment: () -> Void = {}
 
     @State private var draft = ""
+    // Whether the system clipboard holds an image right now, so the attach
+    // button can highlight. `hasImages` does not trigger iOS's paste prompt
+    // (only reading the image does), so it is safe to check eagerly.
+    @State private var clipboardHasImage = false
     @FocusState private var focused: Bool
     @StateObject private var commandDict = CommandDictionary()
     // Landscape on iPhone reports a compact vertical size class. There the
@@ -86,6 +99,7 @@ struct TerminalInputBar: View {
                     controlKeyRow
                 }
             }
+            attachmentChip
             composeRow
         }
         .padding(.horizontal, 10)
@@ -101,7 +115,18 @@ struct TerminalInputBar: View {
         )
         .padding(.horizontal, 8)
         .animation(.easeInOut(duration: 0.18), value: focused)
-        .onChange(of: focused) { _, active in isActive = active }
+        .onChange(of: focused) { _, active in
+            isActive = active
+            if active { clipboardHasImage = UIPasteboard.general.hasImages }
+        }
+        .onAppear { clipboardHasImage = UIPasteboard.general.hasImages }
+        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+            clipboardHasImage = UIPasteboard.general.hasImages
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Copying happens in another app, so re-check when we return.
+            clipboardHasImage = UIPasteboard.general.hasImages
+        }
         // If the bar is torn down while focused (quick actions open, the focused
         // surface closes or becomes a browser, tab switch), `.onChange(of:focused)`
         // won't fire — so reset here, or the parent leaves the workspace bar and
@@ -140,11 +165,57 @@ struct TerminalInputBar: View {
 
     // MARK: - Compose row
 
+    private var canSend: Bool {
+        hasPendingAttachment || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // A preview of the attached image or file with a remove button, shown above
+    // the compose field. The message the user types is sent together with it.
+    @ViewBuilder
+    private var attachmentChip: some View {
+        if hasPendingAttachment {
+            HStack(spacing: 8) {
+                if let data = pendingThumbnail, let ui = UIImage(data: data) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Image(systemName: "doc.fill")
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.1)))
+                }
+                Text(pendingLabel.isEmpty ? "Attached" : pendingLabel)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button {
+                    onRemoveAttachment()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
     private var composeRow: some View {
         HStack(spacing: 8) {
-            Image(systemName: "keyboard")
-                .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.4))
+            // Add a photo, a file, or the clipboard image. The paperclip tints
+            // green when the clipboard holds an image, hinting Paste is ready.
+            Button {
+                onAddFile()
+            } label: {
+                Image(systemName: "paperclip")
+                    .font(.system(size: 15))
+                    .foregroundStyle(clipboardHasImage ? .green : .white.opacity(0.4))
+            }
 
             TextField("", text: $draft, axis: .vertical)
                 .focused($focused)
@@ -163,7 +234,7 @@ struct TerminalInputBar: View {
                     }
                 }
 
-            if !draft.isEmpty {
+            if canSend {
                 Button {
                     send(withEnter: false)
                 } label: {
@@ -299,13 +370,14 @@ struct TerminalInputBar: View {
 
     private func send(withEnter: Bool) {
         let text = draft
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        learnCommand(text)
-        if withEnter {
-            onSendEnter(text)
-        } else {
-            onSendText(text)
-        }
+        let textEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // With an image attached, an empty message is fine — the image is the
+        // message. Otherwise there's nothing to send.
+        guard !textEmpty || hasPendingAttachment else { return }
+        if !textEmpty { learnCommand(text) }
+        // AppState composes: the pending image's path is typed first, then this
+        // text, then Enter when requested.
+        onSend(text, withEnter)
         draft = ""
         // Keep the keyboard up so the user can fire off several commands.
     }

@@ -29,6 +29,8 @@
 		CAE4DE2E046E33C1D633FB2E /* SpeechInputManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */; };
 		8D9E0F1A2B3C4D5E6F789012 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */; };
 		A1B2C3D4E5F60718293A0003 /* TerminalInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */; };
+		A1B2C3D400000001AAAA0004 /* ImageScaling.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000001BBBB0004 /* ImageScaling.swift */; };
+		A1B2C3D400000001AAAA0003 /* ImagePaste.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D400000001BBBB0003 /* ImagePaste.swift */; };
 		CBF87F9FAD9B0CCED7B3E9D0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B351B6ABD7CDE8B988761F /* AppState.swift */; };
 		D544B330786AAFAF5D1C7CA1 /* SendTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */; };
 		D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AE8DA2D042D31BDE7B64B3 /* WorkspaceLayoutView.swift */; };
@@ -66,6 +68,8 @@
 		BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeButtonHandler.swift; sourceTree = "<group>"; };
 		7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEditorView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputBar.swift; sourceTree = "<group>"; };
+		A1B2C3D400000001BBBB0004 /* ImageScaling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageScaling.swift; sourceTree = "<group>"; };
+		A1B2C3D400000001BBBB0003 /* ImagePaste.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePaste.swift; sourceTree = "<group>"; };
 		D6CEFBCA99422E02BB0230AD /* ControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlView.swift; sourceTree = "<group>"; };
 		F3A07A8B704E8C6281F5F5ED /* SendTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendTextView.swift; sourceTree = "<group>"; };
 		F413BA8A0E66B4B661D8E738 /* SurfaceListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceListView.swift; sourceTree = "<group>"; };
@@ -166,6 +170,8 @@
 				596F9B788F4E2C23D9D0A422 /* SpeechInputManager.swift */,
 				7C8D9E0F1A2B3C4D5E6F7890 /* TranscriptEditorView.swift */,
 				A1B2C3D4E5F60718293A0004 /* TerminalInputBar.swift */,
+				A1B2C3D400000001BBBB0004 /* ImageScaling.swift */,
+				A1B2C3D400000001BBBB0003 /* ImagePaste.swift */,
 				BA676C92595328331EE2B8EA /* VolumeButtonHandler.swift */,
 			);
 			path = Input;
@@ -285,6 +291,8 @@
 				5DE6ED59294D6C5BA08D0C66 /* SurfaceListView.swift in Sources */,
 				8D9E0F1A2B3C4D5E6F789012 /* TranscriptEditorView.swift in Sources */,
 				A1B2C3D4E5F60718293A0003 /* TerminalInputBar.swift in Sources */,
+				A1B2C3D400000001AAAA0004 /* ImageScaling.swift in Sources */,
+				A1B2C3D400000001AAAA0003 /* ImagePaste.swift in Sources */,
 				A9413E362FC865CE9530E30F /* VolumeButtonHandler.swift in Sources */,
 				D70946009B23D1BCAE5E7BCC /* WorkspaceLayoutView.swift in Sources */,
 				C9EF3BB55242E1F2E1E6A135 /* WorkspaceListView.swift in Sources */,
