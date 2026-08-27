@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.7.8",
+  "checkpoint_version": "branch-v1",
+  "checkpoint_id": "7b165a0311fc",
+  "strategy": "manual-commit",
+  "branch": "feat/paste-image",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "README.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/7b/165a0311fc/0/metadata.json",
+      "transcript": "/7b/165a0311fc/0/full.jsonl",
+      "compact_transcript": "/7b/165a0311fc/0/transcript.jsonl",
+      "content_hash": "/7b/165a0311fc/0/content_hash.txt",
+      "prompt": "/7b/165a0311fc/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 46975,
+    "cache_creation_tokens": 3306177,
+    "cache_read_tokens": 111601539,
+    "output_tokens": 321898,
+    "api_call_count": 242
+  }
+}
