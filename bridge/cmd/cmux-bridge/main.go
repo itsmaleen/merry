@@ -281,7 +281,17 @@ func runPair(dir string, cfg config, kinds []string) {
 		// soon as we've read the hostname (tsnet state is released by then), so a
 		// failure here can't leave the daemon down and the phone reconnecting.
 		restore := pauseDaemonForPairing()
+		// Ctrl-C while waiting for Tailscale approval must not leave the daemon
+		// stopped: a unit stopped through systemctl or launchctl stays down.
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigs
+			restore()
+			os.Exit(130)
+		}()
 		tailscaleHost = startTailscaleForPairing(dir, cfg)
+		signal.Stop(sigs)
 		restore()
 		if tailscaleHost == "" {
 			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n" +

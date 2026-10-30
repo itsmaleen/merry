@@ -38,9 +38,10 @@ func TestPickLANIP(t *testing.T) {
 			want:  "192.168.1.9",
 		},
 		{
-			name:  "public address is the fallback when nothing private",
+			// The token goes over plaintext ws://, so never advertise a public address.
+			name:  "public address only yields nothing",
 			cands: []lanCandidate{cand("eth0", "203.0.113.5")},
-			want:  "203.0.113.5",
+			want:  "",
 		},
 		{
 			name:  "link-local and IPv6 only yields nothing",

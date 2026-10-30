@@ -38,7 +38,9 @@ if [ "$(uname -s)" = "Linux" ]; then
 
     echo "Building cmux-bridge..."
     mkdir -p "$(dirname "$BINARY")"
-    TMP_BIN="$(mktemp)"
+    # Build next to the destination so the swap below is an atomic rename.
+    TMP_BIN="$(mktemp "$BINARY.new.XXXXXX")"
+    trap 'rm -f "$TMP_BIN"' EXIT
     bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
     chmod +x "$TMP_BIN"
 
@@ -66,22 +68,30 @@ RestartSec=5
 WantedBy=default.target
 EOF
 
-    # Stop the old daemon and anything else holding the port before swapping
-    # the binary, for the same reason as the macOS path: a leftover listener
-    # makes the new binary die on bind before Tailscale ever starts.
+    # Swap the binary in first: renaming over a running executable is safe on
+    # Linux, and it leaves nothing that can fail between stopping the old
+    # daemon and starting the new one.
+    mv -f "$TMP_BIN" "$BINARY"
+    trap - EXIT
+    systemctl --user daemon-reload
+
+    # Stop the old daemon and anything else holding the port, for the same
+    # reason as the macOS path: a leftover listener makes the new binary die on
+    # bind before Tailscale ever starts. If anything below fails, start the unit
+    # again rather than leave the bridge down.
+    trap 'systemctl --user start "$UNIT" 2>/dev/null || true' ERR
     systemctl --user stop "$UNIT" 2>/dev/null || true
     pkill -f "$BINARY" 2>/dev/null || true
-    mv -f "$TMP_BIN" "$BINARY"
     BRIDGE_PORT="${BRIDGE_PORT:-47821}"
     for _ in 1 2 3 4 5; do
         ss -ltn "sport = :$BRIDGE_PORT" 2>/dev/null | grep -q LISTEN || break
         sleep 1
     done
 
-    systemctl --user daemon-reload
     systemctl --user enable "$UNIT" >/dev/null
     SINCE="$(date '+%Y-%m-%d %H:%M:%S')"
     systemctl --user start "$UNIT"
+    trap - ERR
 
     sleep 4
     RECENT="$(journalctl --user -u "$UNIT" --since "$SINCE" --no-pager -o cat 2>/dev/null || true)"
@@ -110,11 +120,14 @@ EOF
     echo "Logs: journalctl --user -u $UNIT -f"
     echo "Update later with: git pull && ./scripts/install-bridge.sh ${ENABLE_TAILSCALE}"
     echo ""
+    # ~/.local/bin may not be on PATH yet in a fresh shell, so name it in full.
+    PAIR_CMD="cmux-bridge"
+    [ "$(command -v cmux-bridge 2>/dev/null)" = "$BINARY" ] || PAIR_CMD="$BINARY"
     echo "To pair with the iOS app, run:"
     if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
-        echo "  cmux-bridge --pair --tailscale"
+        echo "  $PAIR_CMD --pair --tailscale"
     else
-        echo "  cmux-bridge --pair"
+        echo "  $PAIR_CMD --pair"
     fi
     exit 0
 fi

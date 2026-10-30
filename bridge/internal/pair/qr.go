@@ -137,7 +137,9 @@ func PrintQR(host string, port int, token string, tailscaleHost string, backend 
 		host = tailscaleHost
 	}
 	if host == "" {
-		host = "127.0.0.1"
+		return fmt.Errorf("no address the phone can reach: this machine has no private LAN address " +
+			"(WSL NAT networking, or a public-only host). Re-run with --tailscale for remote access, " +
+			"or switch WSL to networkingMode=mirrored")
 	}
 
 	url := fmt.Sprintf("cmux-bridge://pair?host=%s&port=%d&token=%s", host, port, token)
@@ -226,10 +228,10 @@ var virtualIfacePrefixes = []string{"docker", "br-", "veth", "virbr", "cni", "fl
 var tailnetRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
 
 // pickLANIP chooses the first private IPv4 address on a physical-looking
-// interface, falling back to the first other usable IPv4 address. It returns
-// "" when nothing qualifies.
+// interface. Public addresses never qualify: the pairing token travels over
+// plaintext ws://, so a public-only host must pair through the tailnet. It
+// returns "" when nothing qualifies.
 func pickLANIP(cands []lanCandidate) string {
-	var fallback string
 	for _, c := range cands {
 		ip4 := c.ip.To4()
 		if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() || tailnetRange.Contains(ip4) {
@@ -241,11 +243,8 @@ func pickLANIP(cands []lanCandidate) string {
 		if ip4.IsPrivate() {
 			return ip4.String()
 		}
-		if fallback == "" {
-			fallback = ip4.String()
-		}
 	}
-	return fallback
+	return ""
 }
 
 func isVirtualIface(name string) bool {
@@ -260,7 +259,10 @@ func isVirtualIface(name string) bool {
 // wslNATMode reports whether this is a WSL2 distro using NAT networking.
 // Mirrored mode shares the Windows host's addresses, so it is not NAT.
 var wslNATMode = func() bool {
-	if _, err := os.Stat("/proc/sys/fs/binfmt_misc/WSLInterop"); err != nil {
+	// The kernel release ("...-microsoft-standard-WSL2") is present even when
+	// interop, and with it the binfmt_misc WSLInterop marker, is turned off.
+	release, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil || !strings.Contains(strings.ToLower(string(release)), "wsl2") {
 		return false
 	}
 	out, err := exec.Command("wslinfo", "--networking-mode").Output()
