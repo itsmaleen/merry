@@ -298,12 +298,16 @@ func runPair(dir string, cfg config, kinds []string) {
 // launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh.
 const launchdLabel = "com.itsmaleen.cmux-bridge"
 
-// pauseDaemonForPairing stops the launchd-managed bridge daemon so it releases
-// the tsnet state directory during --tailscale pairing, returning a function
-// that restarts it. It is a no-op on non-macOS or when the daemon isn't managed
-// by launchd (e.g. run by hand), and the returned restore is safe to call once.
+// pauseDaemonForPairing stops the background bridge daemon (launchd on macOS,
+// systemd --user on Linux) so it releases the tsnet state directory during
+// --tailscale pairing, returning a function that restarts it. It is a no-op on
+// other platforms or when the daemon isn't managed by the service manager (e.g.
+// run by hand), and the returned restore is safe to call once.
 func pauseDaemonForPairing() (restore func()) {
 	noop := func() {}
+	if runtime.GOOS == "linux" {
+		return pauseSystemdForPairing()
+	}
 	if runtime.GOOS != "darwin" {
 		return noop
 	}
@@ -335,6 +339,34 @@ func pauseDaemonForPairing() (restore func()) {
 			if err := exec.Command("launchctl", "bootstrap", domain, plist).Run(); err != nil {
 				log.Printf("warning: could not restart the bridge daemon: %v\n"+
 					"restart it manually with: launchctl bootstrap %s %s", err, domain, plist)
+				return
+			}
+			fmt.Println("Restarted the background bridge daemon.")
+		})
+	}
+}
+
+// systemdUnit is the user unit installed by scripts/install-bridge.sh on Linux.
+const systemdUnit = "cmux-bridge.service"
+
+// pauseSystemdForPairing is pauseDaemonForPairing for a systemd --user unit.
+func pauseSystemdForPairing() (restore func()) {
+	noop := func() {}
+	if err := exec.Command("systemctl", "--user", "is-active", "--quiet", systemdUnit).Run(); err != nil {
+		return noop
+	}
+	if err := exec.Command("systemctl", "--user", "stop", systemdUnit).Run(); err != nil {
+		log.Printf("warning: could not pause the bridge daemon for pairing: %v", err)
+		return noop
+	}
+	fmt.Println("Paused the background bridge daemon for pairing.")
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			if err := exec.Command("systemctl", "--user", "start", systemdUnit).Run(); err != nil {
+				log.Printf("warning: could not restart the bridge daemon: %v\n"+
+					"restart it manually with: systemctl --user start %s", err, systemdUnit)
 				return
 			}
 			fmt.Println("Restarted the background bridge daemon.")

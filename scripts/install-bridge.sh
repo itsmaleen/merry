@@ -8,14 +8,115 @@ ENABLE_TAILSCALE="${1:---no-tailscale}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Do NOT run under sudo. This installs a *per-user* LaunchAgent and talks to the
-# user's launchd domain; as root the plist lands in root's home and the daemon
+# Do NOT run under sudo. This installs a *per-user* LaunchAgent (systemd user
+# unit on Linux) and talks to the user's service manager; as root the plist lands in root's home and the daemon
 # runs as root — where it can't reach your cmux socket. Only the binary copy to
 # /usr/local/bin needs elevation, and that's handled selectively below.
 if [ "$(id -u)" = "0" ]; then
     echo "error: run this WITHOUT sudo (as your normal user):" >&2
     echo "         ./scripts/install-bridge.sh ${ENABLE_TAILSCALE}" >&2
     exit 1
+fi
+
+# ── Linux: systemd --user unit ───────────────────────────────────────────────
+# Same shape as the macOS path below (build, stop the old daemon, wait for the
+# port, start, verify), but the binary lives in ~/.local/bin and the daemon is a
+# per-user systemd unit, so nothing needs sudo except enabling lingering.
+# Re-running this after `git pull` is how a Linux box (WSL included) updates.
+if [ "$(uname -s)" = "Linux" ]; then
+    BINARY="$HOME/.local/bin/cmux-bridge"
+    UNIT="cmux-bridge.service"
+    UNIT_PATH="$HOME/.config/systemd/user/$UNIT"
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+    if ! systemctl --user show-environment >/dev/null 2>&1; then
+        echo "error: no systemd user manager. On WSL, add this to /etc/wsl.conf and run 'wsl --shutdown':" >&2
+        echo "         [boot]" >&2
+        echo "         systemd=true" >&2
+        exit 1
+    fi
+
+    echo "Building cmux-bridge..."
+    mkdir -p "$(dirname "$BINARY")"
+    TMP_BIN="$(mktemp)"
+    bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
+    chmod +x "$TMP_BIN"
+
+    EXEC="$BINARY"
+    if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
+        EXEC="$BINARY --tailscale"
+        echo "Tailscale enabled."
+    fi
+
+    echo "Installing systemd user unit → $UNIT_PATH"
+    mkdir -p "$(dirname "$UNIT_PATH")"
+    cat > "$UNIT_PATH" <<EOF
+[Unit]
+Description=merry bridge (cmux-bridge)
+# Start after herdr when it is installed as a unit; harmless when it is not.
+After=herdr.service
+Wants=herdr.service
+
+[Service]
+ExecStart=${EXEC}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+    # Stop the old daemon and anything else holding the port before swapping
+    # the binary, for the same reason as the macOS path: a leftover listener
+    # makes the new binary die on bind before Tailscale ever starts.
+    systemctl --user stop "$UNIT" 2>/dev/null || true
+    pkill -f "$BINARY" 2>/dev/null || true
+    mv -f "$TMP_BIN" "$BINARY"
+    BRIDGE_PORT="${BRIDGE_PORT:-47821}"
+    for _ in 1 2 3 4 5; do
+        ss -ltn "sport = :$BRIDGE_PORT" 2>/dev/null | grep -q LISTEN || break
+        sleep 1
+    done
+
+    systemctl --user daemon-reload
+    systemctl --user enable "$UNIT" >/dev/null
+    SINCE="$(date '+%Y-%m-%d %H:%M:%S')"
+    systemctl --user start "$UNIT"
+
+    sleep 4
+    RECENT="$(journalctl --user -u "$UNIT" --since "$SINCE" --no-pager -o cat 2>/dev/null || true)"
+    if echo "$RECENT" | grep -q "ws: listening on" && ! echo "$RECENT" | grep -q "address already in use"; then
+        echo "Bridge is listening."
+        if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
+            if echo "$RECENT" | grep -q "tailscale: listening on"; then
+                echo "Tailscale listener up: $(echo "$RECENT" | grep 'tailscale: listening on' | tail -1 | sed 's/.*listening on //')"
+            else
+                echo "warning: Tailscale did not report a listener yet — check: journalctl --user -u $UNIT -f" >&2
+            fi
+        fi
+    else
+        echo "warning: bridge may not have started cleanly — check: journalctl --user -u $UNIT -f" >&2
+    fi
+
+    # Without lingering the user manager, and so the bridge, stops at logout.
+    if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != "yes" ]; then
+        echo ""
+        echo "warning: lingering is off, so the bridge stops when you log out. Enable it with:" >&2
+        echo "         sudo loginctl enable-linger $(id -un)" >&2
+    fi
+
+    echo ""
+    echo "cmux-bridge installed and started ($BINARY)."
+    echo "Logs: journalctl --user -u $UNIT -f"
+    echo "Update later with: git pull && ./scripts/install-bridge.sh ${ENABLE_TAILSCALE}"
+    echo ""
+    echo "To pair with the iOS app, run:"
+    if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
+        echo "  cmux-bridge --pair --tailscale"
+    else
+        echo "  cmux-bridge --pair"
+    fi
+    exit 0
 fi
 
 # Keep logs out of world-readable /tmp — daemon stdout/stderr may carry
