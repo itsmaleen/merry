@@ -31,7 +31,7 @@ from your phone. Fronts [cmux](https://github.com/manaflow-ai/cmux) and
   - [herdr](https://herdr.dev) running (`herdr`)
 - Go 1.21+ (to build the bridge)
 - Xcode 15+ (to build the iOS app)
-- macOS 13+
+- macOS 13+, or Linux with systemd for the bridge (see [Linux](#linux-including-wsl2))
 - iOS 17+
 - Mac and iPhone on the same local network
 
@@ -58,6 +58,34 @@ The script hard-kills any previous bridge process and waits for the port to free
 before starting the freshly-built binary, then verifies it's listening (and, with
 `--tailscale`, that the tailnet listener came up). This avoids a stale daemon
 silently keeping the old binary alive — see [Troubleshooting](#troubleshooting).
+
+#### Linux (including WSL2)
+
+The bridge runs on Linux too, typically fronting herdr. The same script
+installs it as a **systemd user unit** instead of a LaunchAgent: the binary
+goes to `~/.local/bin/cmux-bridge` and nothing needs sudo.
+
+```bash
+git clone https://github.com/itsmaleen/merry && cd merry
+./scripts/install-bridge.sh --tailscale
+cmux-bridge --backend herdr --pair --tailscale   # once, then scan the QR
+```
+
+Update with `git pull && ./scripts/install-bridge.sh --tailscale`; the pairing
+token and tailnet identity in `~/.config/cmux-bridge` are kept, so the phone
+stays paired. Logs: `journalctl --user -u cmux-bridge -f`.
+
+- **Lingering.** A user unit stops at logout unless lingering is on:
+  `sudo loginctl enable-linger $USER`. The script warns when it is off.
+- **WSL2 needs systemd** (`[boot] systemd=true` in `/etc/wsl.conf`), and
+  something has to keep the WSL VM running, since Windows shuts it down
+  seconds after the last `wsl.exe` exits. A logon task running
+  `conhost.exe --headless wsl.exe -d Ubuntu --exec sleep infinity` does it
+  without leaving a window open.
+- **WSL networking.** Under the default NAT mode the phone cannot reach the
+  distro on the LAN, so pairing puts the tailnet host in both fields and the
+  phone always goes over Tailscale. With `networkingMode=mirrored` in
+  `.wslconfig` the LAN path works as well.
 
 ### 2. First-time pairing
 

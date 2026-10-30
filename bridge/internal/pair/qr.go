@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -130,6 +131,16 @@ func PrintQR(host string, port int, token string, tailscaleHost string, backend 
 	if host == "" {
 		host = primaryLANIP()
 	}
+	if host == "" {
+		// No reachable LAN address (WSL NAT, VPN-only box): point the LAN
+		// field at the tailnet host too, so the phone never tries a dead route.
+		host = tailscaleHost
+	}
+	if host == "" {
+		return fmt.Errorf("no address the phone can reach: this machine has no private LAN address " +
+			"(WSL NAT networking, or a public-only host). Re-run with --tailscale for remote access, " +
+			"or switch WSL to networkingMode=mirrored")
+	}
 
 	url := fmt.Sprintf("cmux-bridge://pair?host=%s&port=%d&token=%s", host, port, token)
 	if tailscaleHost != "" {
@@ -168,12 +179,20 @@ func PrintQR(host string, port int, token string, tailscaleHost string, backend 
 	return nil
 }
 
-// primaryLANIP returns the best non-loopback IPv4 address of this machine.
+// primaryLANIP returns the IPv4 address the phone should use to reach this
+// machine on the local network, or "" when there is none it could reach.
 func primaryLANIP() string {
+	if wslNATMode() {
+		// Under WSL's default NAT networking every address inside the distro
+		// is on a virtual switch the phone can never route to. Return nothing
+		// so the pairing falls back to the tailnet host.
+		return ""
+	}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return "127.0.0.1"
+		return ""
 	}
+	var cands []lanCandidate
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -183,20 +202,73 @@ func primaryLANIP() string {
 			continue
 		}
 		for _, addr := range addrs {
-			var ip net.IP
 			switch v := addr.(type) {
 			case *net.IPNet:
-				ip = v.IP
+				cands = append(cands, lanCandidate{iface: iface.Name, ip: v.IP})
 			case *net.IPAddr:
-				ip = v.IP
-			}
-			if ip == nil || ip.IsLoopback() {
-				continue
-			}
-			if ip4 := ip.To4(); ip4 != nil {
-				return ip4.String()
+				cands = append(cands, lanCandidate{iface: iface.Name, ip: v.IP})
 			}
 		}
 	}
-	return "127.0.0.1"
+	return pickLANIP(cands)
+}
+
+type lanCandidate struct {
+	iface string
+	ip    net.IP
+}
+
+// virtualIfacePrefixes name interfaces whose addresses a phone on the Wi-Fi
+// cannot reach: container bridges, VM switches and VPN tunnels.
+var virtualIfacePrefixes = []string{"docker", "br-", "veth", "virbr", "cni", "flannel", "tailscale", "utun", "wg", "zt"}
+
+// tailnetRange is the CGNAT block Tailscale hands out. An address in it is a
+// tailnet address, not a LAN one, even when it sits on an ordinary-looking
+// interface (WSL's mirrored networking presents it as eth0).
+var tailnetRange = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// pickLANIP chooses the first private IPv4 address on a physical-looking
+// interface. Public addresses never qualify: the pairing token travels over
+// plaintext ws://, so a public-only host must pair through the tailnet. It
+// returns "" when nothing qualifies.
+func pickLANIP(cands []lanCandidate) string {
+	for _, c := range cands {
+		ip4 := c.ip.To4()
+		if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() || tailnetRange.Contains(ip4) {
+			continue
+		}
+		if isVirtualIface(c.iface) {
+			continue
+		}
+		if ip4.IsPrivate() {
+			return ip4.String()
+		}
+	}
+	return ""
+}
+
+func isVirtualIface(name string) bool {
+	for _, p := range virtualIfacePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// wslNATMode reports whether this is a WSL2 distro using NAT networking.
+// Mirrored mode shares the Windows host's addresses, so it is not NAT.
+var wslNATMode = func() bool {
+	// The kernel release ("...-microsoft-standard-WSL2") is present even when
+	// interop, and with it the binfmt_misc WSLInterop marker, is turned off.
+	release, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil || !strings.Contains(strings.ToLower(string(release)), "wsl2") {
+		return false
+	}
+	out, err := exec.Command("wslinfo", "--networking-mode").Output()
+	if err != nil {
+		// Older WSL without wslinfo only had NAT networking.
+		return true
+	}
+	return strings.TrimSpace(string(out)) == "nat"
 }
