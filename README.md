@@ -66,7 +66,7 @@ installs it as a **systemd user unit** instead of a LaunchAgent: the binary
 goes to `~/.local/bin/cmux-bridge` and nothing needs sudo.
 
 ```bash
-git clone https://github.com/itsmaleen/cmux-companion && cd cmux-companion
+git clone https://github.com/itsmaleen/merry && cd merry
 ./scripts/install-bridge.sh --tailscale
 cmux-bridge --backend herdr --pair --tailscale   # once, then scan the QR
 ```
