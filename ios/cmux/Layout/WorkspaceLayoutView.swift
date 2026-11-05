@@ -27,7 +27,7 @@ enum QuickActionBuilder {
     /// repeated in a leading "Top" section of the full menu.
     @MainActor
     static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, includeTop: Bool = false, onToggleFullscreen: @escaping () -> Void = {}, onToggleFocus: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
-        let builtIn: [QuickAction] = [
+        var builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
             },
@@ -102,6 +102,14 @@ enum QuickActionBuilder {
                 }
             },
         ]
+
+        // Hand this session to the other machine (herdr bridges with a saved
+        // handoff machine only).
+        if appState.handoffInfo != nil {
+            builtIn.append(QuickAction(label: "Move Session", icon: "arrow.up.forward.app", section: "Workspace") {
+                appState.startHandoff(direction: "out", surfaceID: sid)
+            })
+        }
 
         // Filter out hidden built-in actions
         var result = builtIn.filter { !store.isBuiltInHidden($0.label) }
@@ -281,6 +289,12 @@ struct WorkspaceLayoutView: View {
                     surfaceLayout
                 }
 
+                if let handoff = appState.handoffStatus, !quickAction.isFullscreen {
+                    handoffBanner(handoff)
+                        .padding(.bottom, 4)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+
                 if let status = appState.imagePasteStatus, !quickAction.isFullscreen {
                     Text(status)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -331,6 +345,7 @@ struct WorkspaceLayoutView: View {
             .animation(.easeInOut(duration: 0.22), value: keyboardActive)
             .animation(.easeInOut(duration: 0.2), value: isSearching)
             .animation(.easeInOut(duration: 0.2), value: appState.imagePasteStatus)
+            .animation(.easeInOut(duration: 0.2), value: appState.handoffStatus)
 
             // Quick action overlay
             if quickAction.isOpen {
@@ -958,6 +973,53 @@ struct WorkspaceLayoutView: View {
         let available = totalHeight - 52
         let spacing = CGFloat(max(0, count - 1)) * 6
         return max(60, (available - spacing) / CGFloat(count))
+    }
+
+    // MARK: - Handoff banner
+
+    /// Progress of a session handoff, then its outcome with a button to follow
+    /// the sessions to the machine they moved to. Tap the text to dismiss.
+    private func handoffBanner(_ status: HandoffStatus) -> some View {
+        HStack(spacing: 8) {
+            if case .running = status {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+            }
+            Text(status.summary)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.8))
+                .lineLimit(2)
+                .onTapGesture { appState.dismissHandoff() }
+            if case .done(let done) = status, done.direction == "out", done.moved > 0, done.bridge != nil {
+                Button {
+                    appState.followHandoff()
+                } label: {
+                    Text(appState.handoffTargetBridge == nil ? "Pair \(done.machine)" : "Open")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.orange))
+                }
+                .buttonStyle(.plain)
+            }
+            if case .done = status {
+                Button {
+                    appState.dismissHandoff()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+        )
     }
 
     // MARK: - Empty state

@@ -23,6 +23,10 @@ enum BridgeMessage {
     /// controller herdr gave us was closed, or errored). Same shape as
     /// `surface.frames.ended`.
     case surfaceFitEnded(SurfaceFramesEndedPush)
+    /// A line of progress from a running `session.handoff`.
+    case handoffProgress(String)
+    /// A `session.handoff` finished (moved, skipped or failed sessions).
+    case handoffDone(HandoffDone)
     case commandResponse(CommandResponse)
     /// A push type this client doesn't know. Ignored rather than mis-parsed, so
     /// a newer bridge can add events without an older phone reacting to them.
@@ -54,6 +58,8 @@ struct ConnectedPayload: Decodable {
     /// Protocol-1 name for backendConnected; still sent by protocol-2 bridges.
     let cmuxConnected: Bool?
     let capabilities: BackendCapabilities?
+    /// Present when the bridge can move sessions to another herdr machine.
+    let handoff: HandoffInfo?
 
     enum CodingKeys: String, CodingKey {
         case bridgeVersion = "bridge_version"
@@ -62,11 +68,48 @@ struct ConnectedPayload: Decodable {
         case backendConnected = "backend_connected"
         case cmuxConnected = "cmux_connected"
         case capabilities
+        case handoff
     }
 
     var isBackendConnected: Bool { backendConnected ?? cmuxConnected ?? false }
     var backendKind: String { backend ?? "cmux" }
     var effectiveCapabilities: BackendCapabilities { capabilities ?? .cmux }
+}
+
+/// Where this bridge can move sessions: a herdr machine and the tailnet name
+/// of the Merry bridge running there.
+struct HandoffInfo: Decodable, Equatable {
+    let machine: String
+    let bridge: String?
+}
+
+/// One session in a `handoff.done` push.
+struct HandoffResult: Decodable, Equatable {
+    let pane: String
+    let agent: String?
+    let workspace: String?
+    let toPane: String?
+    let status: String
+    let reason: String?
+    let rolledBack: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case pane, agent, workspace, status, reason
+        case toPane = "to_pane"
+        case rolledBack = "rolled_back"
+    }
+}
+
+/// The `handoff.done` push.
+struct HandoffDone: Decodable, Equatable {
+    /// "out" (to `machine`) or "back" (from it to this bridge's machine).
+    let direction: String
+    let machine: String
+    /// The target's bridge, for "out": where the phone can follow the sessions.
+    let bridge: String?
+    let moved: Int
+    let results: [HandoffResult]?
+    let error: String?
 }
 
 struct SurfaceUpdate: Decodable {
@@ -392,6 +435,14 @@ final class BridgeClient: NSObject {
             if let endedData = try? JSONSerialization.data(withJSONObject: data),
                let ended = try? JSONDecoder().decode(SurfaceFramesEndedPush.self, from: endedData) {
                 return .surfaceScreenEnded(ended)
+            }
+            return .ignored
+        case "handoff.progress":
+            return .handoffProgress(data["message"] as? String ?? "")
+        case "handoff.done":
+            if let doneData = try? JSONSerialization.data(withJSONObject: data),
+               let done = try? JSONDecoder().decode(HandoffDone.self, from: doneData) {
+                return .handoffDone(done)
             }
             return .ignored
         case "surface.fit.ended":
