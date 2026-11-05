@@ -75,6 +75,9 @@ final class AppState: ObservableObject {
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
     @Published var selectedTab: SidebarTab = .layout
+    /// Bumped to open the sidebar from inside a tab (the layout tab's bottom
+    /// bar carries its own menu button). A counter so every tap lands.
+    @Published var sidebarRevealRequest = 0
 
     // MARK: - Live terminal frames
     //
@@ -268,7 +271,14 @@ final class AppState: ObservableObject {
             "workspace_id": workspaceID, "is_focused": false,
             "resume_binding": ["kind": "claude"] as [String: Any]
         ]
-        surfaces = [Surface(shellDict), Surface(claudeDict)].compactMap { $0 }
+        // Two more plain shells so the card switcher has a grid to show.
+        let extra: [[String: Any]] = [
+            ["id": "herdr:w1:p3", "type": "terminal", "title": "~/wrinkles", "workspace_id": workspaceID, "is_focused": false],
+            ["id": "herdr:w1:p4", "type": "terminal", "title": "bridge logs", "workspace_id": workspaceID, "is_focused": false],
+        ]
+        surfaces = ([shellDict, claudeDict] + extra).compactMap { Surface($0) }
+        surfaceContent["herdr:w1:p3"] = "$ node scripts/wiki_hybrid.mjs \"merry\"\n20 results\n$ "
+        surfaceContent["herdr:w1:p4"] = "ws: client connected\nsurface.list ok (4)\nsurface.read_text ok\n"
 
         claudeTranscript[claudeID] = Self.fixtureClaudeTranscript
         recomposeClaudeCard(claudeID)
@@ -1462,10 +1472,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    func createSurface(type: String = "terminal") {
+    /// Opens a new tab in the current workspace and focuses it. `then` gets
+    /// the new surface's id once it shows up in the list (not called if it
+    /// never does), so a caller can type a command into it.
+    func createSurface(type: String = "terminal", then: ((String) -> Void)? = nil) {
         let previousIDs = Set(surfaces.map(\.id))
         send(method: "surface.create", params: ["type": type]) { [weak self] _ in
-            self?.refreshSurfacesAndFocusNew(previousIDs: previousIDs)
+            self?.refreshSurfacesAndFocusNew(previousIDs: previousIDs, then: then)
+        }
+    }
+
+    /// New tab, then `command` typed into it: the "new tab + claude" flow in
+    /// one tap. The short wait lets the new shell print its prompt first, so
+    /// the command isn't echoed above it.
+    func createSurfaceRunning(_ command: String) {
+        createSurface { [weak self] newID in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self?.sendText(command, to: newID)
+            }
         }
     }
 
@@ -1573,7 +1597,7 @@ final class AppState: ObservableObject {
         setWorking(status == "working", for: surfaceID)
     }
 
-    private func refreshSurfacesAndFocusNew(previousIDs: Set<String>) {
+    private func refreshSurfacesAndFocusNew(previousIDs: Set<String>, then: ((String) -> Void)? = nil) {
         var params: [String: Any] = [:]
         if let id = currentWorkspaceID {
             params["workspace_id"] = id
@@ -1585,6 +1609,7 @@ final class AppState: ObservableObject {
                 self.applyAgentStatuses()
                 if let newSurface = self.surfaces.first(where: { !previousIDs.contains($0.id) }) {
                     self.focusSurface(newSurface.id) // also updates the frame subscription
+                    then?(newSurface.id)
                 } else if self.focusedSurfaceID == nil, let first = self.surfaces.first {
                     self.localFocusedSurfaceID = first.id
                     self.updateFrameSubscription(focusedSurfaceID: first.id)

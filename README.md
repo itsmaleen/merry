@@ -142,7 +142,7 @@ The app is designed for landscape mode with volume button controls:
 Long-press the focused surface or double-tap volume up to open:
 
 - **Input** — Enter, Ctrl+C, Ctrl+D, Ctrl+Z, Clear, Tab, Escape, Arrow keys
-- **Terminal** — Split Right, Split Down, New Terminal, Close Surface
+- **Terminal** — Split Right, Split Down, New Tab, New YOLO Tab (new tab + `claude --dangerously-skip-permissions`), Close Surface
 - **Workspace** — New Workspace
 
 Swipe left/right to switch between action sections.
