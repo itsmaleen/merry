@@ -22,7 +22,11 @@ struct cmuxApp: App {
                 .environmentObject(appState)
                 .environmentObject(quickActionStore)
                 .onOpenURL { url in
-                    appState.handlePairingURL(url)
+                    if url.host == "surface" {
+                        appState.handleSurfaceURL(url)
+                    } else {
+                        appState.handlePairingURL(url)
+                    }
                 }
                 .onAppear { Self.applyLaunchOrientationIfRequested() }
         }
