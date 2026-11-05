@@ -534,6 +534,33 @@ final class AppState: ObservableObject {
         pendingPairing = nil
     }
 
+    /// Handles `cmux-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
+    /// another app (the Planner, for an agent it started) asking to show one
+    /// pane. `bridge` is a paired bridge's tailnet name, LAN host or display
+    /// name. It only switches between bridges already paired, never pairs one,
+    /// so a link can't redirect input anywhere new.
+    func handleSurfaceURL(_ url: URL) {
+        guard url.scheme == "cmux-bridge", url.host == "surface",
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              let surfaceID = items.first(where: { $0.name == "surface" })?.value, !surfaceID.isEmpty
+        else { return }
+        let workspaceID = items.first(where: { $0.name == "workspace" })?.value
+        if let name = items.first(where: { $0.name == "bridge" })?.value, !name.isEmpty {
+            let match = bridges.first { bridge in
+                let c = bridge.credentials
+                let tailnetName = c.tailscaleHost?.split(separator: ".").first.map(String.init)
+                return tailnetName == name || c.tailscaleHost == name || c.host == name || bridge.name == name
+            }
+            // Not paired yet: open pairing rather than guess at another bridge.
+            guard let match else {
+                isPairingPresented = true
+                return
+            }
+            selectBridge(match.id)
+        }
+        navigateToSurface(surfaceID: surfaceID, workspaceID: workspaceID)
+    }
+
     // MARK: - Bridge management
 
     /// Switches the active session to another paired bridge.
