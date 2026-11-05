@@ -8,6 +8,18 @@ ENABLE_TAILSCALE="${1:---no-tailscale}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# MERRY_BRIDGE_BIN=/path/to/merry-bridge installs that binary instead of
+# building one, for hosts without Go (cross-compile elsewhere with
+# GOOS/GOARCH and copy it over).
+build_bridge() {
+    if [ -n "${MERRY_BRIDGE_BIN:-}" ]; then
+        echo "Using prebuilt $MERRY_BRIDGE_BIN"
+        cp "$MERRY_BRIDGE_BIN" "$1"
+    else
+        bash "$SCRIPT_DIR/build.sh" "$1"
+    fi
+}
+
 # Do NOT run under sudo. This installs a *per-user* LaunchAgent (systemd user
 # unit on Linux) and talks to the user's service manager; as root the plist lands in root's home and the daemon
 # runs as root — where it can't reach your cmux socket. Only the binary copy to
@@ -52,7 +64,7 @@ if [ "$(uname -s)" = "Linux" ]; then
     # Build next to the destination so the swap below is an atomic rename.
     TMP_BIN="$(mktemp "$BINARY.new.XXXXXX")"
     trap 'rm -f "$TMP_BIN"' EXIT
-    bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
+    build_bridge "$TMP_BIN"
     chmod +x "$TMP_BIN"
 
     EXEC="$BINARY"
@@ -193,7 +205,7 @@ fi
 # destination isn't user-writable (so the rest of the script stays non-root).
 echo "Building merry-bridge..."
 TMP_BIN="$(mktemp)"
-bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
+build_bridge "$TMP_BIN"
 chmod +x "$TMP_BIN"
 if [ -w "$(dirname "$BINARY")" ]; then
     mv -f "$TMP_BIN" "$BINARY"

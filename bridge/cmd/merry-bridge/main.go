@@ -224,6 +224,14 @@ func main() {
 	// Resolve socket paths
 	if cfg.SocketPath == "" {
 		cfg.SocketPath = socket.DetectSocketPath()
+	} else if !socketAlive(cfg.SocketPath) {
+		// cmux moves its socket between releases (cmux.sock → cmux-<uid>.sock),
+		// so a path pinned in config can go stale and leave the bridge
+		// crash-looping. Follow cmux's own pointer when the pinned one is dead.
+		if detected := socket.DetectSocketPath(); detected != cfg.SocketPath && socketAlive(detected) {
+			log.Printf("cmux socket %s is not answering; using %s", cfg.SocketPath, detected)
+			cfg.SocketPath = detected
+		}
 	}
 	if cfg.HerdrSocketPath == "" {
 		if cfg.HerdrSession != "" {
@@ -527,4 +535,14 @@ func runDaemon(dir string, cfg config, kinds []string) {
 	if err := server.Serve(ctx, listeners...); err != nil {
 		log.Fatalf("ws server: %v", err)
 	}
+}
+
+// socketAlive reports whether something is listening on the unix socket.
+func socketAlive(path string) bool {
+	c, err := net.DialTimeout("unix", path, time.Second)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
 }
