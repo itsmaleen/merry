@@ -57,12 +57,12 @@ type config struct {
 
 func defaultConfig() config {
 	return config{
-		Backend:        "auto",
-		SocketPath:     "",
-		SocketPassword: "",
-		BridgePort:     defaultPort,
-		PollIntervalMs: defaultPollInterval,
-		Tailscale:      false,
+		Backend:           "auto",
+		SocketPath:        "",
+		SocketPassword:    "",
+		BridgePort:        defaultPort,
+		PollIntervalMs:    defaultPollInterval,
+		Tailscale:         false,
 		TailscaleHostname: "merry-bridge",
 	}
 }

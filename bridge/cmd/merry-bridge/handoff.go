@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ func (c handoffConfig) withDefaults() handoffConfig {
 // handoff machine.
 func enableHandoff(c handoffConfig) {
 	c = c.withDefaults()
+	widenPath()
 	out, err := exec.Command("herdr", "machine", "list").Output()
 	if err != nil {
 		log.Printf("handoff: off (herdr machine list: %v)", err)
@@ -58,6 +60,26 @@ func enableHandoff(c handoffConfig) {
 		}
 	}
 	log.Printf("handoff: off (no herdr machine %q)", c.Machine)
+}
+
+// widenPath adds the usual user tool directories to PATH. launchd and
+// systemd start the bridge with a bare PATH, where herdr (Homebrew,
+// ~/.local/bin) is missing, and the handoff shells out to herdr, git and ssh.
+func widenPath() {
+	home, _ := os.UserHomeDir()
+	have := map[string]bool{}
+	parts := filepath.SplitList(os.Getenv("PATH"))
+	for _, p := range parts {
+		have[p] = true
+	}
+	for _, d := range []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(home, ".local/bin"), filepath.Join(home, ".cargo/bin"), filepath.Join(home, "go/bin")} {
+		if !have[d] {
+			if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+				parts = append(parts, d)
+			}
+		}
+	}
+	os.Setenv("PATH", strings.Join(parts, string(filepath.ListSeparator)))
 }
 
 type multiFlag []string
