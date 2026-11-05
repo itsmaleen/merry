@@ -149,6 +149,8 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 			"backend_connected": connected,
 			"cmux_connected":    connected,
 			"capabilities":      info.Capabilities,
+			// Present when this bridge can move sessions to another machine.
+			"handoff": handoffCfg,
 		},
 	})
 
@@ -211,6 +213,8 @@ func handleClient(w http.ResponseWriter, r *http.Request, token string, be backe
 				resp = handleFit(cmd, be, connCtx, fits, framePushes)
 			case "surface.fit.release":
 				resp = handleFitRelease(cmd, fits)
+			case "session.handoff":
+				resp = handleHandoff(cmd, be)
 			default:
 				resp = dispatch(cmd, be)
 			}

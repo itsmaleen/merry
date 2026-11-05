@@ -50,6 +50,8 @@ type config struct {
 	PollIntervalMs    int    `json:"poll_interval_ms"`
 	Tailscale         bool   `json:"tailscale"`
 	TailscaleHostname string `json:"tailscale_hostname"`
+	// Handoff configures `cmux-bridge handoff` and the session.handoff command.
+	Handoff handoffConfig `json:"handoff,omitempty"`
 }
 
 func defaultConfig() config {
@@ -165,6 +167,9 @@ func saveConfig(dir string, cfg config) error {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "handoff" {
+		os.Exit(runHandoff(os.Args[2:]))
+	}
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	backendFlag := flag.String("backend", "", "terminal runtime(s) to front: cmux, herdr, all, or auto (overrides config)")
@@ -459,6 +464,9 @@ func runDaemon(dir string, cfg config, kinds []string) {
 	defer cancel()
 
 	be := openBackend(kinds, cfg)
+	if hasKind(kinds, "herdr") {
+		enableHandoff(cfg.Handoff)
+	}
 	go be.Run(ctx)
 
 	// Start mDNS advertisement (LAN discovery)
