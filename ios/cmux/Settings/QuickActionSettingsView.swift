@@ -18,7 +18,8 @@ struct QuickActionSettingsView: View {
         ("Down Arrow", "arrow.down", "Input"),
         ("Split Right", "rectangle.split.2x1", "Terminal"),
         ("Split Down", "rectangle.split.1x2", "Terminal"),
-        ("New Terminal", "plus.rectangle", "Terminal"),
+        ("New Tab", "plus.rectangle", "Terminal"),
+        ("New YOLO Tab", "bolt.fill", "Terminal"),
         ("Close Surface", "xmark.rectangle", "Terminal"),
         ("New Workspace", "square.grid.2x2", "Workspace"),
         ("Zoom", "arrow.up.left.and.arrow.down.right", "Terminal"),
@@ -42,6 +43,39 @@ struct QuickActionSettingsView: View {
 
     var body: some View {
         List {
+            // One-tap chips above the input bar, in the order shown there.
+            Section {
+                if store.pinnedLabels.isEmpty {
+                    Text("Nothing pinned. Tap a pin below to add one.")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(store.pinnedLabels, id: \.self) { label in
+                    HStack(spacing: 12) {
+                        Image(systemName: icon(for: label))
+                            .font(.system(size: 14))
+                            .frame(width: 24)
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(label)
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        Spacer()
+                        usageBadge(label)
+                    }
+                }
+                .onMove { store.movePinned(from: $0, to: $1) }
+                .onDelete { indexSet in
+                    for idx in indexSet.sorted(by: >) { store.togglePinned(store.pinnedLabels[idx]) }
+                }
+            } header: {
+                HStack {
+                    Text("Pinned")
+                    Spacer()
+                    EditButton().font(.system(size: 11, weight: .medium))
+                }
+            } footer: {
+                Text("Pinned actions show as small buttons at the top right of the focused surface. Drag to reorder, swipe to unpin.")
+            }
+
             // Custom / AI actions
             ForEach(customSections, id: \.0) { section, actions in
                 Section(section) {
@@ -62,6 +96,9 @@ struct QuickActionSettingsView: View {
                             }
 
                             Spacer()
+
+                            usageBadge(action.label)
+                            pinButton(action.label)
 
                             Toggle("", isOn: Binding(
                                 get: { !action.isHidden },
@@ -107,6 +144,9 @@ struct QuickActionSettingsView: View {
 
                             Spacer()
 
+                            usageBadge(action.label)
+                            pinButton(action.label)
+
                             Toggle("", isOn: Binding(
                                 get: { !store.isBuiltInHidden(action.label) },
                                 set: { _ in store.toggleBuiltIn(action.label) }
@@ -136,5 +176,38 @@ struct QuickActionSettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Pin + usage helpers
+
+    private func icon(for label: String) -> String {
+        Self.builtInActions.first(where: { $0.label == label })?.icon
+            ?? store.customActions.first(where: { $0.label == label })?.icon
+            ?? "questionmark.square"
+    }
+
+    @ViewBuilder
+    private func usageBadge(_ label: String) -> some View {
+        let n = store.usage(label)
+        if n > 0 {
+            Text("\(n)×")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+    }
+
+    private func pinButton(_ label: String) -> some View {
+        Button {
+            store.togglePinned(label)
+        } label: {
+            Image(systemName: store.isPinned(label) ? "pin.fill" : "pin")
+                .font(.system(size: 13))
+                .foregroundStyle(store.isPinned(label) ? Color.orange : Color.white.opacity(0.35))
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(store.isPinned(label) ? "Unpin \(label)" : "Pin \(label)")
     }
 }

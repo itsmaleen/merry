@@ -45,6 +45,11 @@ struct PaneCardView: View {
     var scrollToBottomRequest: Int = 0
     /// Asks the parent to bump `scrollToBottomRequest`.
     var onJumpToBottom: (() -> Void)? = nil
+    /// Pinned quick actions, drawn as small icon buttons at the right of the
+    /// title bar (focused card only). `onMoreActions` adds a trailing "•••"
+    /// that opens the full menu.
+    var titleActions: [QuickAction] = []
+    var onMoreActions: (() -> Void)? = nil
     @State private var notificationPulse = false
     @State private var terminalAtTop = false
     @State private var terminalAtBottom = true
@@ -309,6 +314,24 @@ struct PaneCardView: View {
                         .foregroundStyle(.red.opacity(0.8))
                 }
             }
+
+            if isFocused && (!titleActions.isEmpty || onMoreActions != nil) {
+                HStack(spacing: 2) {
+                    ForEach(titleActions) { action in
+                        titleButton(icon: action.icon, label: action.label) {
+                            action.action()
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+                    if let onMoreActions {
+                        titleButton(icon: "ellipsis", label: "All quick actions", action: onMoreActions)
+                    }
+                }
+                // The buttons are taller than the title text; let them eat
+                // into the bar's padding rather than growing the bar.
+                .padding(.vertical, -4)
+                .padding(.trailing, -6)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -325,6 +348,21 @@ struct PaneCardView: View {
                 topTrailingRadius: 12
             )
         )
+    }
+
+    private func titleButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.55))
+                .frame(width: 22, height: 18)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.07)))
+                // A 22pt visual inside a wider hit area.
+                .frame(width: 30, height: 26)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private var borderColor: Color {

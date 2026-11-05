@@ -24,8 +24,10 @@ struct MainTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Menu toggle button (top-left, visible when sidebar hidden)
-            if !showSidebar {
+            // Menu toggle button (top-left, visible when sidebar hidden). The
+            // layout tab has its own in the bottom bar; floating there, it sat
+            // over the focused card's title.
+            if !showSidebar && appState.selectedTab != .layout {
                 VStack {
                     HStack {
                         Button { revealSidebar() } label: {
@@ -62,6 +64,7 @@ struct MainTabView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
+        .onChange(of: appState.sidebarRevealRequest) { _, _ in revealSidebar() }
         .onDisappear {
             // Otherwise the auto-dismiss timer fires into a torn-down view.
             sidebarTimer?.invalidate()

@@ -14,8 +14,19 @@ struct QuickAction: Identifiable {
 }
 
 enum QuickActionBuilder {
+    /// The default command for "New YOLO Tab": the user's own "Claude YOLO"
+    /// action if they edited it, else the stock one.
     @MainActor
-    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, onToggleFullscreen: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
+    static func yoloCommand(_ store: QuickActionStore) -> String {
+        store.customActions.first(where: { $0.label == "Claude YOLO" })?.command
+            ?? "claude --dangerously-skip-permissions\n"
+    }
+
+    /// Every visible action, each wrapped to count its use. With
+    /// `includeTop`, the four most-used actions (run at least twice) are
+    /// repeated in a leading "Top" section of the full menu.
+    @MainActor
+    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, includeTop: Bool = false, onToggleFullscreen: @escaping () -> Void = {}, onToggleFocus: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
         let builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
@@ -53,8 +64,11 @@ enum QuickActionBuilder {
             QuickAction(label: "Split Down", icon: "rectangle.split.1x2", section: "Terminal") {
                 appState.splitSurface(direction: "down", surfaceID: sid)
             },
-            QuickAction(label: "New Terminal", icon: "plus.rectangle", section: "Terminal") {
+            QuickAction(label: "New Tab", icon: "plus.rectangle", section: "Terminal") {
                 appState.createSurface()
+            },
+            QuickAction(label: "New YOLO Tab", icon: "bolt.fill", section: "Terminal") {
+                appState.createSurfaceRunning(yoloCommand(store))
             },
             QuickAction(label: "Close Surface", icon: "xmark.rectangle", section: "Terminal") {
                 appState.closeSurface(sid)
@@ -76,6 +90,9 @@ enum QuickActionBuilder {
             QuickAction(label: "New Workspace", icon: "square.grid.2x2", section: "Workspace") {
                 appState.createWorkspace()
             },
+            QuickAction(label: "Focus", icon: "rectangle.inset.filled", section: "Workspace") {
+                onToggleFocus()
+            },
             QuickAction(label: "Fullscreen", icon: "rectangle.fill", section: "Workspace") {
                 onToggleFullscreen()
             },
@@ -96,7 +113,29 @@ enum QuickActionBuilder {
             })
         }
 
+        // Count every run, whichever way it was triggered (menu, chip, volume).
+        result = result.map { qa in
+            QuickAction(label: qa.label, icon: qa.icon, section: qa.section) {
+                store.recordUse(qa.label)
+                qa.action()
+            }
+        }
+
+        if includeTop {
+            let top = result
+                .filter { store.usage($0.label) >= 2 }
+                .sorted { store.usage($0.label) > store.usage($1.label) }
+                .prefix(4)
+            result = top.map { QuickAction(label: $0.label, icon: $0.icon, section: "Top", action: $0.action) } + result
+        }
+
         return result
+    }
+
+    /// The pinned actions, in the user's pinned order, for the chip strip.
+    @MainActor
+    static func pinned(from actions: [QuickAction], store: QuickActionStore) -> [QuickAction] {
+        store.pinnedLabels.compactMap { label in actions.first(where: { $0.label == label }) }
     }
 }
 
@@ -108,7 +147,7 @@ final class QuickActionState: ObservableObject {
     @Published var currentSectionIndex = 0
     var actions: [QuickAction] = []
 
-    private static let canonicalOrder = ["Input", "Terminal", "Workspace", "AI"]
+    private static let canonicalOrder = ["Top", "Input", "Terminal", "Workspace", "AI"]
 
     var sectionOrder: [String] {
         let present = Set(actions.map(\.section))
@@ -217,6 +256,11 @@ struct WorkspaceLayoutView: View {
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
+    // Focus mode: the focused surface gets the whole page, no secondary row.
+    // Remembered across launches; swiping still cycles surfaces.
+    @AppStorage("focusMode") private var focusMode = false
+    // The card switcher: every surface as a scrollable grid of cards.
+    @State private var showSwitcher = false
 
     var body: some View {
         ZStack {
@@ -292,6 +336,47 @@ struct WorkspaceLayoutView: View {
             if quickAction.isOpen {
                 quickActionOverlay
             }
+
+            if showSwitcher {
+                SurfaceSwitcherView(
+                    isPresented: $showSwitcher,
+                    workspaceLabel: { workspaceLabel(for: $0, at: $1) },
+                    onSelect: { id in
+                        cycleDirection = .trailing
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            appState.focusSurface(id)
+                            showSwitcher = false
+                        }
+                    },
+                    onNewTab: {
+                        quickActionStore.recordUse("New Tab")
+                        appState.createSurface()
+                        showSwitcher = false
+                    },
+                    onNewYoloTab: {
+                        quickActionStore.recordUse("New YOLO Tab")
+                        appState.createSurfaceRunning(QuickActionBuilder.yoloCommand(quickActionStore))
+                        showSwitcher = false
+                    },
+                    onRefresh: {
+                        appState.refreshSurfaces()
+                        fetchAllContent()
+                    }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(2)
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showSwitcher)
+        .animation(.easeInOut(duration: 0.25), value: focusMode)
+        .onChange(of: showSwitcher) { _, open in
+            // Background cards only refresh every ~15s; bring every preview
+            // up to date the moment the grid opens.
+            if open { fetchAllContent() }
+        }
+        .onChange(of: appState.surfaces.map(\.id)) { _, _ in
+            // Switching workspace inside the switcher loads a new set.
+            if showSwitcher { fetchAllContent() }
         }
         .fullScreenCover(isPresented: $isEditingTranscript) {
             TranscriptEditorView(
@@ -383,6 +468,12 @@ struct WorkspaceLayoutView: View {
                 speechManager.requestPermissions()
             }
             wireVolumeCallbacks()
+            // Screenshot fixture flags (ios/scripts/screenshots.sh).
+            if appState.isFixtureMode {
+                let args = ProcessInfo.processInfo.arguments
+                if args.contains("-UITestFocusMode") { focusMode = true }
+                if args.contains("-UITestSwitcher") { showSwitcher = true }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if volumeButtonControls { volumeHandler.start() }
             }
@@ -506,13 +597,33 @@ struct WorkspaceLayoutView: View {
 
     private func openQuickActions() {
         guard let surface = focusedSurface else { return }
-        quickAction.open(with: QuickActionBuilder.build(
-            surfaceID: surface.id,
+        quickAction.open(with: buildActions(for: surface.id, includeTop: true))
+    }
+
+    private func buildActions(for sid: String, includeTop: Bool) -> [QuickAction] {
+        QuickActionBuilder.build(
+            surfaceID: sid,
             appState: appState,
             store: quickActionStore,
+            includeTop: includeTop,
             onToggleFullscreen: { [quickAction] in quickAction.isFullscreen.toggle() },
+            onToggleFocus: { focusMode.toggle() },
             onOpenSearch: { openSearch() }
-        ))
+        )
+    }
+
+    /// Pinned actions for the focused card's title bar (New Tab and Claude
+    /// YOLO by default), so the common ones skip the long-press menu.
+    private func pinnedActions(for sid: String) -> [QuickAction] {
+        QuickActionBuilder.pinned(from: buildActions(for: sid, includeTop: false), store: quickActionStore)
+            .map { qa in
+                QuickAction(label: qa.label, icon: qa.icon, section: qa.section) {
+                    qa.action()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        appState.refreshSurfaces()
+                    }
+                }
+            }
     }
 
     private var quickActionOverlay: some View {
@@ -610,6 +721,7 @@ struct WorkspaceLayoutView: View {
                     hintLabel(key: "VOL-", label: "cycle")
                     hintLabel(key: "VOL+", label: "select")
                     hintLabel(key: "SWIPE", label: "section")
+                    hintLabel(key: "PIN", label: "in settings")
                     hintLabel(key: "2xDN", label: "close")
                 }
                 .foregroundStyle(.white.opacity(0.2))
@@ -651,7 +763,7 @@ struct WorkspaceLayoutView: View {
             let isLandscape = geo.size.width > geo.size.height
             // While composing, hide the secondaries so the focused terminal
             // gets the full screen alongside the keyboard.
-            let hasSecondary = secondarySurfaces.count > 0 && !quickAction.isFullscreen && !keyboardActive
+            let hasSecondary = secondarySurfaces.count > 0 && !quickAction.isFullscreen && !keyboardActive && !focusMode
 
             Group {
                 if isLandscape {
@@ -758,7 +870,9 @@ struct WorkspaceLayoutView: View {
                 searchMatchIndex = TextSearch.clamp(searchMatchIndex, to: count)
             },
             scrollToBottomRequest: scrollToBottomRequest,
-            onJumpToBottom: { scrollToBottomRequest += 1 }
+            onJumpToBottom: { scrollToBottomRequest += 1 },
+            titleActions: pinnedActions(for: surface.id),
+            onMoreActions: { openQuickActions() }
         )
         .id(surface.id)
         .transition(.asymmetric(
@@ -864,9 +978,20 @@ struct WorkspaceLayoutView: View {
 
     private var workspaceBar: some View {
         HStack(spacing: 0) {
-            statusDot
-                .padding(.leading, 16)
-                .padding(.trailing, 12)
+            // Opens the sidebar; the connection dot rides on its corner.
+            Button { appState.sidebarRevealRequest += 1 } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.white.opacity(0.08)))
+                    .overlay(alignment: .topTrailing) { statusDot.offset(x: 1, y: -1) }
+                    .frame(width: 40, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Menu")
+            .padding(.leading, 6)
 
             workspacePills
 
@@ -881,18 +1006,61 @@ struct WorkspaceLayoutView: View {
                         .foregroundStyle(.red)
                 }
 
-                Button {
-                    appState.refreshSurfaces()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.4))
+                // Opens the card switcher. Shows where you are ("2/5") so
+                // focus mode, which hides the other cards, still says how
+                // many there are.
+                Button { showSwitcher = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.stack")
+                            .font(.system(size: 12, weight: .medium))
+                        Text(surfacePositionLabel)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 9)
+                    .frame(height: 28)
+                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .contentShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show all surfaces")
+
+                Button { focusMode.toggle() } label: {
+                    Image(systemName: focusMode
+                          ? "arrow.down.right.and.arrow.up.left"
+                          : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(focusMode ? .black : .white.opacity(0.6))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(focusMode ? Color.white : Color.white.opacity(0.08)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(focusMode ? "Show all cards" : "Focus this surface")
             }
-            .padding(.trailing, 16)
-            .padding(.leading, 12)
+            .padding(.trailing, 12)
+            .padding(.leading, 8)
         }
         .frame(height: 36)
+        .contentShape(Rectangle())
+        // Swipe up on the bar opens the switcher, like the iOS app switcher.
+        .gesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    if value.translation.height < -30,
+                       abs(value.translation.height) > abs(value.translation.width) {
+                        showSwitcher = true
+                    }
+                }
+        )
+    }
+
+    private var surfacePositionLabel: String {
+        let count = appState.surfaces.count
+        guard count > 0 else { return "0" }
+        let idx = appState.surfaces.firstIndex(where: { $0.id == focusedSurface?.id }) ?? 0
+        return "\(idx + 1)/\(count)"
     }
 
     // MARK: - Workspace pills
@@ -1012,6 +1180,10 @@ struct WorkspaceLayoutView: View {
         }
     }
 
+    private func fetchAllContent() {
+        for surface in appState.surfaces { fetchContent(for: surface) }
+    }
+
     private func fetchContent(for surface: Surface) {
         if surface.isBrowser {
             appState.readBrowserURL(surface.id)
@@ -1104,7 +1276,10 @@ struct WorkspaceLayoutView: View {
                 } else if let surface = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
                             ?? appState.surfaces.first {
                     let sid = surface.id
-                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store, onToggleFullscreen: { qa.isFullscreen.toggle() }))
+                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store, includeTop: true, onToggleFullscreen: { qa.isFullscreen.toggle() }, onToggleFocus: {
+                        let current = UserDefaults.standard.bool(forKey: "focusMode")
+                        UserDefaults.standard.set(!current, forKey: "focusMode")
+                    }))
                 }
             }
         }
