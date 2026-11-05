@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // Screens is a thin wrapper over Frames (via screen.FromFrames); this

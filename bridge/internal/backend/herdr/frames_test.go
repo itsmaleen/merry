@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // fakeObserveCmd substitutes the real `herdr terminal session observe`

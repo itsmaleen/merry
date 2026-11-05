@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-BINARY="/usr/local/bin/cmux-bridge"
-PLIST_LABEL="com.itsmaleen.cmux-bridge"
+BINARY="/usr/local/bin/merry-bridge"
+PLIST_LABEL="com.itsmaleen.merry-bridge"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_LABEL}.plist"
 ENABLE_TAILSCALE="${1:---no-tailscale}"
 
@@ -18,14 +18,25 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
+# Pre-rename installs kept their token, config and tailnet node state in
+# ~/.config/cmux-bridge; carry it over (the bridge would still read it, but
+# one directory is less confusing). Called once the old daemon is stopped, so
+# it cannot write into the old path behind the move.
+migrate_config() {
+    if [ -d "$HOME/.config/cmux-bridge" ] && [ ! -e "$HOME/.config/merry-bridge" ]; then
+        echo "Moving ~/.config/cmux-bridge to ~/.config/merry-bridge."
+        mv "$HOME/.config/cmux-bridge" "$HOME/.config/merry-bridge"
+    fi
+}
+
 # ── Linux: systemd --user unit ───────────────────────────────────────────────
 # Same shape as the macOS path below (build, stop the old daemon, wait for the
 # port, start, verify), but the binary lives in ~/.local/bin and the daemon is a
 # per-user systemd unit, so nothing needs sudo except enabling lingering.
 # Re-running this after `git pull` is how a Linux box (WSL included) updates.
 if [ "$(uname -s)" = "Linux" ]; then
-    BINARY="$HOME/.local/bin/cmux-bridge"
-    UNIT="cmux-bridge.service"
+    BINARY="$HOME/.local/bin/merry-bridge"
+    UNIT="merry-bridge.service"
     UNIT_PATH="$HOME/.config/systemd/user/$UNIT"
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
@@ -36,7 +47,7 @@ if [ "$(uname -s)" = "Linux" ]; then
         exit 1
     fi
 
-    echo "Building cmux-bridge..."
+    echo "Building merry-bridge..."
     mkdir -p "$(dirname "$BINARY")"
     # Build next to the destination so the swap below is an atomic rename.
     TMP_BIN="$(mktemp "$BINARY.new.XXXXXX")"
@@ -54,7 +65,7 @@ if [ "$(uname -s)" = "Linux" ]; then
     mkdir -p "$(dirname "$UNIT_PATH")"
     cat > "$UNIT_PATH" <<EOF
 [Unit]
-Description=merry bridge (cmux-bridge)
+Description=merry bridge
 # Start after herdr when it is installed as a unit; harmless when it is not.
 After=herdr.service
 Wants=herdr.service
@@ -80,8 +91,17 @@ EOF
     # bind before Tailscale ever starts. If anything below fails, start the unit
     # again rather than leave the bridge down.
     trap 'systemctl --user start "$UNIT" 2>/dev/null || true' ERR
+    # Retire the pre-rename cmux-bridge unit and binary.
+    if [ -e "$HOME/.config/systemd/user/cmux-bridge.service" ] || [ -e "$HOME/.local/bin/cmux-bridge" ]; then
+        echo "Retiring the old cmux-bridge unit and binary."
+        systemctl --user disable --now cmux-bridge.service 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/cmux-bridge.service" "$HOME/.local/bin/cmux-bridge"
+        pkill -f "$HOME/.local/bin/cmux-bridge" 2>/dev/null || true
+        systemctl --user daemon-reload
+    fi
     systemctl --user stop "$UNIT" 2>/dev/null || true
     pkill -f "$BINARY" 2>/dev/null || true
+    migrate_config
     BRIDGE_PORT="${BRIDGE_PORT:-47821}"
     for _ in 1 2 3 4 5; do
         ss -ltn "sport = :$BRIDGE_PORT" 2>/dev/null | grep -q LISTEN || break
@@ -116,13 +136,13 @@ EOF
     fi
 
     echo ""
-    echo "cmux-bridge installed and started ($BINARY)."
+    echo "merry-bridge installed and started ($BINARY)."
     echo "Logs: journalctl --user -u $UNIT -f"
     echo "Update later with: git pull && ./scripts/install-bridge.sh ${ENABLE_TAILSCALE}"
     echo ""
     # ~/.local/bin may not be on PATH yet in a fresh shell, so name it in full.
-    PAIR_CMD="cmux-bridge"
-    [ "$(command -v cmux-bridge 2>/dev/null)" = "$BINARY" ] || PAIR_CMD="$BINARY"
+    PAIR_CMD="merry-bridge"
+    [ "$(command -v merry-bridge 2>/dev/null)" = "$BINARY" ] || PAIR_CMD="$BINARY"
     echo "To pair with the iOS app, run:"
     if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
         echo "  $PAIR_CMD --pair --tailscale"
@@ -135,7 +155,7 @@ fi
 # Keep logs out of world-readable /tmp — daemon stdout/stderr may carry
 # diagnostic detail; ~/Library/Logs is user-owned.
 LOG_DIR="$HOME/Library/Logs"
-LOG_PATH="$LOG_DIR/cmux-bridge.log"
+LOG_PATH="$LOG_DIR/merry-bridge.log"
 mkdir -p "$LOG_DIR"
 
 # Clean up ROOT-owned leftovers from a historical `sudo ./install-bridge.sh`
@@ -147,7 +167,8 @@ mkdir -p "$LOG_DIR"
 # LaunchAgent fail to even start (launchd exits it with EX_CONFIG / 78, no
 # output). We only invoke sudo when something root-owned is actually found, so a
 # clean machine never gets prompted.
-TS_STATE="$HOME/.config/cmux-bridge/tailscale/tailscaled.state"
+TS_STATE="$HOME/.config/merry-bridge/tailscale/tailscaled.state"
+[ -e "$TS_STATE" ] || TS_STATE="$HOME/.config/cmux-bridge/tailscale/tailscaled.state" # not migrated yet
 is_root_owned() { [ -e "$1" ] && [ "$(stat -f %u "$1" 2>/dev/null)" = "0" ]; }
 NEEDS_ROOT_CLEANUP=0
 [ -n "$(pgrep -u 0 -f "$BINARY" 2>/dev/null || true)" ] && NEEDS_ROOT_CLEANUP=1
@@ -170,7 +191,7 @@ fi
 
 # Build to a temp path, then install to /usr/local/bin — using sudo only if the
 # destination isn't user-writable (so the rest of the script stays non-root).
-echo "Building cmux-bridge..."
+echo "Building merry-bridge..."
 TMP_BIN="$(mktemp)"
 bash "$SCRIPT_DIR/build.sh" "$TMP_BIN"
 chmod +x "$TMP_BIN"
@@ -228,6 +249,16 @@ EOF
 # listener — so the rebuild silently has no effect and remote access breaks.
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
 pkill -f "$BINARY" 2>/dev/null || true
+# Retire the pre-rename cmux-bridge job and binary.
+OLD_PLIST="$HOME/Library/LaunchAgents/com.itsmaleen.cmux-bridge.plist"
+if [ -e "$OLD_PLIST" ] || [ -e /usr/local/bin/cmux-bridge ]; then
+    echo "Retiring the old cmux-bridge LaunchAgent and binary."
+    launchctl bootout "gui/$(id -u)/com.itsmaleen.cmux-bridge" 2>/dev/null || true
+    rm -f "$OLD_PLIST"
+    pkill -f /usr/local/bin/cmux-bridge 2>/dev/null || true
+    if [ -w /usr/local/bin ]; then rm -f /usr/local/bin/cmux-bridge; else sudo rm -f /usr/local/bin/cmux-bridge; fi
+fi
+migrate_config
 
 # Wait for the listen port to actually free up before starting the new instance.
 BRIDGE_PORT="${BRIDGE_PORT:-47821}"
@@ -263,12 +294,12 @@ else
 fi
 
 echo ""
-echo "cmux-bridge installed and started."
+echo "merry-bridge installed and started."
 echo "Logs: tail -f $LOG_PATH"
 echo ""
 echo "To pair with the iOS app, run:"
 if [ "$ENABLE_TAILSCALE" = "--tailscale" ]; then
-    echo "  cmux-bridge --pair --tailscale   # embeds the .ts.net host for remote access"
+    echo "  merry-bridge --pair --tailscale   # embeds the .ts.net host for remote access"
 else
-    echo "  cmux-bridge --pair"
+    echo "  merry-bridge --pair"
 fi

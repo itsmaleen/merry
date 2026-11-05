@@ -17,21 +17,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/cmux"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/herdr"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/multi"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/mdns"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/pair"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend/cmux"
+	"github.com/itsmaleen/merry/bridge/internal/backend/herdr"
+	"github.com/itsmaleen/merry/bridge/internal/backend/multi"
+	"github.com/itsmaleen/merry/bridge/internal/mdns"
+	"github.com/itsmaleen/merry/bridge/internal/pair"
+	"github.com/itsmaleen/merry/bridge/internal/socket"
+	"github.com/itsmaleen/merry/bridge/internal/ws"
 	"tailscale.com/tsnet"
 )
 
 const (
 	defaultPort         = 47821
 	defaultPollInterval = 1000
-	configDirName       = "cmux-bridge"
+	configDirName       = "merry-bridge"
+	legacyConfigDirName = "cmux-bridge"
 	configFileName      = "config.json"
 )
 
@@ -50,19 +51,19 @@ type config struct {
 	PollIntervalMs    int    `json:"poll_interval_ms"`
 	Tailscale         bool   `json:"tailscale"`
 	TailscaleHostname string `json:"tailscale_hostname"`
-	// Handoff configures `cmux-bridge handoff` and the session.handoff command.
+	// Handoff configures `merry-bridge handoff` and the session.handoff command.
 	Handoff handoffConfig `json:"handoff,omitempty"`
 }
 
 func defaultConfig() config {
 	return config{
-		Backend:           "auto",
-		SocketPath:        "",
-		SocketPassword:    "",
-		BridgePort:        defaultPort,
-		PollIntervalMs:    defaultPollInterval,
-		Tailscale:         false,
-		TailscaleHostname: "cmux-bridge",
+		Backend:        "auto",
+		SocketPath:     "",
+		SocketPassword: "",
+		BridgePort:     defaultPort,
+		PollIntervalMs: defaultPollInterval,
+		Tailscale:      false,
+		TailscaleHostname: "merry-bridge",
 	}
 }
 
@@ -136,7 +137,16 @@ func configDir() string {
 	if err != nil {
 		return filepath.Join("/tmp", configDirName)
 	}
-	return filepath.Join(home, ".config", configDirName)
+	dir := filepath.Join(home, ".config", configDirName)
+	// An install from before the rename keeps its token and tailnet node in
+	// ~/.config/cmux-bridge; keep using it rather than force a re-pair.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		legacy := filepath.Join(home, ".config", legacyConfigDirName)
+		if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
+			return legacy
+		}
+	}
+	return dir
 }
 
 func loadConfig(dir string) (config, error) {
@@ -173,7 +183,7 @@ func main() {
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	backendFlag := flag.String("backend", "", "terminal runtime(s) to front: cmux, herdr, all, or auto (overrides config)")
-	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
+	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/merry-bridge, or a legacy ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
 	flag.Parse()
 
 	// cmux only accepts control-socket connections from the user that runs cmux;
@@ -300,7 +310,7 @@ func runPair(dir string, cfg config, kinds []string) {
 		restore()
 		if tailscaleHost == "" {
 			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n" +
-				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n" +
+				"Authorize it at the login URL printed above, then re-run `merry-bridge --pair --tailscale`.\n" +
 				"Refusing to print a LAN-only QR that would silently drop remote access.")
 		}
 	}
@@ -311,7 +321,7 @@ func runPair(dir string, cfg config, kinds []string) {
 }
 
 // launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh.
-const launchdLabel = "com.itsmaleen.cmux-bridge"
+const launchdLabel = "com.itsmaleen.merry-bridge"
 
 // pauseDaemonForPairing stops the background bridge daemon (launchd on macOS,
 // systemd --user on Linux) so it releases the tsnet state directory during
@@ -362,7 +372,7 @@ func pauseDaemonForPairing() (restore func()) {
 }
 
 // systemdUnit is the user unit installed by scripts/install-bridge.sh on Linux.
-const systemdUnit = "cmux-bridge.service"
+const systemdUnit = "merry-bridge.service"
 
 // pauseSystemdForPairing is pauseDaemonForPairing for a systemd --user unit.
 func pauseSystemdForPairing() (restore func()) {
@@ -452,7 +462,7 @@ func runDaemon(dir string, cfg config, kinds []string) {
 		log.Fatalf("token: %v", err)
 	}
 
-	log.Printf("cmux-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
+	log.Printf("merry-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
 	if hasKind(kinds, "herdr") {
 		log.Printf("herdr socket: %s", cfg.HerdrSocketPath)
 	}

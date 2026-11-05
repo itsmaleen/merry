@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 BRIDGE_DIR="$REPO_ROOT/bridge"
-OUTPUT="${1:-/usr/local/bin/cmux-bridge}"
+OUTPUT="${1:-/usr/local/bin/merry-bridge}"
 
-echo "Building cmux-bridge → $OUTPUT"
+echo "Building merry-bridge → $OUTPUT"
 cd "$BRIDGE_DIR"
 # Build with exactly the Go that go.mod names (fetched on demand), not just "at
 # least" it. A newer local Go breaks the build: Go 1.27 enables the jsonv2
@@ -15,5 +15,5 @@ cd "$BRIDGE_DIR"
 if [ -z "${GOTOOLCHAIN:-}" ]; then
     export GOTOOLCHAIN="go$(awk '/^go /{print $2; exit}' go.mod)"
 fi
-go build -o "$OUTPUT" ./cmd/cmux-bridge
+go build -o "$OUTPUT" ./cmd/merry-bridge
 echo "Done."

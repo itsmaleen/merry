@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // defaultFitEstablishTimeout is how long Fit waits for either a first

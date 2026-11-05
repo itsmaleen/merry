@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/handoff"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/handoff"
 )
 
 // HandoffConfig enables `session.handoff`: moving agent sessions between this

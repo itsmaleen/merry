@@ -11,3 +11,4 @@ xcuserdata/
 .DS_Store
 *.xcuserstate
 ios/build/
+bridge/merry-bridge

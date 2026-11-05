@@ -13,9 +13,9 @@ verbatim (it *is* cmux's API), the herdr backend translates it
 (`bridge/internal/backend/herdr`). The `connected` payload names the backend
 and its capabilities so the phone can hide what the runtime can't serve.
 
-Backend selection: `"backend"` in `~/.config/cmux-bridge/config.json`
+Backend selection: `"backend"` in `~/.config/merry-bridge/config.json`
 (`"cmux"`, `"herdr"`, `"all"`, or the default `"auto"`, which fronts every
-runtime whose socket answers) or `cmux-bridge --backend herdr`. herdr's socket
+runtime whose socket answers) or `merry-bridge --backend herdr`. herdr's socket
 is `~/.config/herdr/herdr.sock` by default; override with `"herdr_socket_path"`
 or name a herdr session with `"herdr_session"`.
 
@@ -588,6 +588,6 @@ announced by `connected.data.handoff = {"machine":"desktop","bridge":"desktop-br
     `bridge` (for `out`) is the target's Merry bridge, so the phone can switch
     to it and open `to_pane`.
 
-  The same move from a terminal: `cmux-bridge handoff [--back] [--workspace W]
+  The same move from a terminal: `merry-bridge handoff [--back] [--workspace W]
   [--pane P] [--dry-run]`. Config: `"handoff": {"machine":"desktop",
   "bridge":"desktop-bridge", "synced":["~/wrinkles","~/agent-config"]}`.

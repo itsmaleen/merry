@@ -474,13 +474,17 @@ final class AppState: ObservableObject {
     // QR/deep-link could otherwise silently redirect all keystrokes).
     @Published var pendingPairing: PairingCredentials?
 
+    /// URL schemes the app answers: merry-bridge, and the pre-rename
+    /// cmux-bridge so older pairing QRs and Planner links still work.
+    static let urlSchemes: Set<String> = ["merry-bridge", "cmux-bridge"]
+
     /// Handles a pairing URL. `trusted` is true when the user initiated the
     /// pairing inside the app (scanning a QR from the pairing sheet, or manual
     /// entry) — those are explicit actions and are committed directly. It is
-    /// false for an external `cmux-bridge://` deep link opened by another app,
+    /// false for an external `merry-bridge://` deep link opened by another app,
     /// where a new bridge must be confirmed before it can take over input.
     func handlePairingURL(_ url: URL, trusted: Bool = false) {
-        guard url.scheme == "cmux-bridge",
+        guard let scheme = url.scheme, AppState.urlSchemes.contains(scheme),
               url.host == "pair",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = components.queryItems?.first(where: { $0.name == "host" })?.value,
@@ -538,13 +542,13 @@ final class AppState: ObservableObject {
         pendingPairing = nil
     }
 
-    /// Handles `cmux-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
+    /// Handles `merry-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
     /// another app (the Planner, for an agent it started) asking to show one
     /// pane. `bridge` is a paired bridge's tailnet name, LAN host or display
     /// name. It only switches between bridges already paired, never pairs one,
     /// so a link can't redirect input anywhere new.
     func handleSurfaceURL(_ url: URL) {
-        guard url.scheme == "cmux-bridge", url.host == "surface",
+        guard let scheme = url.scheme, AppState.urlSchemes.contains(scheme), url.host == "surface",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               let surfaceID = items.first(where: { $0.name == "surface" })?.value, !surfaceID.isEmpty
         else { return }

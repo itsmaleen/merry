@@ -20,7 +20,7 @@ struct PairingView: View {
                 VStack(spacing: 8) {
                     Text("Pair with your Mac")
                         .font(.title.bold())
-                    Text("Scan the QR code shown by\n`cmux-bridge --pair` on your Mac.")
+                    Text("Scan the QR code shown by\n`merry-bridge --pair` on your Mac.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }
@@ -82,7 +82,7 @@ private struct ManualPairingView: View {
                         .keyboardType(.numberPad)
                 }
                 Section("Token") {
-                    TextField("Paste token from cmux-bridge --pair", text: $token)
+                    TextField("Paste token from merry-bridge --pair", text: $token)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }

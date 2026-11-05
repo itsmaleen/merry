@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/handoff"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
+	"github.com/itsmaleen/merry/bridge/internal/handoff"
+	"github.com/itsmaleen/merry/bridge/internal/ws"
 )
 
 // handoffConfig is the "handoff" block of config.json.
@@ -65,27 +65,27 @@ type multiFlag []string
 func (m *multiFlag) String() string     { return strings.Join(*m, ",") }
 func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
-// runHandoff implements `cmux-bridge handoff`.
+// runHandoff implements `merry-bridge handoff`.
 func runHandoff(args []string) int {
 	fs := flag.NewFlagSet("handoff", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `Usage: cmux-bridge handoff [options]
+		fmt.Fprint(os.Stderr, `Usage: merry-bridge handoff [options]
 
 Move agent sessions (claude, codex, opencode) between this machine and another
 herdr machine, resuming each where it left off.
 
-  cmux-bridge handoff                      every agent here -> desktop
-  cmux-bridge handoff --workspace wrinkles one workspace
-  cmux-bridge handoff --pane wS:p2Q        one pane
-  cmux-bridge handoff --back               every agent on desktop -> here
-  cmux-bridge handoff --dry-run            show the plan only
+  merry-bridge handoff                      every agent here -> desktop
+  merry-bridge handoff --workspace wrinkles one workspace
+  merry-bridge handoff --pane wS:p2Q        one pane
+  merry-bridge handoff --back               every agent on desktop -> here
+  merry-bridge handoff --dry-run            show the plan only
 
 Options:
 `)
 		fs.PrintDefaults()
 	}
 	var panes multiFlag
-	cfgDir := fs.String("config-dir", "", "bridge config directory (default ~/.config/cmux-bridge)")
+	cfgDir := fs.String("config-dir", "", "bridge config directory (default ~/.config/merry-bridge)")
 	to := fs.String("to", "", "target herdr machine label (default: config handoff.machine, else desktop)")
 	from := fs.String("from", "local", "source: local or a herdr machine label")
 	back := fs.Bool("back", false, "pull sessions from the handoff machine to this one (--from <machine> --to local)")
