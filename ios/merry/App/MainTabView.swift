@@ -138,6 +138,14 @@ struct MainTabView: View {
                 .buttonStyle(.plain)
             }
 
+            if let info = appState.handoffInfo {
+                Divider()
+                    .overlay(Color.white.opacity(0.1))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                handoffMenu(info)
+            }
+
             Spacer()
 
             // Version / branding
@@ -163,6 +171,55 @@ struct MainTabView: View {
                 topTrailingRadius: 16
             )
         )
+    }
+
+    /// Move agent sessions to the handoff machine (this pane, this workspace,
+    /// or everything) or bring them all back. Styled like the tab rows.
+    private func handoffMenu(_ info: HandoffInfo) -> some View {
+        let machine = info.machine
+        let surfaceID = appState.focusedSurfaceID
+        let workspaceID = appState.currentWorkspaceID
+        return Menu {
+            Section("Move to \(machine)") {
+                if let surfaceID {
+                    Button("This session", systemImage: "rectangle") {
+                        appState.startHandoff(direction: "out", surfaceID: surfaceID)
+                        dismissSidebar()
+                    }
+                }
+                if let workspaceID {
+                    Button("This workspace", systemImage: "square.grid.2x2") {
+                        appState.startHandoff(direction: "out", workspaceID: workspaceID)
+                        dismissSidebar()
+                    }
+                }
+                Button("Every session", systemImage: "square.stack.3d.up") {
+                    appState.startHandoff(direction: "out")
+                    dismissSidebar()
+                }
+            }
+            Section {
+                Button("Bring everything back", systemImage: "arrow.uturn.backward") {
+                    appState.startHandoff(direction: "back")
+                    dismissSidebar()
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 13))
+                    .frame(width: 20)
+                Text("Hand off")
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                Spacer()
+                Text(machine)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .foregroundStyle(.white.opacity(0.5))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
     }
 
     /// Which runtime's workspaces the app shows when the bridge fronts both:

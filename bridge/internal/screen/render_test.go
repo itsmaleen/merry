@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // fixtureFrame is one NDJSON line of the phone's screenshot-mode fixtures

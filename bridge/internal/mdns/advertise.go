@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/mdns"
 )
 
-// Advertise starts a Bonjour _cmux-bridge._tcp service advertisement on the
+// Advertise starts a Bonjour _merry-bridge._tcp service advertisement on the
 // given port. It returns a stop function that shuts the advertisement down.
 func Advertise(port int) (stop func(), err error) {
 	hostname, _ := os.Hostname()
@@ -20,7 +20,7 @@ func Advertise(port int) (stop func(), err error) {
 
 	service, err := mdns.NewMDNSService(
 		hostname,         // instance name
-		"_cmux-bridge._tcp", // service type
+		"_merry-bridge._tcp", // service type
 		"",               // domain (empty = .local.)
 		"",               // host name (empty = system default)
 		port,
@@ -36,7 +36,7 @@ func Advertise(port int) (stop func(), err error) {
 		return nil, fmt.Errorf("mdns server: %w", err)
 	}
 
-	log.Printf("mdns: advertising _cmux-bridge._tcp on port %d", port)
+	log.Printf("mdns: advertising _merry-bridge._tcp on port %d", port)
 
 	return func() { _ = server.Shutdown() }, nil
 }

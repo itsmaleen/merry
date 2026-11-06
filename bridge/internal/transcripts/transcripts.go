@@ -14,8 +14,8 @@ package transcripts
 import (
 	"encoding/json"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/claude"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/opencode"
+	"github.com/itsmaleen/merry/bridge/internal/claude"
+	"github.com/itsmaleen/merry/bridge/internal/opencode"
 )
 
 // Request describes one transcript resolution, gathered by the calling

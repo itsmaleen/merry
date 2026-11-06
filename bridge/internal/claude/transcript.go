@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/transcriptrender"
+	"github.com/itsmaleen/merry/bridge/internal/transcriptrender"
 )
 
 // sessionIDPattern matches a Claude session UUID. checkpoint_id comes from

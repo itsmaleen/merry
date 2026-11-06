@@ -17,21 +17,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/cmux"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/herdr"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend/multi"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/mdns"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/pair"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/socket"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/ws"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend/cmux"
+	"github.com/itsmaleen/merry/bridge/internal/backend/herdr"
+	"github.com/itsmaleen/merry/bridge/internal/backend/multi"
+	"github.com/itsmaleen/merry/bridge/internal/mdns"
+	"github.com/itsmaleen/merry/bridge/internal/pair"
+	"github.com/itsmaleen/merry/bridge/internal/socket"
+	"github.com/itsmaleen/merry/bridge/internal/ws"
 	"tailscale.com/tsnet"
 )
 
 const (
 	defaultPort         = 47821
 	defaultPollInterval = 1000
-	configDirName       = "cmux-bridge"
+	configDirName       = "merry-bridge"
+	legacyConfigDirName = "cmux-bridge"
 	configFileName      = "config.json"
 )
 
@@ -50,6 +51,8 @@ type config struct {
 	PollIntervalMs    int    `json:"poll_interval_ms"`
 	Tailscale         bool   `json:"tailscale"`
 	TailscaleHostname string `json:"tailscale_hostname"`
+	// Handoff configures `merry-bridge handoff` and the session.handoff command.
+	Handoff handoffConfig `json:"handoff,omitempty"`
 }
 
 func defaultConfig() config {
@@ -60,7 +63,7 @@ func defaultConfig() config {
 		BridgePort:        defaultPort,
 		PollIntervalMs:    defaultPollInterval,
 		Tailscale:         false,
-		TailscaleHostname: "cmux-bridge",
+		TailscaleHostname: "merry-bridge",
 	}
 }
 
@@ -134,7 +137,16 @@ func configDir() string {
 	if err != nil {
 		return filepath.Join("/tmp", configDirName)
 	}
-	return filepath.Join(home, ".config", configDirName)
+	dir := filepath.Join(home, ".config", configDirName)
+	// An install from before the rename keeps its token and tailnet node in
+	// ~/.config/cmux-bridge; keep using it rather than force a re-pair.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		legacy := filepath.Join(home, ".config", legacyConfigDirName)
+		if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
+			return legacy
+		}
+	}
+	return dir
 }
 
 func loadConfig(dir string) (config, error) {
@@ -165,10 +177,13 @@ func saveConfig(dir string, cfg config) error {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "handoff" {
+		os.Exit(runHandoff(os.Args[2:]))
+	}
 	pairMode := flag.Bool("pair", false, "generate QR code for iOS pairing and exit")
 	tailscaleFlag := flag.Bool("tailscale", false, "enable Tailscale tailnet listener")
 	backendFlag := flag.String("backend", "", "terminal runtime(s) to front: cmux, herdr, all, or auto (overrides config)")
-	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
+	configDirFlag := flag.String("config-dir", "", "config/token directory (default ~/.config/merry-bridge, or a legacy ~/.config/cmux-bridge); lets a second bridge run beside the installed one")
 	flag.Parse()
 
 	// cmux only accepts control-socket connections from the user that runs cmux;
@@ -209,6 +224,14 @@ func main() {
 	// Resolve socket paths
 	if cfg.SocketPath == "" {
 		cfg.SocketPath = socket.DetectSocketPath()
+	} else if !socketAlive(cfg.SocketPath) {
+		// cmux moves its socket between releases (cmux.sock → cmux-<uid>.sock),
+		// so a path pinned in config can go stale and leave the bridge
+		// crash-looping. Follow cmux's own pointer when the pinned one is dead.
+		if detected := socket.DetectSocketPath(); detected != cfg.SocketPath && socketAlive(detected) {
+			log.Printf("cmux socket %s is not answering; using %s", cfg.SocketPath, detected)
+			cfg.SocketPath = detected
+		}
 	}
 	if cfg.HerdrSocketPath == "" {
 		if cfg.HerdrSession != "" {
@@ -295,7 +318,7 @@ func runPair(dir string, cfg config, kinds []string) {
 		restore()
 		if tailscaleHost == "" {
 			log.Fatalf("--tailscale was requested but the bridge's Tailscale node did not come up.\n" +
-				"Authorize it at the login URL printed above, then re-run `cmux-bridge --pair --tailscale`.\n" +
+				"Authorize it at the login URL printed above, then re-run `merry-bridge --pair --tailscale`.\n" +
 				"Refusing to print a LAN-only QR that would silently drop remote access.")
 		}
 	}
@@ -306,7 +329,7 @@ func runPair(dir string, cfg config, kinds []string) {
 }
 
 // launchdLabel is the LaunchAgent label installed by scripts/install-bridge.sh.
-const launchdLabel = "com.itsmaleen.cmux-bridge"
+const launchdLabel = "com.itsmaleen.merry-bridge"
 
 // pauseDaemonForPairing stops the background bridge daemon (launchd on macOS,
 // systemd --user on Linux) so it releases the tsnet state directory during
@@ -357,7 +380,7 @@ func pauseDaemonForPairing() (restore func()) {
 }
 
 // systemdUnit is the user unit installed by scripts/install-bridge.sh on Linux.
-const systemdUnit = "cmux-bridge.service"
+const systemdUnit = "merry-bridge.service"
 
 // pauseSystemdForPairing is pauseDaemonForPairing for a systemd --user unit.
 func pauseSystemdForPairing() (restore func()) {
@@ -447,7 +470,7 @@ func runDaemon(dir string, cfg config, kinds []string) {
 		log.Fatalf("token: %v", err)
 	}
 
-	log.Printf("cmux-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
+	log.Printf("merry-bridge %s starting on port %d (backend: %s)", ws.BridgeVersion(), cfg.BridgePort, kind)
 	if hasKind(kinds, "herdr") {
 		log.Printf("herdr socket: %s", cfg.HerdrSocketPath)
 	}
@@ -459,6 +482,9 @@ func runDaemon(dir string, cfg config, kinds []string) {
 	defer cancel()
 
 	be := openBackend(kinds, cfg)
+	if hasKind(kinds, "herdr") {
+		enableHandoff(cfg.Handoff)
+	}
 	go be.Run(ctx)
 
 	// Start mDNS advertisement (LAN discovery)
@@ -509,4 +535,14 @@ func runDaemon(dir string, cfg config, kinds []string) {
 	if err := server.Serve(ctx, listeners...); err != nil {
 		log.Fatalf("ws server: %v", err)
 	}
+}
+
+// socketAlive reports whether something is listening on the unix socket.
+func socketAlive(path string) bool {
+	c, err := net.DialTimeout("unix", path, time.Second)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
 }

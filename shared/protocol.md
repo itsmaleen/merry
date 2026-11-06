@@ -13,9 +13,9 @@ verbatim (it *is* cmux's API), the herdr backend translates it
 (`bridge/internal/backend/herdr`). The `connected` payload names the backend
 and its capabilities so the phone can hide what the runtime can't serve.
 
-Backend selection: `"backend"` in `~/.config/cmux-bridge/config.json`
+Backend selection: `"backend"` in `~/.config/merry-bridge/config.json`
 (`"cmux"`, `"herdr"`, `"all"`, or the default `"auto"`, which fronts every
-runtime whose socket answers) or `cmux-bridge --backend herdr`. herdr's socket
+runtime whose socket answers) or `merry-bridge --backend herdr`. herdr's socket
 is `~/.config/herdr/herdr.sock` by default; override with `"herdr_socket_path"`
 or name a herdr session with `"herdr_session"`.
 
@@ -562,3 +562,32 @@ Commands use the cmux v2 JSON-RPC envelope. The bridge proxies them to the cmux 
 
 **System:**
 - `system.ping` — health check, returns `{"pong":true}`
+
+**Session handoff** (herdr bridges whose herdr has the handoff machine saved,
+announced by `connected.data.handoff = {"machine":"desktop","bridge":"desktop-bridge"}`,
+`null` otherwise):
+- `session.handoff` — `{"direction":"out"|"back", "surface_id"?, "workspace_id"?, "workspace_label"?, "force"?}`
+  → `{"started":true,"direction":"out","machine":"desktop"}` at once.
+  Moves agent sessions (claude, codex, opencode) from this machine's herdr to
+  the handoff machine (`out`) or back (`back`): waits up to 2 min for a busy
+  agent to settle, stops it, copies its repo's working tree (tracked +
+  untracked files, `.git`, ignored `.env*`; directories in `handoff.synced`
+  are only checked and patched) and its session files with home paths
+  rewritten, then resumes it with the same flags in a herdr pane on the other
+  side, in a workspace with the same label (reusing the pane the session left
+  from when there is one). A failure after the stop restarts the agent where
+  it was. With `surface_id` one pane moves; with `workspace_id` /
+  `workspace_label` one workspace; else every agent. `back` cannot name a
+  pane (it lives on the other machine). The move runs detached from the
+  connection, so a phone that drops off Wi-Fi mid-move does not cancel it.
+  Errors: `unsupported`, `invalid_params`, `busy` (one handoff at a time).
+
+  Pushes to every phone:
+  - `handoff.progress` — `{"message":"copying /Users/marlin/celeste to desktop:/home/marlin/celeste"}`
+  - `handoff.done` — `{"direction","machine","bridge"?,"moved":1,"error"?,"results":[{"pane","agent","session_id","workspace","from_cwd","to_cwd","to_pane","repo","status":"moved|skipped|failed","reason"?,"rolled_back"?}]}`.
+    `bridge` (for `out`) is the target's Merry bridge, so the phone can switch
+    to it and open `to_pane`.
+
+  The same move from a terminal: `merry-bridge handoff [--back] [--workspace W]
+  [--pane P] [--dry-run]`. Config: `"handoff": {"machine":"desktop",
+  "bridge":"desktop-bridge", "synced":["~/wrinkles","~/agent-config"]}`.

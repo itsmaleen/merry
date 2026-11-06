@@ -171,6 +171,10 @@ final class AppState: ObservableObject {
     // Short-lived confirmation or failure text for an image paste, shown over the
     // focused card. Images are the one action whose result isn't obvious from the
     // terminal alone — a path scrolls by, an error is silent.
+    /// Where this bridge can move sessions (nil: it can't). From `connected`.
+    @Published var handoffInfo: HandoffInfo?
+    /// The running or last finished handoff, shown as a banner until dismissed.
+    @Published var handoffStatus: HandoffStatus?
     @Published var imagePasteStatus: String?
     private var imagePasteStatusClear: DispatchWorkItem?
     // An image attached to the compose bar, waiting for the user to add a
@@ -470,13 +474,17 @@ final class AppState: ObservableObject {
     // QR/deep-link could otherwise silently redirect all keystrokes).
     @Published var pendingPairing: PairingCredentials?
 
+    /// URL schemes the app answers: merry-bridge, and the pre-rename
+    /// cmux-bridge so older pairing QRs and Planner links still work.
+    static let urlSchemes: Set<String> = ["merry-bridge", "cmux-bridge"]
+
     /// Handles a pairing URL. `trusted` is true when the user initiated the
     /// pairing inside the app (scanning a QR from the pairing sheet, or manual
     /// entry) — those are explicit actions and are committed directly. It is
-    /// false for an external `cmux-bridge://` deep link opened by another app,
+    /// false for an external `merry-bridge://` deep link opened by another app,
     /// where a new bridge must be confirmed before it can take over input.
     func handlePairingURL(_ url: URL, trusted: Bool = false) {
-        guard url.scheme == "cmux-bridge",
+        guard let scheme = url.scheme, AppState.urlSchemes.contains(scheme),
               url.host == "pair",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = components.queryItems?.first(where: { $0.name == "host" })?.value,
@@ -534,23 +542,19 @@ final class AppState: ObservableObject {
         pendingPairing = nil
     }
 
-    /// Handles `cmux-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
+    /// Handles `merry-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
     /// another app (the Planner, for an agent it started) asking to show one
     /// pane. `bridge` is a paired bridge's tailnet name, LAN host or display
     /// name. It only switches between bridges already paired, never pairs one,
     /// so a link can't redirect input anywhere new.
     func handleSurfaceURL(_ url: URL) {
-        guard url.scheme == "cmux-bridge", url.host == "surface",
+        guard let scheme = url.scheme, AppState.urlSchemes.contains(scheme), url.host == "surface",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               let surfaceID = items.first(where: { $0.name == "surface" })?.value, !surfaceID.isEmpty
         else { return }
         let workspaceID = items.first(where: { $0.name == "workspace" })?.value
         if let name = items.first(where: { $0.name == "bridge" })?.value, !name.isEmpty {
-            let match = bridges.first { bridge in
-                let c = bridge.credentials
-                let tailnetName = c.tailscaleHost?.split(separator: ".").first.map(String.init)
-                return tailnetName == name || c.tailscaleHost == name || c.host == name || bridge.name == name
-            }
+            let match = pairedBridge(named: name)
             // Not paired yet: open pairing rather than guess at another bridge.
             guard let match else {
                 isPairingPresented = true
@@ -560,6 +564,62 @@ final class AppState: ObservableObject {
         }
         navigateToSurface(surfaceID: surfaceID, workspaceID: workspaceID)
     }
+
+    /// A paired bridge by its tailnet name, tailnet host, LAN host or display name.
+    func pairedBridge(named name: String) -> SavedBridge? {
+        bridges.first { bridge in
+            let c = bridge.credentials
+            let tailnetName = c.tailscaleHost?.split(separator: ".").first.map(String.init)
+            return tailnetName == name || c.tailscaleHost == name || c.host == name || bridge.name == name
+        }
+    }
+
+    // MARK: - Session handoff
+
+    /// Moves agent sessions to the handoff machine ("out") or brings them
+    /// back ("back"). With a surface, just that pane; with a workspace, that
+    /// workspace; with neither, every agent. The bridge answers at once and
+    /// reports through `handoff.progress` / `handoff.done`.
+    func startHandoff(direction: String, surfaceID: String? = nil, workspaceID: String? = nil, workspaceLabel: String? = nil) {
+        guard let info = handoffInfo else { return }
+        var params: [String: Any] = ["direction": direction]
+        if let surfaceID { params["surface_id"] = surfaceID }
+        if let workspaceID { params["workspace_id"] = workspaceID }
+        if let workspaceLabel { params["workspace_label"] = workspaceLabel }
+        let verb = direction == "back" ? "Bringing sessions back from \(info.machine)" : "Moving to \(info.machine)"
+        handoffStatus = .running(verb + "…")
+        sendRaw(method: "session.handoff", params: params) { [weak self] response in
+            guard let self, !response.ok else { return }
+            let message = response.error?.message ?? "handoff failed"
+            self.handoffStatus = .done(HandoffDone(direction: direction, machine: info.machine, bridge: nil,
+                                                   moved: 0, results: nil, error: message))
+        }
+    }
+
+    /// The bridge the last "out" handoff's sessions went to, if it is paired.
+    var handoffTargetBridge: SavedBridge? {
+        guard case .done(let done) = handoffStatus, done.direction == "out", done.moved > 0,
+              let name = done.bridge, !name.isEmpty else { return nil }
+        return pairedBridge(named: name)
+    }
+
+    /// Switches to the bridge the sessions moved to, opening the moved pane
+    /// when exactly one moved. Opens pairing when that bridge isn't paired.
+    func followHandoff() {
+        guard case .done(let done) = handoffStatus else { return }
+        guard let target = handoffTargetBridge else {
+            if done.bridge != nil { isPairingPresented = true }
+            return
+        }
+        let moved = (done.results ?? []).filter { $0.status == "moved" }
+        handoffStatus = nil
+        selectBridge(target.id)
+        if moved.count == 1, let pane = moved[0].toPane {
+            navigateToSurface(surfaceID: pane, workspaceID: nil)
+        }
+    }
+
+    func dismissHandoff() { handoffStatus = nil }
 
     // MARK: - Bridge management
 
@@ -642,6 +702,7 @@ final class AppState: ObservableObject {
         claudeTranscriptLoading = []
         claudeTranscriptMissing = []
         presentedHistory = nil
+        handoffInfo = nil
         imagePasteStatusClear?.cancel()
         imagePasteStatus = nil
         pendingAttachment = nil
@@ -1788,6 +1849,7 @@ extension AppState: BridgeClientDelegate {
             connectionStatus = .connected(cmuxConnected: payload.isBackendConnected)
             if backendKind != payload.backendKind { backendKind = payload.backendKind }
             if capabilities != payload.effectiveCapabilities { capabilities = payload.effectiveCapabilities }
+            if handoffInfo != payload.handoff { handoffInfo = payload.handoff }
         case .notificationCreated(let n):
             notifications.insert(n, at: 0)
             print("[Notification] id=\(n.id) surfaceID=\(n.surfaceID ?? "nil") workspaceID=\(n.workspaceID ?? "nil") title=\(n.title)")
@@ -1821,6 +1883,11 @@ extension AppState: BridgeClientDelegate {
             handleFramesEnded(push)
         case .surfaceFitEnded(let push):
             handleFitEnded(push)
+        case .handoffProgress(let line):
+            if case .done = handoffStatus { break }
+            handoffStatus = .running(line)
+        case .handoffDone(let done):
+            handoffStatus = .done(done)
         case .commandResponse, .ignored:
             break
         }
@@ -2049,6 +2116,33 @@ enum ConnectionStatus: Equatable {
         case .reconnecting: return "yellow"
         case .connecting: return "yellow"
         case .disconnected: return "red"
+        }
+    }
+}
+
+/// A session handoff in flight (latest progress line) or finished.
+enum HandoffStatus: Equatable {
+    case running(String)
+    case done(HandoffDone)
+
+    /// One line for the banner.
+    var summary: String {
+        switch self {
+        case .running(let line):
+            return line
+        case .done(let d):
+            if let error = d.error { return "Handoff failed: \(error)" }
+            let results = d.results ?? []
+            let skipped = results.filter { $0.status == "skipped" }.count
+            let failed = results.filter { $0.status == "failed" }.count
+            let place = d.direction == "back" ? "back from \(d.machine)" : "to \(d.machine)"
+            var parts = ["Moved \(d.moved) \(d.moved == 1 ? "session" : "sessions") \(place)"]
+            if skipped > 0 { parts.append("\(skipped) skipped") }
+            if failed > 0 { parts.append("\(failed) failed") }
+            if let why = results.first(where: { $0.status != "moved" })?.reason, !why.isEmpty {
+                parts.append(why)
+            }
+            return parts.joined(separator: " · ")
         }
     }
 }

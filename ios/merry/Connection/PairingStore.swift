@@ -21,7 +21,7 @@ struct PairingCredentials: Codable, Equatable {
 }
 
 final class PairingStore {
-    private let service = "dev.itsmaleen.cmux-bridge"
+    private let service = "dev.itsmaleen.merry-bridge"
     private let account = "credentials"
 
     func save(_ credentials: PairingCredentials) throws {
@@ -100,7 +100,7 @@ struct SavedBridge: Codable, Identifiable, Equatable {
     }
 
     /// A friendly default name derived from the bridge's network identity: the
-    /// first label of the tailnet host (e.g. "cmux-bridge-mini") when present,
+    /// first label of the tailnet host (e.g. "merry-bridge-mini") when present,
     /// otherwise the LAN host/IP.
     static func defaultName(for c: PairingCredentials) -> String {
         if let ts = c.tailscaleHost, !ts.isEmpty {
@@ -116,7 +116,7 @@ struct SavedBridge: Codable, Identifiable, Equatable {
 /// Persists the set of paired bridges (and which one is active) in the Keychain
 /// as a single JSON blob. Migrates a legacy single-pairing entry on first load.
 final class BridgeStore {
-    private let service = "dev.itsmaleen.cmux-bridge"
+    private let service = "dev.itsmaleen.merry-bridge"
     private let account = "bridges.v1"
     private let legacy = PairingStore()
 

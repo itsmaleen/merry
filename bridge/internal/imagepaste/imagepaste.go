@@ -33,7 +33,7 @@ const retention = 12 * time.Hour
 
 // dirName is created under the user's cache dir with 0700: pasted images are as
 // private as the conversation they belong to.
-const dirName = "cmux-companion-images"
+const dirName = "merry-images"
 
 // Result describes one materialized image.
 type Result struct {

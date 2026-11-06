@@ -1,4 +1,4 @@
-module github.com/itsmaleen/cmux-companion/bridge
+module github.com/itsmaleen/merry/bridge
 
 go 1.26.1
 
