@@ -16,6 +16,7 @@ import (
 
 	"github.com/itsmaleen/merry/bridge/internal/claude"
 	"github.com/itsmaleen/merry/bridge/internal/opencode"
+	"github.com/itsmaleen/merry/bridge/internal/transcriptrender"
 )
 
 // Request describes one transcript resolution, gathered by the calling
@@ -45,6 +46,17 @@ type Request struct {
 	// KnownFingerprint is the Fingerprint of the text the caller already
 	// holds; an unchanged transcript answers Unchanged with no Text.
 	KnownFingerprint string
+	// Events asks for typed events (and pending) instead of text: the request
+	// had format "events". See plans/session-ui.md.
+	Events bool
+	// Before (events format only) asks for the page of events strictly older
+	// than the event with this id. A page reply has pending null, ignores
+	// KnownFingerprint and is never Unchanged.
+	Before string
+	// AgentStatus is the backend's own status for the surface ("idle",
+	// "working", "blocked", "done") or "" when it has none (cmux). It decides
+	// pending approval/unknown and salts the events fingerprint.
+	AgentStatus string
 }
 
 // Result is the outcome shared by every backend's transcript command.
@@ -57,6 +69,16 @@ type Result struct {
 	// Text is the rendered transcript, empty when nothing was found or when
 	// Unchanged is set.
 	Text string
+	// Events is the typed reply when the request asked for events.
+	Events []transcriptrender.Event
+	// Pending is what the session waits on from the human (events format only);
+	// nil when nothing.
+	Pending *transcriptrender.Pending
+	// HasMore (events format only): events older than Events[0] exist.
+	HasMore bool
+	// EventsFormat records that this result answers an events request, which
+	// switches Encode to the events shape.
+	EventsFormat bool
 	// SessionID is the session the transcript was read from, or the session
 	// the surface points at when that session's data is missing.
 	SessionID string
@@ -94,6 +116,24 @@ func New() *Dispatcher {
 
 // Render resolves and renders the conversation behind req.
 func (d *Dispatcher) Render(req Request) (Result, error) {
+	res, err := d.render(req)
+	if err != nil || !req.Events {
+		return res, err
+	}
+	res.EventsFormat = true
+	if res.Events == nil {
+		res.Events = []transcriptrender.Event{}
+	}
+	if req.Before != "" {
+		res.Unchanged = false
+		res.Pending = nil
+	} else if !res.Unchanged {
+		res.Pending = transcriptrender.DerivePending(res.Events, req.AgentStatus)
+	}
+	return res, nil
+}
+
+func (d *Dispatcher) render(req Request) (Result, error) {
 	kind, _ := req.ResumeBinding["kind"].(string)
 
 	switch kind {
@@ -103,6 +143,9 @@ func (d *Dispatcher) Render(req Request) (Result, error) {
 			ResumeBinding:    req.ResumeBinding,
 			MaxMessages:      req.MaxMessages,
 			KnownFingerprint: req.KnownFingerprint,
+			Events:           req.Events,
+			Before:           req.Before,
+			AgentStatus:      req.AgentStatus,
 		})
 		if err != nil {
 			return Result{}, err
@@ -117,7 +160,7 @@ func (d *Dispatcher) Render(req Request) (Result, error) {
 			if exists, err := d.opencode.SessionExists(checkpointID); err == nil && !exists {
 				return Result{Supported: true, AgentKind: "opencode", SessionID: checkpointID, SessionMissing: true, Source: "resume_binding"}, nil
 			}
-			return d.renderOpencodeSession(checkpointID, req.MaxMessages, req.KnownFingerprint, "resume_binding")
+			return d.renderOpencodeSession(req, checkpointID, "resume_binding")
 		}
 		// The runtime knows this is opencode but not which session — fall
 		// through to title/cwd matching below, using whatever cwd the
@@ -160,7 +203,7 @@ func (d *Dispatcher) renderOpencodeByTitle(req Request) (Result, error) {
 	if !ok {
 		return Result{Supported: true, AgentKind: "opencode", Source: "opencode_unidentified"}, nil
 	}
-	res, err := d.renderOpencodeSession(session.ID, req.MaxMessages, req.KnownFingerprint, "opencode_title_cwd")
+	res, err := d.renderOpencodeSession(req, session.ID, "opencode_title_cwd")
 	if err != nil {
 		return Result{}, err
 	}
@@ -170,10 +213,14 @@ func (d *Dispatcher) renderOpencodeByTitle(req Request) (Result, error) {
 
 // renderOpencodeSession renders one known opencode session, short-circuiting
 // on a fingerprint match the same way Claude's resolver does.
-func (d *Dispatcher) renderOpencodeSession(sessionID string, maxMessages int, knownFingerprint, source string) (Result, error) {
+func (d *Dispatcher) renderOpencodeSession(req Request, sessionID, source string) (Result, error) {
+	maxMessages, knownFingerprint := req.MaxMessages, req.KnownFingerprint
 	fingerprint, err := d.opencode.Fingerprint(sessionID, maxMessages)
 	if err != nil {
 		return Result{}, err
+	}
+	if req.Events {
+		fingerprint = opencode.EventsFingerprint(fingerprint, req.AgentStatus)
 	}
 	res := Result{
 		Supported:   true,
@@ -182,8 +229,22 @@ func (d *Dispatcher) renderOpencodeSession(sessionID string, maxMessages int, kn
 		Fingerprint: fingerprint,
 		Source:      source,
 	}
-	if knownFingerprint != "" && knownFingerprint == fingerprint {
+	paging := req.Events && req.Before != ""
+	if !paging && knownFingerprint != "" && knownFingerprint == fingerprint {
 		res.Unchanged = true
+		return res, nil
+	}
+	if req.Events {
+		if paging {
+			// opencode paging is not implemented: the store only loads the most
+			// recent messages, so an older page is always empty.
+			res.Events = []transcriptrender.Event{}
+			return res, nil
+		}
+		res.Events, err = d.opencode.RenderEvents(sessionID, maxMessages)
+		if err != nil {
+			return Result{}, err
+		}
 		return res, nil
 	}
 	text, err := d.opencode.Render(sessionID, maxMessages)
@@ -202,6 +263,8 @@ func fromClaude(res claude.Result) Result {
 		Supported:      res.Supported,
 		AgentKind:      "claude",
 		Text:           res.Text,
+		Events:         res.Events,
+		HasMore:        res.HasMore,
 		SessionID:      res.SessionID,
 		SessionMissing: res.SessionMissing,
 		Fingerprint:    res.Fingerprint,
@@ -222,6 +285,19 @@ func MaxMessages(params map[string]any) int {
 	return maxMessages
 }
 
+// WantsEvents reports whether the request asked for the typed-event reply
+// (format "events"); absent or any other value means today's text reply.
+func WantsEvents(params map[string]any) bool {
+	f, _ := params["format"].(string)
+	return f == "events"
+}
+
+// Before reads the event id a page request ends before ("" for a tail request).
+func Before(params map[string]any) string {
+	s, _ := params["before"].(string)
+	return s
+}
+
 // KnownFingerprint reads the fingerprint the client already holds.
 func KnownFingerprint(params map[string]any) string {
 	s, _ := params["known_fingerprint"].(string)
@@ -232,6 +308,26 @@ func KnownFingerprint(params map[string]any) string {
 // command. Every field name from the pre-opencode shape is kept so an older
 // phone build's parser keeps working; agent_kind and session_title are new.
 func Encode(res Result) json.RawMessage {
+	if res.EventsFormat {
+		events := res.Events
+		if events == nil {
+			events = []transcriptrender.Event{}
+		}
+		result, _ := json.Marshal(map[string]any{
+			"supported":       res.Supported,
+			"agent_kind":      res.AgentKind,
+			"events":          events,
+			"has_more":        res.HasMore,
+			"pending":         res.Pending, // nil marshals to null
+			"session_id":      res.SessionID,
+			"session_title":   res.SessionTitle,
+			"session_missing": res.SessionMissing,
+			"fingerprint":     res.Fingerprint,
+			"unchanged":       res.Unchanged,
+			"source":          res.Source,
+		})
+		return result
+	}
 	result, _ := json.Marshal(map[string]any{
 		"supported":       res.Supported,
 		"agent_kind":      res.AgentKind,

@@ -517,6 +517,9 @@ func (b *Backend) transcript(params map[string]any) (json.RawMessage, error) {
 		Directory:        cwdOf(p),
 		MaxMessages:      transcripts.MaxMessages(params),
 		KnownFingerprint: transcripts.KnownFingerprint(params),
+		Events:           transcripts.WantsEvents(params),
+		Before:           transcripts.Before(params),
+		AgentStatus:      p.AgentStatus,
 	})
 	if err != nil {
 		return nil, backend.Errorf("transcript_error", err.Error())

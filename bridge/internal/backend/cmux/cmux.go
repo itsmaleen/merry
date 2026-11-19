@@ -232,6 +232,10 @@ func (b *Backend) transcript(params map[string]any) (json.RawMessage, error) {
 		ResumeBinding:    resumeBinding,
 		MaxMessages:      transcripts.MaxMessages(params),
 		KnownFingerprint: transcripts.KnownFingerprint(params),
+		Events:           transcripts.WantsEvents(params),
+		Before:           transcripts.Before(params),
+		// cmux reports no agent status, so only pending.kind "question" is
+		// possible on this backend.
 	}
 
 	// No session id from cmux — either no binding at all (Claude, or an

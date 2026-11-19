@@ -104,6 +104,16 @@ var toolArgumentKeys = []string{
 const maxToolArgumentRunes = 80
 
 func toolArgumentSummary(input map[string]any) string {
+	if value := ToolArg(input, maxToolArgumentRunes); value != "" {
+		return ": " + value
+	}
+	return ""
+}
+
+// ToolArg returns the most identifying argument of a tool call (first present
+// key of toolArgumentKeys), whitespace-collapsed and cut to maxRunes with an
+// ellipsis, or "" when the input has none.
+func ToolArg(input map[string]any, maxRunes int) string {
 	if input == nil {
 		return ""
 	}
@@ -114,10 +124,10 @@ func toolArgumentSummary(input map[string]any) string {
 			continue
 		}
 		runes := []rune(value)
-		if len(runes) > maxToolArgumentRunes {
-			value = string(runes[:maxToolArgumentRunes]) + "…"
+		if len(runes) > maxRunes {
+			value = string(runes[:maxRunes]) + "…"
 		}
-		return ": " + value
+		return value
 	}
 	return ""
 }

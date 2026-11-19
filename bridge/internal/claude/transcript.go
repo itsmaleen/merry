@@ -32,6 +32,8 @@ type cacheEntry struct {
 	modTime time.Time
 	size    int64
 	text    string
+	events  []transcriptrender.Event
+	hasMore bool
 }
 
 // maxCachedRenderings bounds the rendered-transcript cache. Entries are keyed
@@ -104,6 +106,15 @@ type Request struct {
 	// result comes back Unchanged with no Text — which is what makes polling
 	// this RPC on every refresh cycle cheap.
 	KnownFingerprint string
+	// Events selects the typed-event reply (Result.Events) instead of text.
+	Events bool
+	// Before (events format only) asks for the page of events strictly older
+	// than the event with this id. A page ignores KnownFingerprint.
+	Before string
+	// AgentStatus is the backend's status for the surface ("blocked", ...), or
+	// "" when it has none. It only salts the events fingerprint, so a status
+	// flip is never answered "unchanged".
+	AgentStatus string
 }
 
 // Result is the outcome of resolving and rendering a surface's transcript.
@@ -116,6 +127,11 @@ type Result struct {
 	// Text is the rendered transcript, empty when no file was found or when
 	// Unchanged is set.
 	Text string
+	// Events is the typed reply for Request.Events; empty (not nil) when there
+	// is nothing to show.
+	Events []transcriptrender.Event
+	// HasMore (events format): events older than Events[0] exist in what was read.
+	HasMore bool
 	// SessionMissing reports that the surface names a specific session whose
 	// transcript file is not on disk. Distinguishes "this conversation's file
 	// is gone" from "this surface hasn't said anything yet", which otherwise
@@ -173,8 +189,13 @@ func (r *Resolver) Render(req Request) (Result, error) {
 		return res, err
 	}
 
-	res.Fingerprint = fingerprint(transcriptPath, info, req.MaxMessages)
-	if req.KnownFingerprint != "" && req.KnownFingerprint == res.Fingerprint {
+	mode := "text"
+	if req.Events {
+		mode = "events\x00" + req.AgentStatus
+	}
+	res.Fingerprint = fingerprint(transcriptPath, info, req.MaxMessages, mode)
+	paging := req.Events && req.Before != ""
+	if !paging && req.KnownFingerprint != "" && req.KnownFingerprint == res.Fingerprint {
 		res.Unchanged = true
 		return res, nil
 	}
@@ -183,9 +204,18 @@ func (r *Resolver) Render(req Request) (Result, error) {
 	// file, so that is part of the key — two clients asking for different
 	// depths must not be served each other's text.
 	cacheKey := fmt.Sprintf("%s\x00%d", transcriptPath, req.MaxMessages)
+	if req.Events {
+		// Status is not part of the key: it never changes the events.
+		cacheKey += "\x00events"
+		if paging {
+			cacheKey += "\x00before\x00" + req.Before
+		}
+	}
 	if entry, ok := r.cache.get(cacheKey); ok {
 		if entry.modTime.Equal(info.ModTime()) && entry.size == info.Size() {
 			res.Text = entry.text
+			res.Events = entry.events
+			res.HasMore = entry.hasMore
 			return res, nil
 		}
 	}
@@ -199,13 +229,16 @@ func (r *Resolver) Render(req Request) (Result, error) {
 		return res, err
 	}
 
-	rendered := renderJSONL(data, req.MaxMessages)
-	r.cache.put(cacheKey, &cacheEntry{
-		modTime: info.ModTime(),
-		size:    info.Size(),
-		text:    rendered,
-	})
-	res.Text = rendered
+	entry := &cacheEntry{modTime: info.ModTime(), size: info.Size()}
+	if req.Events {
+		entry.events, entry.hasMore = renderEvents(data, req.MaxMessages, req.Before)
+		res.Events = entry.events
+		res.HasMore = entry.hasMore
+	} else {
+		entry.text = renderJSONL(data, req.MaxMessages)
+		res.Text = entry.text
+	}
+	r.cache.put(cacheKey, entry)
 	return res, nil
 }
 
@@ -343,9 +376,16 @@ func findTranscriptByID(projectsDir, sessionID string) (string, error) {
 // fingerprint identifies one rendering of a transcript: the file's identity
 // plus the message bound that shaped the text. The path is hashed rather than
 // echoed so the client never receives local filesystem layout it has no use for.
-func fingerprint(path string, info os.FileInfo, maxMessages int) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d\x00%d",
-		path, info.ModTime().UnixNano(), info.Size(), maxMessages)))
+//
+// mode is "text" for the text reply (hashed exactly as before the events format
+// existed, so text fingerprints are unchanged) or "events\x00<agent status>".
+func fingerprint(path string, info os.FileInfo, maxMessages int, mode string) string {
+	key := fmt.Sprintf("%s\x00%d\x00%d\x00%d",
+		path, info.ModTime().UnixNano(), info.Size(), maxMessages)
+	if mode != "text" {
+		key += "\x00" + mode
+	}
+	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:8])
 }
 
