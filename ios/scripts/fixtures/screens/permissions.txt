@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+❯ /resume
+  ⎿  Resume cancelled
+
+
+
+
+
+
+
+
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Permissions  Recently blocked   Allow   Ask   Deny   Auto mode   Workspace
+
+  Claude Code won't ask for these. Rules off in auto mode aren't listed.
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ⌕ Search…                                                                                    │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+  ❯ Add a new rule…
+    mcp__computer-use__computer_batch
+    mcp__computer-use__cursor_position
+    mcp__computer-use__double_click
+    mcp__computer-use__hold_key
+    mcp__computer-use__key
+    mcp__computer-use__left_click
+    mcp__computer-use__left_click_drag
+    mcp__computer-use__left_mouse_down
+    ↓ 16 more
+
+  ↓ to navigate · ←/→ to switch · / to search · Esc to close

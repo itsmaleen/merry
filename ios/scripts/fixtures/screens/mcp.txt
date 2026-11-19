@@ -1,0 +1,40 @@
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+❯ /resume
+  ⎿  Resume cancelled
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  MCP servers
+  16 servers
+
+    User MCPs (~/.claude.json       )
+  ❯ ⚠ sample-signin               needs sign-in
+    ✔ server-one                 23 tools
+    ✔ planner                     52 tools
+    ✔ tracker                     12 tools
+
+    claude.ai
+    ✔ claude.ai Claude Docs       8 tools
+    ⚠ claude.ai Gmail             needs sign-in
+    ⚠ claude.ai Google Calendar   needs sign-in
+    ⚠ claude.ai Google Drive      needs sign-in
+    ✔ claude.ai Docs              41 tools
+    ✘ claude.ai Example Two    
+    ✔ claude.ai Example Three      46 tools
+    claude.ai Lens · ◯ hidden — same URL as your server 'tracker'
+      To use this connector instead, run claude mcp remove tracker
+
+    Built-in MCPs (always available)
+    ◯ computer-use
+    ✔ easel                       1 tool
+    ⚠ plugin:context7:context7    needs sign-in
+    ✔ plugin:posthog:posthog      1 tool
+    ⚠ plugin:vercel:vercel        needs sign-in
+
+  Learn more: https://code.claude.com/docs/en/mcp
+
+  ↑/↓ to navigate · Enter to view · Esc to close

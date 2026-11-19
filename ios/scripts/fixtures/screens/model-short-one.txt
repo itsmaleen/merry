@@ -1,0 +1,12 @@
+
+  ⎿  Kept model as Fable 5.2
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Select model
+  Your pick is the default for new sessions. For other models, use --model.
+    ↑ 2 more
+  ❯ 3.  Fable 5.2 ✔            For your toughest challenges
+    ↓ 3 more
+
+  ◐ Medium effort (default)
+
+  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel

@@ -26,7 +26,7 @@ enum QuickActionBuilder {
     /// `includeTop`, the four most-used actions (run at least twice) are
     /// repeated in a leading "Top" section of the full menu.
     @MainActor
-    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, includeTop: Bool = false, onToggleFullscreen: @escaping () -> Void = {}, onToggleFocus: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
+    static func build(surfaceID sid: String, appState: AppState, store: QuickActionStore, includeTop: Bool = false, onToggleFullscreen: @escaping () -> Void = {}, onOpenSearch: @escaping () -> Void = {}) -> [QuickAction] {
         var builtIn: [QuickAction] = [
             QuickAction(label: "Enter", icon: "return", section: "Input") {
                 appState.sendKey("enter", to: sid)
@@ -89,9 +89,6 @@ enum QuickActionBuilder {
             },
             QuickAction(label: "New Workspace", icon: "square.grid.2x2", section: "Workspace") {
                 appState.createWorkspace()
-            },
-            QuickAction(label: "Focus", icon: "rectangle.inset.filled", section: "Workspace") {
-                onToggleFocus()
             },
             QuickAction(label: "Fullscreen", icon: "rectangle.fill", section: "Workspace") {
                 onToggleFullscreen()
@@ -239,16 +236,12 @@ struct WorkspaceLayoutView: View {
     @StateObject private var speechManager = SpeechInputManager()
     @StateObject private var quickAction = QuickActionState()
     @State private var lastNotificationCount = 0
-    @State private var cycleDirection: Edge = .trailing
     @State private var isEditingTranscript = false
     @State private var editingText = ""
     @State private var contentPollTimer: Timer?
-    // True while the remote-keyboard compose bar is focused; collapses the
-    // layout to just the focused terminal so it owns the whole screen.
+    // True while the composer is focused: landscape drops the header for
+    // room, and dismissKeyboard() clears it to lower the keyboard.
     @State private var keyboardActive = false
-    // True while text is selected in the focused terminal. A selection drag
-    // looks exactly like a cycle swipe, so the swipe defers to it.
-    @State private var isTextSelectionActive = false
     // Find-in-surface over the focused card's text — the conversation for a
     // claude surface, the terminal mirror plus its scrollback otherwise.
     @State private var isSearching = false
@@ -264,25 +257,42 @@ struct WorkspaceLayoutView: View {
     @State private var showPhotoPicker = false
     @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
-    // Focus mode: the focused surface gets the whole page, no secondary row.
-    // Remembered across launches; swiping still cycles surfaces.
-    @AppStorage("focusMode") private var focusMode = false
-    // The card switcher: every surface as a scrollable grid of cards.
+    // The card switcher: every surface as a scrollable grid of cards, and the
+    // only place several surfaces show at once.
     @State private var showSwitcher = false
+    // Screenshot fixture: open every work row in the focused chat.
+    @State private var fixtureExpandWork = false
+    @State private var fixtureExpandCommands = false
+    /// Screenshot fixture: `-UITestScroll top|mid` opens the chat there.
+    private var fixtureChatOpen: ChatScrollView<ChatTranscriptView>.OpenPosition? {
+        guard appState.isFixtureMode else { return nil }
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-UITestScroll"), i + 1 < args.count else { return nil }
+        switch args[i + 1] {
+        case "top": return .top
+        case "mid": return .fraction(0.5)
+        default: return nil
+        }
+    }
+    /// Screenshot fixture: `-UITestDraft "/"` starts the composer with a draft.
+    private var fixtureDraft: String {
+        guard appState.isFixtureMode else { return "" }
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-UITestDraft"), i + 1 < args.count else { return "" }
+        return args[i + 1]
+    }
+    @Environment(\.verticalSizeClass) private var vSizeClass
 
     var body: some View {
         ZStack {
-            // Background with subtle center glow
-            Color.black.ignoresSafeArea()
-            RadialGradient(
-                colors: [Color.white.opacity(0.03), Color.clear],
-                center: .center,
-                startRadius: 50,
-                endRadius: 400
-            )
-            .ignoresSafeArea()
+            Theme.c.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Landscape with the keyboard up has no height to spare.
+                if !quickAction.isFullscreen, !(keyboardActive && vSizeClass == .compact) {
+                    header
+                }
+
                 if appState.surfaces.isEmpty {
                     emptyState
                 } else {
@@ -321,7 +331,13 @@ struct WorkspaceLayoutView: View {
                    let surface = appState.surfaces.first(where: { $0.id == sid }),
                    !surface.isBrowser {
                     TerminalInputBar(
+                        surfaceID: sid,
                         surfaceTitle: surface.title,
+                        chatMode: appState.showsChat(surface),
+                        isAgent: surface.hasTranscript,
+                        isWorking: appState.isAgentWorking(surface),
+                        isRecording: speechManager.isRecording,
+                        onToggleDictation: { toggleDictation() },
                         isActive: $keyboardActive,
                         onSend: { text, withEnter in
                             appState.sendComposed(text: text, withEnter: withEnter, to: sid)
@@ -331,15 +347,12 @@ struct WorkspaceLayoutView: View {
                         hasPendingAttachment: appState.pendingAttachment != nil,
                         pendingThumbnail: appState.pendingAttachment?.thumbnail,
                         pendingLabel: appState.pendingAttachment?.label ?? "",
-                        onAddFile: { showAddMenu = true },
-                        onRemoveAttachment: { appState.clearPendingImage() }
+                        onAddFile: { dismissKeyboard(); showAddMenu = true },
+                        onRemoveAttachment: { appState.clearPendingImage() },
+                        onSwipeUp: { openSwitcher() },
+                        seenCommands: SlashCommands.seen(in: appState.transcriptEvents[sid] ?? []),
+                        initialDraft: fixtureDraft
                     )
-                    .padding(.bottom, 2)
-                }
-
-                if !quickAction.isFullscreen, !keyboardActive {
-                    workspaceBar
-                        .padding(.bottom, 4)
                 }
             }
             .animation(.easeInOut(duration: 0.22), value: keyboardActive)
@@ -357,7 +370,6 @@ struct WorkspaceLayoutView: View {
                     isPresented: $showSwitcher,
                     workspaceLabel: { workspaceLabel(for: $0, at: $1) },
                     onSelect: { id in
-                        cycleDirection = .trailing
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             appState.focusSurface(id)
                             showSwitcher = false
@@ -383,12 +395,33 @@ struct WorkspaceLayoutView: View {
             }
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showSwitcher)
-        .animation(.easeInOut(duration: 0.25), value: focusMode)
+        // Swipe in from the left edge: back to the grid (the iOS back
+        // gesture). Off whenever something covers the session.
+        .background(
+            LeftEdgeSwipe(
+                isEnabled: !showSwitcher && !quickAction.isOpen && !isEditingTranscript
+                    && appState.presentedHistory == nil && appState.linkSheet == nil && !appState.surfaces.isEmpty,
+                onSwipe: edgeSwipe
+            )
+        )
+        // Links in chat and history open over the session (LinkRouter).
+        .environment(\.openURL, OpenURLAction { url in
+            appState.openLink(url)
+            return .handled
+        })
+        .sheet(item: $appState.linkSheet) { target in
+            SafariSheet(url: target.url) { appState.linkSheet = nil }
+                .ignoresSafeArea()
+        }
         .onChange(of: showSwitcher) { _, open in
             // Background cards only refresh every ~15s; bring every preview
             // up to date the moment the grid opens.
-            if open { fetchAllContent() }
+            if open {
+                dismissKeyboard()
+                fetchAllContent()
+            }
         }
+        .onChange(of: showAddMenu) { _, open in if open { dismissKeyboard() } }
         .onChange(of: appState.surfaces.map(\.id)) { _, _ in
             // Switching workspace inside the switcher loads a new set.
             if showSwitcher { fetchAllContent() }
@@ -455,10 +488,10 @@ struct WorkspaceLayoutView: View {
             }
             lastNotificationCount = newCount
         }
+        .onChange(of: appState.currentWorkspaceID) { _, _ in dismissKeyboard() }
         .onChange(of: appState.focusedSurfaceID) { _, _ in
-            // The old card's text view is gone; don't let a stale selection
-            // flag keep vetoing cycle swipes on the new card.
-            isTextSelectionActive = false
+            // Another surface is a new context: nothing typed carries over.
+            dismissKeyboard()
             // Matches belong to the surface they were found in; carrying an
             // index across a surface switch points at nothing.
             if isSearching { closeSearch() }
@@ -477,6 +510,9 @@ struct WorkspaceLayoutView: View {
                 appState.clearNotificationsForFocusedSurface()
             }
         }
+        // A dark-only app: semantic label colours, materials and menus all
+        // resolve against dark.
+        .preferredColorScheme(.dark)
         .onAppear {
             if !appState.isFixtureMode {
                 appState.refreshSurfaces()
@@ -486,8 +522,16 @@ struct WorkspaceLayoutView: View {
             // Screenshot fixture flags (ios/scripts/screenshots.sh).
             if appState.isFixtureMode {
                 let args = ProcessInfo.processInfo.arguments
-                if args.contains("-UITestFocusMode") { focusMode = true }
                 if args.contains("-UITestSwitcher") { showSwitcher = true }
+                if args.contains("-UITestExpandWork") { fixtureExpandWork = true }
+                if args.contains("-UITestExpandCommands") { fixtureExpandCommands = true }
+                // The composer's recording look only; no audio is started.
+                if args.contains("-UITestRecording") { speechManager.isRecording = true }
+                // `-UITestFind <query>`: Find open with a query typed.
+                if let i = args.firstIndex(of: "-UITestFind"), i + 1 < args.count {
+                    isSearching = true
+                    searchQuery = args[i + 1]
+                }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if volumeButtonControls { volumeHandler.start() }
@@ -555,11 +599,11 @@ struct WorkspaceLayoutView: View {
                 .foregroundStyle(.white.opacity(searchMatchCount > 0 ? 0.5 : 0.25))
                 .monospacedDigit()
 
-            Button { stepSearch(-1) } label: {
+            Button { dismissKeyboard(); stepSearch(-1) } label: {
                 Image(systemName: "chevron.up").font(.system(size: 13, weight: .semibold))
             }
             .disabled(searchMatchCount == 0)
-            Button { stepSearch(1) } label: {
+            Button { dismissKeyboard(); stepSearch(1) } label: {
                 Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
             }
             .disabled(searchMatchCount == 0)
@@ -590,6 +634,32 @@ struct WorkspaceLayoutView: View {
         return "\(searchMatchIndex + 1)/\(total)"
     }
 
+    /// Lowers the composer's keyboard (or Find's) for an action that
+    /// doesn't need it: the grid, a menu, quick actions, a chat button.
+    private func dismissKeyboard() {
+        keyboardActive = false
+        Keyboard.dismiss()
+    }
+
+    /// The grid. Opened from the header button, a swipe up on the composer
+    /// or a swipe in from the left edge.
+    private func openSwitcher() {
+        dismissKeyboard()
+        showSwitcher = true
+    }
+
+    /// The left-edge swipe: back to the grid. While dictating it opens the
+    /// transcript editor instead, as a sideways swipe always has.
+    private func edgeSwipe() {
+        if speechManager.isRecording {
+            editingText = speechManager.stop()
+            volumeHandler.clearSpeechState()
+            isEditingTranscript = true
+            return
+        }
+        openSwitcher()
+    }
+
     private func openSearch() {
         isSearching = true
         searchFieldFocused = true
@@ -612,6 +682,7 @@ struct WorkspaceLayoutView: View {
 
     private func openQuickActions() {
         guard let surface = focusedSurface else { return }
+        dismissKeyboard()
         quickAction.open(with: buildActions(for: surface.id, includeTop: true))
     }
 
@@ -622,13 +693,12 @@ struct WorkspaceLayoutView: View {
             store: quickActionStore,
             includeTop: includeTop,
             onToggleFullscreen: { [quickAction] in quickAction.isFullscreen.toggle() },
-            onToggleFocus: { focusMode.toggle() },
             onOpenSearch: { openSearch() }
         )
     }
 
-    /// Pinned actions for the focused card's title bar (New Tab and Claude
-    /// YOLO by default), so the common ones skip the long-press menu.
+    /// Pinned actions for the header's ••• menu (New Tab and Claude YOLO by
+    /// default), so the common ones skip the long-press menu.
     private func pinnedActions(for sid: String) -> [QuickAction] {
         QuickActionBuilder.pinned(from: buildActions(for: sid, includeTop: false), store: quickActionStore)
             .map { qa in
@@ -766,87 +836,32 @@ struct WorkspaceLayoutView: View {
             ?? appState.surfaces.first
     }
 
-    private var secondarySurfaces: [Surface] {
-        guard let focused = focusedSurface else { return [] }
-        return appState.surfaces.filter { $0.id != focused.id }
-    }
-
+    /// The open surface fills everything between the header and the
+    /// composer. Other surfaces are reached through the grid or the volume
+    /// buttons; never shown beside this one.
     private var surfaceLayout: some View {
         GeometryReader { geo in
             // iPhones report .compact width in both orientations, so size class
             // can't tell us portrait vs landscape — compare the actual bounds.
             let isLandscape = geo.size.width > geo.size.height
-            // While composing, hide the secondaries so the focused terminal
-            // gets the full screen alongside the keyboard.
-            let hasSecondary = secondarySurfaces.count > 0 && !quickAction.isFullscreen && !keyboardActive && !focusMode
-
-            Group {
-                if isLandscape {
-                    landscapeLayout(size: geo.size, hasSecondary: hasSecondary)
-                } else {
-                    portraitLayout(size: geo.size, hasSecondary: hasSecondary)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-        }
-    }
-
-    // Landscape: focused pane fills the left ~65%, secondaries stack in a
-    // vertical scroll sidebar on the right.
-    private func landscapeLayout(size: CGSize, hasSecondary: Bool) -> some View {
-        let mainWidth = hasSecondary ? size.width * 0.65 : size.width
-        let sideWidth = size.width * 0.35
-        return HStack(spacing: 8) {
             if let surface = focusedSurface {
-                focusedCard(for: surface, contentScale: 1.0)
-                    .frame(width: mainWidth - (hasSecondary ? 4 : 16))
-            }
-            if hasSecondary {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 6) {
-                        ForEach(secondarySurfaces) { surface in
-                            secondaryTile(for: surface)
-                                .frame(height: tileHeight(for: secondarySurfaces.count, in: size.height))
-                        }
-                    }
-                }
-                .frame(width: sideWidth - 4)
+                focusedCard(for: surface, contentScale: isLandscape ? 1.0 : 1.25)
+                    // The terminal text view brings its own 8pt inset; chat
+                    // sets its own 20pt margins.
+                    .padding(.horizontal, appState.showsChat(surface) ? 0 : 4)
+                    .frame(width: geo.size.width, height: geo.size.height)
             }
         }
     }
 
-    // Portrait: focused pane fills the width up top, secondaries sit in a
-    // horizontal scroll row below — each tile gets a usable width instead of
-    // being crushed into a narrow side column.
-    private func portraitLayout(size: CGSize, hasSecondary: Bool) -> some View {
-        let rowHeight: CGFloat = hasSecondary ? max(110, size.height * 0.24) : 0
-        let tileWidth = max(150, size.width * 0.44)
-        return VStack(spacing: 8) {
-            if let surface = focusedSurface {
-                focusedCard(for: surface, contentScale: 1.25)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            if hasSecondary {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(secondarySurfaces) { surface in
-                            secondaryTile(for: surface)
-                                .frame(width: tileWidth, height: rowHeight)
-                        }
-                    }
-                }
-                .frame(height: rowHeight)
-            }
-        }
-    }
-
-    // Focused surface card with its cycle/quick-action gestures.
+    // The open surface with its quick-action long-press. Other surfaces are
+    // reached through the grid (left-edge swipe, the header's grid button,
+    // swipe up on the composer) or the volume buttons.
     private func focusedCard(for surface: Surface, contentScale: CGFloat) -> some View {
         PaneCardView(
             title: surface.title,
             isFocused: true,
-            hasNotification: appState.hasNotification(for: surface),
+            hasNotification: appState.hasNotification(for: surface) || appState.needsYouSurfaces.contains(surface.id),
             isTranscribing: speechManager.isRecording,
             transcript: speechManager.transcript,
             terminalText: surface.isBrowser ? "" : appState.cardText(for: surface),
@@ -860,20 +875,8 @@ struct WorkspaceLayoutView: View {
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
             canOpenHistory: surface.hasTranscript,
-            onOpenHistory: {
-                // Resolve the CURRENTLY focused surface at fire time rather than
-                // capturing this card's `surface`. During a cycle transition the
-                // outgoing focused card stays mounted (and keeps firing scroll
-                // callbacks) for the animation's duration, so a captured id would
-                // open history for the surface you just left. Reading live focus
-                // guarantees history always matches what's on screen.
-                let focused = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
-                    ?? surface
-                guard focused.hasTranscript else { return }
-                appState.presentedHistory = HistoryTarget(id: focused.id, title: focused.title)
-            },
+            onOpenHistory: { openHistory(fallback: surface) },
             isWorking: appState.workingSurfaces.contains(surface.id),
-            onSelectionActiveChanged: { isTextSelectionActive = $0 },
             searchQuery: isSearching ? searchQuery : "",
             currentMatchIndex: searchMatchIndex,
             onSearchMatchCount: { count in
@@ -886,93 +889,187 @@ struct WorkspaceLayoutView: View {
             },
             scrollToBottomRequest: scrollToBottomRequest,
             onJumpToBottom: { scrollToBottomRequest += 1 },
-            titleActions: pinnedActions(for: surface.id),
-            onMoreActions: { openQuickActions() }
+            chatBody: chatBody(for: surface),
+            glanceBody: nil
         )
         .id(surface.id)
-        .transition(.asymmetric(
-            insertion: .move(edge: cycleDirection).combined(with: .opacity),
-            removal: .move(edge: cycleDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
-        ))
         .onLongPressGesture(minimumDuration: 0.4) {
             openQuickActions()
         }
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 50)
-                .onEnded { value in
-                    guard !quickAction.isOpen else { return }
-                    // While the remote keyboard is up the user is typing at
-                    // THIS surface; a stray horizontal drag must not move
-                    // them to another one mid-command.
-                    guard !keyboardActive else { return }
-                    // A drag that extended a text selection must not also
-                    // switch surfaces.
-                    guard !isTextSelectionActive else { return }
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    // Only act on a clearly horizontal swipe. Vertical/diagonal
-                    // drags are terminal scrolling — a scroll must never switch
-                    // surfaces. Require real horizontal travel AND horizontal
-                    // dominance over vertical.
-                    guard abs(dx) > 60, abs(dx) > abs(dy) * 1.8 else { return }
-                    if speechManager.isRecording {
-                        // Horizontal swipe while recording opens transcript editor
-                        editingText = speechManager.stop()
-                        volumeHandler.clearSpeechState()
-                        isEditingTranscript = true
-                        return
-                    }
-                    if dx < 0 {
-                        cycleDirection = .trailing
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.cycleSurface()
-                        }
-                    } else {
-                        cycleDirection = .leading
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.cycleSurfaceBackward()
-                        }
-                    }
-                },
-            including: .gesture
+    }
+
+    private func openHistory(fallback surface: Surface) {
+        // Resolve the CURRENTLY focused surface at fire time rather than
+        // capturing this card's `surface`. During a cycle transition the
+        // outgoing focused card stays mounted (and keeps firing scroll
+        // callbacks) for the animation's duration, so a captured id would
+        // open history for the surface you just left. Reading live focus
+        // guarantees history always matches what's on screen.
+        let focused = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
+            ?? surface
+        guard focused.hasTranscript else { return }
+        appState.presentedHistory = HistoryTarget(id: focused.id, title: focused.title)
+    }
+
+    /// The focused card's chat body, when its surface is an agent session
+    /// with typed events and hasn't been flipped to Terminal.
+    private func chatBody(for surface: Surface) -> ChatCardBody? {
+        guard !surface.isBrowser, appState.showsChat(surface) else { return nil }
+        let sid = surface.id
+        return ChatCardBody(
+            events: appState.transcriptEvents[sid] ?? [],
+            items: appState.chatItems(for: sid),
+            pending: appState.pendingStates[sid],
+            screenDialog: appState.screenDialogs[sid],
+            isWorking: appState.isAgentWorking(surface),
+            screen: appState.screenModels[sid],
+            screenText: appState.surfaceContent[sid] ?? "",
+            hasMore: appState.transcriptHasMore[sid] ?? false,
+            isLoadingOlder: appState.transcriptPageLoading.contains(sid),
+            lastViewedEventID: appState.lastViewedEvent(for: sid),
+            lastViewedAt: appState.lastViewedTime(for: sid),
+            onSendKey: { dismissKeyboard(); appState.sendKey($0, to: sid) },
+            onShowTerminal: { appState.setChatBody(false, for: sid) },
+            onMarkViewed: { appState.markViewed(sid, eventID: $0) },
+            onNearTop: { appState.requestOlderEvents(sid) },
+            scrollToBottomRequest: scrollToBottomRequest,
+            onJumpToBottom: { scrollToBottomRequest += 1 },
+            searchQuery: isSearching ? searchQuery : "",
+            currentMatchIndex: searchMatchIndex,
+            onSearchMatchCount: { count in
+                guard searchMatchCount != count else { return }
+                searchMatchCount = count
+                searchMatchIndex = TextSearch.clamp(searchMatchIndex, to: count)
+            },
+            expandAllWork: fixtureExpandWork,
+            expandCommands: fixtureExpandCommands,
+            fixtureOpen: fixtureChatOpen,
+            onInteract: { dismissKeyboard() }
         )
     }
 
-    // Non-focused surface tile; tap or swipe to focus it.
-    private func secondaryTile(for surface: Surface) -> some View {
-        PaneCardView(
-            title: surface.title,
-            isFocused: false,
-            hasNotification: appState.hasNotification(for: surface),
-            isTranscribing: false,
-            transcript: "",
-            terminalText: surface.isBrowser ? "" : appState.cardText(for: surface),
-            isBrowser: surface.isBrowser,
-            browserURL: appState.browserURLs[surface.id] ?? "",
-            isWorking: appState.workingSurfaces.contains(surface.id)
+    /// Show as Chat / Show as Terminal, offered in the ••• menu of an agent
+    /// surface that can show chat.
+    private func chatToggle(for surface: Surface) -> Binding<Bool>? {
+        guard surface.hasTranscript, appState.transcriptEvents[surface.id] != nil else { return nil }
+        let sid = surface.id
+        return Binding(
+            get: { appState.chatBodyOverride[sid] != "terminal" },
+            set: { appState.setChatBody($0, for: sid) }
         )
-        .onTapGesture {
-            cycleDirection = .trailing
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                appState.focusSurface(surface.id)
+    }
+
+    // MARK: - Header
+
+    /// The one header: switcher, title and status, ••• menu.
+    private var header: some View {
+        let surface = appState.surfaces.isEmpty ? nil : focusedSurface
+        return SurfaceHeader(
+            title: surface.map { $0.title.isEmpty ? "Untitled" : $0.title } ?? "No surfaces",
+            subtitle: surface.map(subtitle(for:)) ?? currentWorkspaceName,
+            isRecording: speechManager.isRecording,
+            position: surfacePositionLabel,
+            othersNeedYou: !appState.needsYouSurfaces.subtracting([surface?.id ?? ""]).isEmpty,
+            onOpenSwitcher: { openSwitcher() },
+            onOpenMenu: { dismissKeyboard() }
+        ) {
+            headerMenu(for: surface)
+        }
+    }
+
+    private var surfacePositionLabel: String {
+        let count = appState.surfaces.count
+        guard count > 0 else { return "0" }
+        let idx = appState.surfaces.firstIndex(where: { $0.id == focusedSurface?.id }) ?? 0
+        return "\(idx + 1)/\(count)"
+    }
+
+    private var currentWorkspaceName: String {
+        guard let index = appState.visibleWorkspaces.firstIndex(where: { $0.id == appState.currentWorkspaceID }) else { return "" }
+        return workspaceLabel(for: appState.visibleWorkspaces[index], at: index)
+    }
+
+    /// Status and kind in a few words: "Working · claude", "Needs approval",
+    /// "Done · 3h ago", "Terminal".
+    private func subtitle(for surface: Surface) -> String {
+        if surface.isBrowser {
+            let url = appState.browserURLs[surface.id] ?? ""
+            return URL(string: url)?.host ?? "Browser"
+        }
+        let kind = surface.agentKind ?? ""
+        if surface.hasTranscript, let events = appState.transcriptEvents[surface.id] {
+            switch appState.glance(for: surface).status {
+            case .working: return "Working · \(kind)"
+            case .approve: return "Needs approval"
+            case .asks: return "Asks you a question"
+            case .waiting: return "Waiting on you"
+            case .done:
+                if let ts = events.last(where: { $0.ts != nil })?.ts, let ago = ChatTime.ago(ts) {
+                    return ago == "now" ? "Done · just now" : "Done · \(ago) ago"
+                }
+                return "Done · \(kind)"
             }
         }
-        .gesture(
-            DragGesture(minimumDistance: 30)
-                .onEnded { value in
-                    if value.translation.height < -30 {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            appState.focusSurface(surface.id)
-                        }
-                    }
-                }
-        )
+        if surface.hasTranscript {
+            return appState.isAgentWorking(surface) ? "Working · \(kind)" : kind
+        }
+        return appState.workingSurfaces.contains(surface.id) ? "Running" : "Terminal"
     }
 
-    private func tileHeight(for count: Int, in totalHeight: CGFloat) -> CGFloat {
-        let available = totalHeight - 52
-        let spacing = CGFloat(max(0, count - 1)) * 6
-        return max(60, (available - spacing) / CGFloat(count))
+    /// Everything the old title bar and bottom bar carried, in one menu.
+    @ViewBuilder
+    private func headerMenu(for surface: Surface?) -> some View {
+        if let surface {
+            if let chat = chatToggle(for: surface) {
+                Picker("View", selection: chat) {
+                    Label("Show as Chat", systemImage: "text.bubble").tag(true)
+                    Label("Show as Terminal", systemImage: "terminal").tag(false)
+                }
+                .pickerStyle(.inline)
+            }
+            Section {
+                newTabButton
+                ForEach(pinnedActions(for: surface.id).filter { $0.label != "New Tab" }) { qa in
+                    Button(qa.label, systemImage: qa.icon) { qa.action() }
+                }
+            }
+            Section {
+                if !surface.isBrowser {
+                    Button("Find", systemImage: "magnifyingglass") { openSearch() }
+                }
+                // A chat is the whole conversation already; History is for
+                // an agent shown as Terminal (or an old bridge's text card).
+                if surface.hasTranscript, !appState.showsChat(surface) {
+                    Button("History", systemImage: "clock.arrow.circlepath") { openHistory(fallback: surface) }
+                }
+                Button("All Actions", systemImage: "square.grid.3x3") { openQuickActions() }
+            }
+        } else {
+            newTabButton
+        }
+        Section {
+            Button("Menu", systemImage: "sidebar.left") { appState.sidebarRevealRequest += 1 }
+            Button {} label: {
+                Label(appState.connectionStatus.label(backend: appState.backendKind), systemImage: connectionSymbol)
+            }
+            .disabled(true)
+        }
+    }
+
+    private var newTabButton: some View {
+        Button("New Tab", systemImage: "plus.square") {
+            quickActionStore.recordUse("New Tab")
+            appState.createSurface()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { appState.refreshSurfaces() }
+        }
+    }
+
+    private var connectionSymbol: String {
+        switch appState.connectionStatus {
+        case .connected(true): return "checkmark.circle"
+        case .connected(false), .reconnecting, .connecting: return "exclamationmark.circle"
+        case .disconnected: return "xmark.circle"
+        }
     }
 
     // MARK: - Handoff banner
@@ -990,9 +1087,10 @@ struct WorkspaceLayoutView: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.8))
                 .lineLimit(2)
-                .onTapGesture { appState.dismissHandoff() }
+                .onTapGesture { dismissKeyboard(); appState.dismissHandoff() }
             if case .done(let done) = status, done.direction == "out", done.moved > 0, done.bridge != nil {
                 Button {
+                    dismissKeyboard()
                     appState.followHandoff()
                 } label: {
                     Text(appState.handoffTargetBridge == nil ? "Pair \(done.machine)" : "Open")
@@ -1000,12 +1098,13 @@ struct WorkspaceLayoutView: View {
                         .foregroundStyle(.black)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(.orange))
+                        .background(Capsule().fill(Theme.c.attention))
                 }
                 .buttonStyle(.plain)
             }
             if case .done = status {
                 Button {
+                    dismissKeyboard()
                     appState.dismissHandoff()
                 } label: {
                     Image(systemName: "xmark")
@@ -1036,96 +1135,7 @@ struct WorkspaceLayoutView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Workspace bar
-
-    private var workspaceBar: some View {
-        HStack(spacing: 0) {
-            // Opens the sidebar; the connection dot rides on its corner.
-            Button { appState.sidebarRevealRequest += 1 } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.white.opacity(0.08)))
-                    .overlay(alignment: .topTrailing) { statusDot.offset(x: 1, y: -1) }
-                    .frame(width: 40, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Menu")
-            .padding(.leading, 6)
-
-            workspacePills
-
-            HStack(spacing: 10) {
-                if speechManager.isRecording {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 8, height: 8)
-                        .shadow(color: .red.opacity(0.6), radius: 4)
-                    Text("REC")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.red)
-                }
-
-                // Opens the card switcher. Shows where you are ("2/5") so
-                // focus mode, which hides the other cards, still says how
-                // many there are.
-                Button { showSwitcher = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "square.stack")
-                            .font(.system(size: 12, weight: .medium))
-                        Text(surfacePositionLabel)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .monospacedDigit()
-                    }
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.horizontal, 9)
-                    .frame(height: 28)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Show all surfaces")
-
-                Button { focusMode.toggle() } label: {
-                    Image(systemName: focusMode
-                          ? "arrow.down.right.and.arrow.up.left"
-                          : "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(focusMode ? .black : .white.opacity(0.6))
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(focusMode ? Color.white : Color.white.opacity(0.08)))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(focusMode ? "Show all cards" : "Focus this surface")
-            }
-            .padding(.trailing, 12)
-            .padding(.leading, 8)
-        }
-        .frame(height: 36)
-        .contentShape(Rectangle())
-        // Swipe up on the bar opens the switcher, like the iOS app switcher.
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    if value.translation.height < -30,
-                       abs(value.translation.height) > abs(value.translation.width) {
-                        showSwitcher = true
-                    }
-                }
-        )
-    }
-
-    private var surfacePositionLabel: String {
-        let count = appState.surfaces.count
-        guard count > 0 else { return "0" }
-        let idx = appState.surfaces.firstIndex(where: { $0.id == focusedSurface?.id }) ?? 0
-        return "\(idx + 1)/\(count)"
-    }
-
-    // MARK: - Workspace pills
+    // MARK: - Workspace labels
 
     private func workspaceLabel(for ws: Workspace, at index: Int) -> String {
         let title = appState.displayTitle(for: ws)
@@ -1138,68 +1148,6 @@ struct WorkspaceLayoutView: View {
             return "Workspace \(index + 1)"
         }
         return title
-    }
-
-    private func workspaceHasNotification(_ ws: Workspace) -> Bool {
-        appState.notifications.contains { $0.workspaceID == ws.id }
-    }
-
-    private var workspacePills: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Array(appState.visibleWorkspaces.enumerated()), id: \.element.id) { index, ws in
-                        let isActive = ws.id == appState.currentWorkspaceID
-                        let hasNotif = workspaceHasNotification(ws)
-
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                appState.selectWorkspace(ws.id)
-                            }
-                        } label: {
-                            Text(workspaceLabel(for: ws, at: index))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(isActive ? .black : .white.opacity(0.5))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(isActive ? Color.white : Color.white.opacity(0.08))
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.orange, lineWidth: hasNotif ? 1.5 : 0)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .id(ws.id)
-                    }
-                }
-                .padding(.horizontal, 8)
-            }
-            .onChange(of: appState.currentWorkspaceID) { _, newID in
-                if let id = newID {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
-                }
-            }
-        }
-    }
-
-    private var statusDot: some View {
-        let color: Color = {
-            switch appState.connectionStatus {
-            case .connected(true): return .green
-            case .connected(false): return .yellow
-            case .reconnecting, .connecting: return .yellow
-            case .disconnected: return .red
-            }
-        }()
-        return Circle()
-            .fill(color)
-            .frame(width: 6, height: 6)
-            .shadow(color: color.opacity(0.5), radius: 3)
     }
 
     // MARK: - Content polling
@@ -1252,20 +1200,49 @@ struct WorkspaceLayoutView: View {
             return
         }
         // Live terminal mirror: deep read when focused (scrollback for plain
-        // shells), cheap preview otherwise.
-        let lines = surface.id == appState.focusedSurfaceID
-            ? AppState.focusedHistoryLines : 50
-        appState.readSurfaceText(surface.id, lines: lines)
-        // A claude/opencode surface's card is its conversation, so keep the
-        // focused one's transcript current alongside the mirror. Unchanged
-        // transcripts answer from a fingerprint, so this poll is nearly free;
-        // background surfaces load theirs when they come into focus.
-        if surface.hasTranscript, surface.id == appState.focusedSurfaceID {
+        // shells), cheap preview otherwise, none for a chat card that draws
+        // nothing from the screen (AppState.screenReadLines).
+        if let lines = appState.screenReadLines(for: surface, focused: surface.id == appState.focusedSurfaceID) {
+            appState.readSurfaceText(surface.id, lines: lines)
+        }
+        // A claude/opencode surface's card is its conversation, so keep its
+        // transcript current alongside the mirror. Background surfaces too
+        // (they're only fetched every ~15s): their glance tiles and the
+        // "needs you" dot read the events and pending state. Unchanged
+        // transcripts answer from a fingerprint, so this poll is nearly free.
+        if surface.hasTranscript {
             appState.loadClaudeTranscript(surface.id)
         }
     }
 
     // MARK: - Volume callbacks
+
+    /// Volume-up's speech toggle, shared with the composer's mic button:
+    /// start recording, or stop and send what was heard (with Enter when
+    /// auto-submit is on).
+    @MainActor
+    static func toggleDictation(speech: SpeechInputManager, appState: AppState) async {
+        if speech.isRecording {
+            let pending = speech.transcript
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            let text = speech.stop()
+            let finalText = text.isEmpty ? pending : text
+            print("[Speech] sending: \(finalText)")
+            if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
+                let autoSubmit = UserDefaults.standard.bool(forKey: "autoSubmitSpeech")
+                let toSend = autoSubmit ? finalText + "\n" : finalText
+                appState.sendText(toSend, to: surfaceID)
+            }
+        } else {
+            speech.start()
+        }
+    }
+
+    private func toggleDictation() {
+        let speech = speechManager
+        let appState = appState
+        Task { @MainActor in await Self.toggleDictation(speech: speech, appState: appState) }
+    }
 
     private func wireVolumeCallbacks() {
         let appState = appState
@@ -1312,21 +1289,8 @@ struct WorkspaceLayoutView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         appState.refreshSurfaces()
                     }
-                } else if speech.isRecording {
-                    // Stop recording and send
-                    let pending = speech.transcript
-                    try? await Task.sleep(nanoseconds: 300_000_000)
-                    let text = speech.stop()
-                    let finalText = text.isEmpty ? pending : text
-                    print("[Speech] sending: \(finalText)")
-                    if !finalText.isEmpty, let surfaceID = appState.focusedSurfaceID {
-                        let autoSubmit = UserDefaults.standard.bool(forKey: "autoSubmitSpeech")
-                        let toSend = autoSubmit ? finalText + "\n" : finalText
-                        appState.sendText(toSend, to: surfaceID)
-                    }
                 } else {
-                    // Start recording
-                    speech.start()
+                    await Self.toggleDictation(speech: speech, appState: appState)
                 }
             }
         }
@@ -1338,10 +1302,7 @@ struct WorkspaceLayoutView: View {
                 } else if let surface = appState.surfaces.first(where: { $0.id == appState.focusedSurfaceID })
                             ?? appState.surfaces.first {
                     let sid = surface.id
-                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store, includeTop: true, onToggleFullscreen: { qa.isFullscreen.toggle() }, onToggleFocus: {
-                        let current = UserDefaults.standard.bool(forKey: "focusMode")
-                        UserDefaults.standard.set(!current, forKey: "focusMode")
-                    }))
+                    qa.open(with: QuickActionBuilder.build(surfaceID: sid, appState: appState, store: store, includeTop: true, onToggleFullscreen: { qa.isFullscreen.toggle() }))
                 }
             }
         }

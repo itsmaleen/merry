@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Resume session
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ⌕ Search…                                                                                    │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+    dlgcwd
+
+  No sessions in this project yet
+
+  Ctrl+A to show all projects · Ctrl+B to only show current branch · Esc to close

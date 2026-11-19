@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus trac… ▔
+  Select model
+  Your pick is the default for new sessions. For other models, use --model.
+
+    1.  Default (recommended)  Opus 5.5 · Best for everyday, complex tasks
+    2.  Opus 5.5               For complex work and everyday tasks
+  ❯ 3.  Fable 5.2 ✔            For your toughest challenges
+    4.  Sonnet 5.5             Most efficient for simpler tasks
+    5.  Haiku 5.5              Fastest for quick answers
+    ▸   More models
+
+  ◐ Medium effort (default)
+
+  ←/→ to adjust · s to use this session only · Enter to save · Esc to cancel

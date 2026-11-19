@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// Every surface in the workspace as a scrollable grid of cards, like the iOS
-/// app switcher: scroll to find the one you want, tap it to focus. Workspace
-/// chips along the top load another workspace's surfaces in place, and the
-/// last cards open a new tab (plain, or straight into claude YOLO).
+/// app switcher: scroll to find the one you want, tap it to focus. The only
+/// place several surfaces show at once, and the home of the workspace pills:
+/// they load another workspace's surfaces in place (a small orange dot marks
+/// one with a notification). The last cards open a new tab (plain, or straight
+/// into claude YOLO).
 struct SurfaceSwitcherView: View {
     @EnvironmentObject var appState: AppState
     @Binding var isPresented: Bool
@@ -12,6 +14,15 @@ struct SurfaceSwitcherView: View {
     let onNewTab: () -> Void
     let onNewYoloTab: () -> Void
     let onRefresh: () -> Void
+    /// The "needs you" chip: shows only surfaces waiting on you. Filters,
+    /// never re-sorts, so every card keeps its place.
+    @State private var needsYouOnly = false
+
+    private var shownSurfaces: [Surface] {
+        guard needsYouOnly else { return appState.surfaces }
+        let needs = appState.needsYouSurfaces
+        return appState.surfaces.filter { needs.contains($0.id) }
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -22,7 +33,7 @@ struct SurfaceSwitcherView: View {
             ZStack {
                 // Opaque: the cards are glass, so anything behind would show
                 // through them.
-                Color.black.ignoresSafeArea()
+                Theme.c.background.ignoresSafeArea()
 
                 VStack(spacing: 10) {
                     header
@@ -31,7 +42,7 @@ struct SurfaceSwitcherView: View {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: false) {
                             LazyVGrid(columns: columns, spacing: 10) {
-                                ForEach(appState.surfaces) { surface in
+                                ForEach(shownSurfaces) { surface in
                                     card(for: surface)
                                         .frame(height: cardHeight)
                                         .id(surface.id)
@@ -54,18 +65,26 @@ struct SurfaceSwitcherView: View {
                 .padding(.top, 8)
             }
         }
+        .onAppear {
+            // Screenshot fixture: open with the "needs you" filter on.
+            if appState.isFixtureMode, ProcessInfo.processInfo.arguments.contains("-UITestNeedsYou") {
+                needsYouOnly = true
+            }
+        }
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("Surfaces")
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.9))
-            Text("\(appState.surfaces.count)")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.4))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Surfaces")
+                    .font(.title2.bold())
+                    .foregroundStyle(.primary)
+                Text("\(appState.surfaces.count)")
+                    .font(.title2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             Button(action: onRefresh) {
                 Image(systemName: "arrow.clockwise")
@@ -84,13 +103,51 @@ struct SurfaceSwitcherView: View {
             }
             .accessibilityLabel("Close")
         }
-        .foregroundStyle(.white.opacity(0.7))
+        .foregroundStyle(.secondary)
         .buttonStyle(.plain)
         .padding(.leading, 16)
         .padding(.trailing, 6)
     }
 
     private var workspaceChips: some View {
+        HStack(spacing: 0) {
+            needsYouChip
+            workspaceChipScroller
+        }
+        .frame(height: 32)
+    }
+
+    /// A neutral capsule; selected is filled light with dark text, like a
+    /// selected system chip.
+    private func chip(_ text: String, selected: Bool, leadingDot: Bool = false, trailingDot: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            if leadingDot { Circle().fill(Theme.c.attention).frame(width: 6, height: 6) }
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+            if trailingDot { Circle().fill(Theme.c.attention).frame(width: 6, height: 6) }
+        }
+        .foregroundStyle(selected ? AnyShapeStyle(Color.black) : AnyShapeStyle(.primary))
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .background(Capsule().fill(selected ? Color.white : Color.white.opacity(0.1)))
+        .contentShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var needsYouChip: some View {
+        let count = appState.surfaces.filter { appState.needsYouSurfaces.contains($0.id) }.count
+        if count > 0 || needsYouOnly {
+            Button { needsYouOnly.toggle() } label: {
+                chip("Needs you · \(count)", selected: needsYouOnly, leadingDot: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(needsYouOnly ? "Show all surfaces" : "Show only surfaces that need you, \(count)")
+            .padding(.leading, 12)
+        }
+    }
+
+    private var workspaceChipScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -102,15 +159,9 @@ struct SurfaceSwitcherView: View {
                                 appState.selectWorkspace(ws.id)
                             }
                         } label: {
-                            Text(workspaceLabel(ws, index))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .lineLimit(1)
-                                .foregroundStyle(isActive ? .black : .white.opacity(0.6))
-                                .padding(.horizontal, 12)
-                                .frame(height: 28)
-                                .background(Capsule().fill(isActive ? Color.white : Color.white.opacity(0.08)))
-                                .overlay(Capsule().stroke(Color.orange, lineWidth: hasNotif ? 1.5 : 0))
+                            chip(workspaceLabel(ws, index), selected: isActive, trailingDot: hasNotif)
                         }
+                        .accessibilityLabel(workspaceLabel(ws, index) + (hasNotif ? ", has notifications" : ""))
                         .buttonStyle(.plain)
                         .id(ws.id)
                     }
@@ -121,7 +172,6 @@ struct SurfaceSwitcherView: View {
                 if let id = appState.currentWorkspaceID { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .frame(height: 30)
     }
 
     // MARK: - Cards
@@ -131,34 +181,21 @@ struct SurfaceSwitcherView: View {
         return PaneCardView(
             title: surface.title,
             isFocused: false,
-            hasNotification: appState.hasNotification(for: surface),
+            hasNotification: appState.hasNotification(for: surface) || appState.needsYouSurfaces.contains(surface.id),
             isTranscribing: false,
             transcript: "",
             terminalText: surface.isBrowser ? "" : appState.cardText(for: surface),
             isBrowser: surface.isBrowser,
             browserURL: appState.browserURLs[surface.id] ?? "",
-            isWorking: appState.workingSurfaces.contains(surface.id)
+            isWorking: appState.workingSurfaces.contains(surface.id),
+            glanceBody: GlanceBody(surface: surface, appState: appState),
+            isCurrent: isCurrent
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(isCurrent ? 0.85 : 0), lineWidth: 2)
-        )
-        .overlay(alignment: .bottomTrailing) {
-            if isCurrent {
-                Text("current")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.white))
-                    .padding(8)
-            }
-        }
         // A clear layer on top takes the tap, so the card's text view never
         // starts a selection or scroll inside the grid.
         .overlay(
             Color.clear
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .onTapGesture { onSelect(surface.id) }
         )
         .contextMenu {
@@ -179,17 +216,17 @@ struct SurfaceSwitcherView: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.body.weight(.medium))
                 Text(title)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(.footnote.weight(.medium))
             }
-            .foregroundStyle(.white.opacity(0.55))
+            .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }

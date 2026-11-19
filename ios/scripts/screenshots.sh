@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUNDLE_ID="dev.itsmaleen.merry"
-SIM_UDID="C351D689-0865-4AB1-AAD2-83718721BB58" # iPhone 17 Pro
+SIM_UDID="${SIM_UDID:-C351D689-0865-4AB1-AAD2-83718721BB58}" # iPhone 17 Pro; override with SIM_UDID=…
 SCREENSHOTS_DIR="$(pwd)/screenshots"
 MIN_BYTES=30720 # 30 KB
 

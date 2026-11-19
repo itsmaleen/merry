@@ -1,0 +1,40 @@
+     Ask Claude to create or update subagents for you (e.g. "create a code-reviewer subagent that
+     ..."),
+     or edit the files directly:
+       • .claude/agents/       (this project)
+       • ~/.claude/agents/     (all projects)
+
+     Docs: https://code.claude.com/docs/en/sub-agents
+
+❯ /output-style
+  ⎿  Output style: default
+
+     Available styles:
+     - default (current)
+     - Proactive: Claude executes immediately, minimizes interruptions, and prefers action over
+       planning
+     - Concise: Claude responds tersely, leading with results and skipping preamble and narration
+     - Explanatory: Claude explains its implementation choices and codebase patterns
+     - Learning: Claude pauses and asks you to write small pieces of code for hands-on practice
+
+     Usage: /output-style <style>
+
+❯ Run exactly this shell command with the Bash tool and nothing else: touch /tmp/merry-dlg-test
+
+⏺ Creating empty test file in /tmp
+  ⎿  $ touch /tmp/merry-dlg-test
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" below
+ Create empty test file in /tmp
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ touch /tmp/merry-dlg-test
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and always allow access to /tmp from this project
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+
+ Esc to cancel · Tab to amend

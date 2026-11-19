@@ -1,0 +1,40 @@
+
+  Kept — everything that names the cmux runtime (the backend/cmux package, the
+  "cmux" kind, cmux socket paths, ~/.cmuxterm).
+
+  One migration nicety
+
+  The bridge falls back to the existing ~/.config/cmux-bridge when the new dir
+  doesn't exist, so your token and tailnet state survive — no bridge-side re-pair.
+  (The phone still re-pairs, since a new bundle id = a new app.)
+
+  Verified
+
+  Go build/vet/test all green on the new module path; iOS builds as merry.app
+  (dev.itsmaleen.merry, AppIcon compiled); merry-bridge --pair emits a
+  merry-bridge://… URL and connects to herdr.
+
+  Still open / your call
+
+  - PR #29 (surface rebrand) is folded into this branch's base but is a separate
+    open PR. Simplest is to merge #30 into main and close #29 (its commit is
+    included here), or merge #29 first — your call.
+  - This is the breaking pass: after merge, ./scripts/install-bridge.sh rebuilds
+    the bridge (retires the old job, reuses your token), and you install the
+    renamed app on the phone and re-pair, then delete the old app.
+
+  This is still in the rename-merry-full worktree. Want me to merge #30 (and close
+  #29), or leave both for you to review? And I can clean up the worktree once
+  you've decided.
+
+✻ Cogitated for 10m 13s
+
+※ recap: We renamed the project cmux → merry. The full identifier rename is
+  committed and pushed as PR #30 in the rename-merry-full worktree, building on the
+  surface rebrand PR #29. Next: decide whether to merge #30 (closing #29) or
+  review first.
+                                           new task? /clear to save 796.9k tokens
+───────────────────────────────────────────────────────────────────────────────────
+❯ 
+───────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · PR #29 · ← 1 agent          /rc

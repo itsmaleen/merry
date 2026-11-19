@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+❯ /resume
+  ⎿  Resume cancelled
+
+❯ /memory
+  ⎿  Closed memory
+
+❯ /agents
+  ⎿  The /agents wizard has been removed.
+
+     Ask Claude to create or update subagents for you (e.g. "create a code-reviewer subagent that
+     ..."),
+     or edit the files directly:
+       • .claude/agents/       (this project)
+       • ~/.claude/agents/     (all projects)
+
+     Docs: https://code.claude.com/docs/en/sub-agents
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← 1 agent

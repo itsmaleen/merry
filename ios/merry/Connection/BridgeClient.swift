@@ -361,7 +361,7 @@ final class BridgeClient: NSObject {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
 
-        let bridgeMessage = parse(json: json)
+        let bridgeMessage = parse(json: json, raw: data)
         Task { @MainActor in
             self.delegate?.clientDidReceiveMessage(self, message: bridgeMessage)
         }
@@ -395,7 +395,10 @@ final class BridgeClient: NSObject {
         }
     }
 
-    private func parse(json: [String: Any]) -> BridgeMessage {
+    /// Decodes `{"data": T}` straight from the frame's bytes.
+    private struct DataEnvelope<T: Decodable>: Decodable { let data: T }
+
+    private func parse(json: [String: Any], raw: Data) -> BridgeMessage {
         let type = json["type"] as? String ?? ""
         let data = json["data"] as? [String: Any] ?? [:]
 
@@ -426,9 +429,11 @@ final class BridgeClient: NSObject {
             }
             return .ignored
         case "surface.screen":
-            if let screenData = try? JSONSerialization.data(withJSONObject: data),
-               let update = try? JSONDecoder().decode(ScreenUpdate.self, from: screenData) {
-                return .surfaceScreen(update)
+            // The hot path (several per second while a TUI repaints): decode
+            // from the bytes received rather than re-encoding the parsed
+            // dictionary first.
+            if let envelope = try? JSONDecoder().decode(DataEnvelope<ScreenUpdate>.self, from: raw) {
+                return .surfaceScreen(envelope.data)
             }
             return .ignored
         case "surface.screen.ended":

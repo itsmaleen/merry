@@ -45,112 +45,112 @@ struct PaneCardView: View {
     var scrollToBottomRequest: Int = 0
     /// Asks the parent to bump `scrollToBottomRequest`.
     var onJumpToBottom: (() -> Void)? = nil
-    /// Pinned quick actions, drawn as small icon buttons at the right of the
-    /// title bar (focused card only). `onMoreActions` adds a trailing "•••"
-    /// that opens the full menu.
-    var titleActions: [QuickAction] = []
-    var onMoreActions: (() -> Void)? = nil
-    @State private var notificationPulse = false
+    /// The open agent surface's chat body. When set it replaces the terminal
+    /// and live-screen bodies (the frame stream keeps running for the peek).
+    var chatBody: ChatCardBody? = nil
+    /// A small card's or switcher tile's glance body, replacing the 7pt
+    /// terminal mirror with something readable at tile size.
+    var glanceBody: GlanceBody? = nil
+    /// A switcher tile for the surface that is open: a brighter border.
+    var isCurrent: Bool = false
     @State private var terminalAtTop = false
     @State private var terminalAtBottom = true
 
     var body: some View {
-        ZStack {
-            // Glass background
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial.opacity(isFocused ? 0.4 : 0.2))
-                .environment(\.colorScheme, .dark)
+        if isFocused {
+            // The open surface: no card, no title bar, no ring. Its content
+            // runs edge to edge under the screen's header; the header carries
+            // the title and status.
+            bodyArea
+        } else {
+            tile
+        }
+    }
 
-            // Notification pulse ring
-            if hasNotification {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.orange, lineWidth: 2.5)
-                    .opacity(notificationPulse ? 0.4 : 1.0)
-                    .animation(
-                        .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                        value: notificationPulse
-                    )
-                    .onAppear { notificationPulse = true }
-                    .onDisappear { notificationPulse = false }
-            }
+    /// A switcher tile: a neutral rounded rectangle with a hairline border,
+    /// brighter for the open surface. Needs-you shows in the glance's status
+    /// row (or as a small dot by the title), never as a ring.
+    private var tile: some View {
+        VStack(spacing: 0) {
+            titleBar
+            bodyArea
+        }
+        .background(Theme.c.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.white.opacity(isCurrent ? 0.55 : 0.08), lineWidth: isCurrent ? 1.5 : 0.5)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isTranscribing ? Color.red.opacity(0.03) : .clear)
+        )
+    }
 
-            // Focus glow border
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(borderColor, lineWidth: isFocused ? 1.5 : 0.5)
-
-            // Content
-            VStack(spacing: 0) {
-                // Title bar
-                titleBar
-
-                // Body area
-                ZStack(alignment: .topLeading) {
-                    if isBrowser {
-                        VStack(spacing: 8) {
-                            Image(systemName: "globe")
-                                .font(.system(size: isFocused ? 28 : 16))
-                                .foregroundStyle(.white.opacity(0.2))
-                            if !browserURL.isEmpty {
-                                Text(browserURL
-                                    .replacingOccurrences(of: "https://", with: "")
-                                    .replacingOccurrences(of: "http://", with: ""))
-                                    .font(.system(size: isFocused ? 10 : 7, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.4))
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                            }
-                            if !title.isEmpty {
-                                Text(title)
-                                    .font(.system(size: isFocused ? 9 : 7, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.3))
-                                    .lineLimit(1)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let liveScreen {
-                        liveContentView(liveScreen)
-                    } else if !terminalText.isEmpty {
-                        terminalContentView
-                    } else {
-                        // Loading state for terminals before content arrives
-                        VStack(spacing: 10) {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                                .tint(.white.opacity(0.3))
-                            Text("Loading…")
-                                .font(.system(size: 9, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.2))
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var bodyArea: some View {
+        ZStack(alignment: .topLeading) {
+            if isBrowser {
+                VStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .font(.system(size: isFocused ? 28 : 16))
+                        .foregroundStyle(.white.opacity(0.2))
+                    if !browserURL.isEmpty {
+                        Text(browserURL
+                            .replacingOccurrences(of: "https://", with: "")
+                            .replacingOccurrences(of: "http://", with: ""))
+                            .font(.system(size: isFocused ? 10 : 7, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
                     }
-
-                    // Live speech transcript OVERLAYS the content while recording.
-                    // It must not be a sibling branch of `terminalContentView`:
-                    // that view is a UITextView (UIViewRepresentable), and
-                    // swapping it out mid-recording leaves its UIKit layer on
-                    // screen so the transcript never appears. Overlaying keeps the
-                    // terminal mounted and paints the transcript on top.
-                    if isTranscribing && !transcript.isEmpty {
-                        Text(transcript)
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.9))
-                            .lineLimit(4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial.opacity(0.9))
-                            .environment(\.colorScheme, .dark)
+                    if !title.isEmpty {
+                        Text(title)
+                            .font(.system(size: isFocused ? 9 : 7, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.3))
+                            .lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+            } else if let chatBody {
+                chatBody
+            } else if let glanceBody {
+                glanceBody
+            } else if let liveScreen {
+                liveContentView(liveScreen)
+            } else if !terminalText.isEmpty {
+                terminalContentView
+            } else {
+                // Loading state for terminals before content arrives
+                VStack(spacing: 10) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .tint(.white.opacity(0.3))
+                    Text("Loading…")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.2))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            // Live speech transcript OVERLAYS the content while recording.
+            // It must not be a sibling branch of `terminalContentView`:
+            // that view is a UITextView (UIViewRepresentable), and
+            // swapping it out mid-recording leaves its UIKit layer on
+            // screen so the transcript never appears. Overlaying keeps the
+            // terminal mounted and paints the transcript on top.
+            if isTranscribing && !transcript.isEmpty {
+                Text(transcript)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundColor(.green.opacity(0.9))
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial.opacity(0.9))
+                    .environment(\.colorScheme, .dark)
             }
         }
-        .shadow(color: isFocused ? .white.opacity(0.08) : .clear, radius: 12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isTranscribing ? Color.red.opacity(0.03) : .clear)
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 
     // MARK: - Live terminal content
@@ -204,7 +204,7 @@ struct PaneCardView: View {
         // an easier read than this card's 9pt type.
         TerminalTextView(
             text: text,
-            fontSize: (isFocused ? 9 : 7) * contentScale,
+            fontSize: textFontSize(hasLiveScreen: liveScreen != nil),
             textOpacity: isFocused ? 0.85 : 0.5,
             onScrolledToTop: (isFocused && canOpenHistory) ? { onOpenHistory?() } : nil,
             onTopStateChanged: (isFocused && canOpenHistory) ? { terminalAtTop = $0 } : nil,
@@ -238,6 +238,16 @@ struct PaneCardView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: terminalAtTop)
         .animation(.easeInOut(duration: 0.18), value: terminalAtBottom)
+    }
+
+    /// A focused plain shell reads at 11.5pt at least. Not applied with a
+    /// live screen below the text (FrameFit sizes that one to its columns, and
+    /// history at a different size above it would jump) or to agent cards in
+    /// terminal mode, which keep today's size.
+    private func textFontSize(hasLiveScreen: Bool) -> CGFloat {
+        let base = (isFocused ? 9 : 7) * contentScale
+        guard isFocused, !hasLiveScreen, !canOpenHistory else { return base }
+        return max(11.5, base)
     }
 
     private var jumpToBottomButton: some View {
@@ -282,93 +292,30 @@ struct PaneCardView: View {
 
     private var titleBar: some View {
         HStack(spacing: 6) {
-            // Surface type icon
-            Image(systemName: isBrowser ? "globe" : "terminal")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(isFocused ? .white.opacity(0.5) : .white.opacity(0.2))
-
-            // Title
             Text(title.isEmpty ? "untitled" : title)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(isFocused ? .white.opacity(0.7) : .white.opacity(0.3))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            Spacer()
+            // A notification on a surface whose body has no status row
+            // (a shell, a browser): one small orange dot.
+            if hasNotification && !(glanceBody?.isAgent ?? false) {
+                Circle().fill(Theme.c.attention).frame(width: 6, height: 6)
+                    .accessibilityLabel("Needs you")
+            }
 
-            // Working indicator — the screen is moving, so a message/command
-            // visibly triggered work.
-            if isWorking {
+            Spacer(minLength: 4)
+
+            // A shell's screen is moving. An agent tile says Working in its
+            // status row instead.
+            if isWorking && !(glanceBody?.isAgent ?? false) {
                 WorkingDots()
             }
-
-            // Recording indicator
-            if isTranscribing {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: .red.opacity(0.6), radius: 3)
-                    Text("REC")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.red.opacity(0.8))
-                }
-            }
-
-            if isFocused && (!titleActions.isEmpty || onMoreActions != nil) {
-                HStack(spacing: 2) {
-                    ForEach(titleActions) { action in
-                        titleButton(icon: action.icon, label: action.label) {
-                            action.action()
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
-                    if let onMoreActions {
-                        titleButton(icon: "ellipsis", label: "All quick actions", action: onMoreActions)
-                    }
-                }
-                // The buttons are taller than the title text; let them eat
-                // into the bar's padding rather than growing the bar.
-                .padding(.vertical, -4)
-                .padding(.trailing, -6)
-            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Rectangle()
-                .fill(isFocused ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
-        )
-        // Top corners only
-        .clipShape(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 12,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 12
-            )
-        )
-    }
-
-    private func titleButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
-                .frame(width: 22, height: 18)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.07)))
-                // A 22pt visual inside a wider hit area.
-                .frame(width: 30, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
-    private var borderColor: Color {
-        if hasNotification { return Color.orange.opacity(0.6) }
-        if isFocused { return Color.white.opacity(0.5) }
-        return Color.white.opacity(0.08)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
     }
 }
 
@@ -381,7 +328,7 @@ private struct WorkingDots: View {
         HStack(spacing: 2.5) {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .fill(Color.green)
+                    .fill(Color.secondary)
                     .frame(width: 3.5, height: 3.5)
                     .opacity(animating ? 0.15 : 0.9)
                     .animation(
@@ -409,10 +356,12 @@ struct HistoryTarget: Identifiable, Equatable {
 struct TranscriptSheetView: View {
     @EnvironmentObject var appState: AppState
     let target: HistoryTarget
+    // Work rows opened in this viewing; history starts with them folded.
+    @State private var expanded: Set<String> = []
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Theme.c.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
                 Divider().overlay(Color.white.opacity(0.1))
@@ -488,6 +437,21 @@ struct TranscriptSheetView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let events = appState.transcriptEvents[target.id], !events.isEmpty {
+            // The conversation as chat, with text selection on: this is where
+            // copying lives, since the card leaves long-press to quick actions.
+            // A plain ScrollView is safe here; the sheet has no card gestures.
+            ScrollView {
+                ChatTranscriptView(
+                    items: ChatGrouping.items(from: events),
+                    expanded: expanded,
+                    onToggle: { id in
+                        if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+                    },
+                    selectable: true
+                )
+            }
+            .defaultScrollAnchor(.bottom)
         } else {
             TerminalTextView(text: text, fontSize: 12.5, textOpacity: 0.9, trimMarkdownLinks: true)
                 .padding(.horizontal, 4)

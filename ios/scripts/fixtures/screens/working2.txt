@@ -1,0 +1,40 @@
+
+
+❯ /output-style
+  ⎿  Output style: default
+
+     Available styles:
+     - default (current)
+     - Proactive: Claude executes immediately, minimizes interruptions, and prefers action over
+       planning
+     - Concise: Claude responds tersely, leading with results and skipping preamble and narration
+     - Explanatory: Claude explains its implementation choices and codebase patterns
+     - Learning: Claude pauses and asks you to write small pieces of code for hands-on practice
+
+     Usage: /output-style <style>
+
+❯ Run exactly this shell command with the Bash tool and nothing else: touch /tmp/merry-dlg-test
+
+  Did not run 1 call
+  ⎿  $ touch /tmp/merry-dlg-test
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ Write a four-line poem about tides.
+
+⏺ The moon leans down and pulls the sea,
+  A slow breath drawn along the shore;
+  What it takes, it gives back free,
+  Then turns and asks the sand for more.
+
+✻ Crunched for 1s · done 1:41 PM
+
+❯ List the planets with one fact each, think it through first.
+
+⏺ -
+
+✢ Generating… (1s · ↓ 63 tokens · thinking)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt · ← 1 agent

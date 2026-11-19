@@ -1,0 +1,39 @@
+
+  ⎿  Resume cancelled
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Settings  Status   Config   Usage   Stats
+
+  Version:           2.1.327
+  Session name:      /rename to add a name
+  Session ID:        00000000-0000-0000-0000-000000000000
+  Session kind:      interactive
+  Peer address:      uds:/tmp/cc-socks/22896.sock
+  cwd:               /private/tmp/dlgcwd
+  Login method:      Claude Ultra account
+  Organization:      user@example.com's Organization
+  Email:             user@example.com
+  Cloud sessions:    Not set up · /web-setup to connect GitHub
+
+  Model:             fable (claude-fable-5-2)
+  MCP servers:       8 connected, 6 need auth, 1 disabled, 1 failed · /mcp
+  Setting sources:   User settings
+  Auto mode server:  Enabled
+
+  ←/→ to switch · Esc to close
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -2,11 +2,15 @@ import SwiftUI
 
 struct MainTabView: View {
     @EnvironmentObject var appState: AppState
+    @AppStorage(MerryTheme.storageKey) private var themeID = MerryTheme.midnight.rawValue
     @State private var showSidebar = false
     @State private var sidebarTimer: Timer?
 
     var body: some View {
+        // Reading the stored theme here re-renders every tab when it changes.
+        let _ = Theme.sync(themeID)
         ZStack(alignment: .leading) {
+            Theme.c.background.ignoresSafeArea()
             // Full-screen content
             Group {
                 switch appState.selectedTab {
@@ -23,10 +27,12 @@ struct MainTabView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .foregroundStyle(Theme.c.text)
+            .tint(Theme.c.accent)
 
             // Menu toggle button (top-left, visible when sidebar hidden). The
-            // layout tab has its own in the bottom bar; floating there, it sat
-            // over the focused card's title.
+            // layout tab reaches the sidebar from its header's ••• menu;
+            // floating there, this would sit over the header's grid button.
             if !showSidebar && appState.selectedTab != .layout {
                 VStack {
                     HStack {
@@ -124,7 +130,7 @@ struct MainTabView: View {
                                 .foregroundStyle(.black)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange))
+                                .background(Capsule().fill(Theme.c.attention))
                         }
                     }
                     .foregroundStyle(appState.selectedTab == tab ? .white : .white.opacity(0.5))

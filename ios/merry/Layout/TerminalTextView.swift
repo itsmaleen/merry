@@ -27,7 +27,7 @@ struct TerminalTextView: UIViewRepresentable {
     /// "pull for history" affordance only when it's actually reachable.
     var onTopStateChanged: ((Bool) -> Void)? = nil
     /// Reports when a text selection starts or clears, so parents can veto
-    /// gestures (surface-cycle swipes) that would fight a selection drag.
+    /// gestures that would fight a selection drag.
     var onSelectionActiveChanged: ((Bool) -> Void)? = nil
     /// Active search query. Every match is highlighted and the one at
     /// `currentMatchIndex` is scrolled into view.
@@ -71,6 +71,8 @@ struct TerminalTextView: UIViewRepresentable {
         tv.textContainer.lineFragmentPadding = 0
         tv.showsVerticalScrollIndicator = false
         tv.alwaysBounceVertical = true
+        // Dragging the output lowers the composer's keyboard.
+        tv.keyboardDismissMode = .interactive
         tv.delegate = context.coordinator
         // Terminal output is not natural language — don't fight the user with it.
         tv.autocorrectionType = .no
@@ -363,6 +365,28 @@ struct TerminalTextView: UIViewRepresentable {
             guard active != selectionActive else { return }
             selectionActive = active
             onSelectionActiveChanged?(active)
+        }
+
+        /// A tapped link goes through LinkRouter: web pages open in the
+        /// in-app sheet instead of leaving for Safari.
+        func textView(_ textView: UITextView, primaryActionFor textItem: UITextItem,
+                      defaultAction: UIAction) -> UIAction? {
+            guard case .link(let url) = textItem.content else { return defaultAction }
+            return UIAction { _ in MainActor.assumeIsolated { LinkRouter.open(url) } }
+        }
+
+        /// Long-press on a link: Copy Link and Open in Safari.
+        func textView(_ textView: UITextView, menuConfigurationFor textItem: UITextItem,
+                      defaultMenu: UIMenu) -> UITextItem.MenuConfiguration? {
+            guard case .link(let url) = textItem.content else { return .init(menu: defaultMenu) }
+            return .init(menu: UIMenu(children: [
+                UIAction(title: "Copy Link", image: UIImage(systemName: "doc.on.doc")) { _ in
+                    UIPasteboard.general.url = url
+                },
+                UIAction(title: "Open in Safari", image: UIImage(systemName: "safari")) { _ in
+                    UIApplication.shared.open(url)
+                },
+            ]))
         }
     }
 }

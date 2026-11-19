@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @AppStorage("volumeButtonControls") private var volumeButtonControls = false
+    @AppStorage(MerryTheme.storageKey) private var themeID = MerryTheme.midnight.rawValue
     @State private var showUnpairConfirm = false
     @State private var renameTarget: SavedBridge?
     @State private var renameText = ""
@@ -11,6 +12,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Group {
                 Section("Bridges") {
                     ForEach(appState.bridges) { bridge in
                         bridgeRow(bridge)
@@ -42,6 +44,32 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Theme") {
+                    ForEach(MerryTheme.allCases) { theme in
+                        Button {
+                            Theme.sync(theme.rawValue)
+                            themeID = theme.rawValue
+                        } label: {
+                            HStack(spacing: 12) {
+                                ThemeSwatch(palette: theme.palette)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(theme.name).font(.body).foregroundStyle(.primary)
+                                    Text(theme.blurb).font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                if themeID == theme.rawValue {
+                                    Image(systemName: "checkmark")
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(Theme.c.accent)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(themeID == theme.rawValue ? .isSelected : [])
+                    }
+                }
+
                 Section("Quick Actions") {
                     NavigationLink("Manage Quick Actions") {
                         QuickActionSettingsView()
@@ -69,7 +97,11 @@ struct SettingsView: View {
                         }
                     }
                 }
+                }
+                .listRowBackground(Theme.c.surface)
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.c.background)
             .navigationTitle("Settings")
             .confirmationDialog(
                 "Unpair all devices?",
@@ -185,5 +217,31 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// A theme at a glance: its page with a message bubble and the send colour.
+private struct ThemeSwatch: View {
+    let palette: Palette
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(palette.background)
+            .frame(width: 52, height: 40)
+            .overlay(alignment: .topTrailing) {
+                Capsule().fill(palette.bubble).frame(width: 24, height: 9).padding(6)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Capsule().fill(palette.text.opacity(0.85)).frame(width: 20, height: 4).padding(8)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                HStack(spacing: 3) {
+                    Circle().fill(palette.attention).frame(width: 7, height: 7)
+                    Circle().fill(palette.accent).frame(width: 11, height: 11)
+                }
+                .padding(6)
+            }
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+            .accessibilityHidden(true)
     }
 }

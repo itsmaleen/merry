@@ -71,7 +71,10 @@ final class AppState: ObservableObject {
     // unknown), from surface.list and surface.updated pushes. Only populated
     // when the backend has the agent_status capability; a surface present here
     // takes its working indicator from this instead of the read-diff vote.
-    @Published var agentStatus: [String: String] = [:]
+    @Published var agentStatus: [String: String] = [:] {
+        // A blocked agent may be showing a dialog the chat should mirror.
+        didSet { if agentStatus != oldValue { reconcileFrameSubscription() } }
+    }
     // Which sidebar tab is showing. Owned here (not in MainTabView) so a tapped
     // notification can bring the relevant surface into view on the Layout tab.
     @Published var selectedTab: SidebarTab = .layout
@@ -119,6 +122,8 @@ final class AppState: ObservableObject {
     /// real bridge/device — e.g. requesting microphone permission, which
     /// would otherwise cover every screenshot with a system alert.
     private(set) var isFixtureMode = false
+    /// Connected through `-UITestBridge` (Debug): never persisted.
+    private var isDebugBridge = false
 
     // The live instance, so AppDelegate can route a tapped notification to it.
     // Weak so it doesn't keep a torn-down state alive.
@@ -146,6 +151,14 @@ final class AppState: ObservableObject {
     // the bridge so an unchanged transcript costs a tiny response instead of
     // re-sending the whole conversation on every poll.
     private var claudeTranscriptFingerprint: [String: String] = [:]
+    // The `max_messages` each fingerprint was taken at. A fingerprint is only
+    // echoed back at the same depth, so a glance poll's "unchanged" can never
+    // stand in for the full conversation when the surface is opened.
+    private var claudeTranscriptFingerprintDepth: [String: Int] = [:]
+    // Surfaces whose full conversation, plain text and card text are kept:
+    // the open one and the one before it (most recent first). Every other
+    // agent surface keeps only a glance's worth of events.
+    private var heavySurfaces: [String] = []
     // Every in-flight transcript request, so polls don't stack up. Deliberately
     // NOT the published loading set: flipping that twice per poll would fire
     // objectWillChange — and re-render the layout — every few seconds.
@@ -166,8 +179,86 @@ final class AppState: ObservableObject {
     // "this conversation's file no longer exists" from "nothing said yet" —
     // both arrive as empty text.
     @Published var claudeTranscriptMissing: Set<String> = []
+    // The conversation as typed events (`format: "events"`), for the chat
+    // body. Absent for a surface whose bridge answered in text only (an older
+    // bridge): its card stays the terminal-style text card. Keyed by surface ID.
+    @Published var transcriptEvents: [String: [TranscriptEvent]] = [:] {
+        didSet {
+            chatItemsCache.removeAll(keepingCapacity: true)
+            // A surface's first events switch its card to chat, which
+            // needs no frame stream unless something calls for the peek.
+            reconcileFrameSubscription()
+        }
+    }
+    // Whether older events than the first one held exist on the bridge
+    // (`has_more`). Absent or false: no paging (an older bridge never sends it).
+    @Published private(set) var transcriptHasMore: [String: Bool] = [:]
+    // Surfaces with a page of older events in flight; the chat's top row
+    // shows a spinner while its surface is here.
+    @Published private(set) var transcriptPageLoading: Set<String> = []
+    // Per-surface page request generation, for the same timeout and
+    // out-of-order rules as the tail poll's `claudeTranscriptSeq`.
+    private var transcriptPageSeq: [String: Int] = [:]
+    // Messages just sent from the composer, shown at once until the
+    // transcript carries them (ChatOutbox).
+    @Published private(set) var localEchoes: [String: [LocalEcho]] = [:] {
+        didSet {
+            chatItemsCache.removeAll(keepingCapacity: true)
+            // A slash command in flight watches the screen for its picker.
+            reconcileFrameSubscription()
+        }
+    }
+    // A dialog open on a chat surface's live screen (a picker a slash command
+    // opened, a trust check) that the transcript can't report. Only kept for
+    // the surface streaming frames; ChatCardBody shows it when nothing is
+    // `pending`.
+    @Published private(set) var screenDialogs: [String: ScreenDialog] = [:] {
+        didSet { if screenDialogs != oldValue { reconcileFrameSubscription() } }
+    }
+    // Until when (unix seconds) a chat surface keeps streaming frames to look
+    // for a dialog after the phone typed or pressed a key, or was just
+    // focused (the one-shot look for a dialog that was already open).
+    private var dialogWatchUntil: [String: Double] = [:]
+    private var dialogWatchTimer: DispatchWorkItem?
+    private var dialogProbedFocus: String?
+    // Chat rows per surface, grouped once per change of its events or echoes
+    // rather than on every SwiftUI body pass (which runs on any published
+    // change, e.g. each live-screen frame).
+    private var chatItemsCache: [String: [ChatItem]] = [:]
+    // Generation of each surface's plain-text rebuild (Find, Terminal view),
+    // so a slower detached build can't land over a newer one.
+    private var transcriptTextSeq: [String: Int] = [:]
+    // What each session is waiting on from the human (approval, question, or a
+    // block the bridge couldn't parse). A key is present only while waiting.
+    @Published var pendingStates: [String: PendingState] = [:] {
+        // A pending block can call for the live-screen peek.
+        didSet { reconcileFrameSubscription() }
+    }
+    // Per-surface "show the terminal instead of chat" choice from the card's
+    // Chat/Terminal toggle. Persisted so a surface you flipped stays flipped.
+    @Published var chatBodyOverride: [String: String] = UserDefaults.standard.dictionary(forKey: "chatBodyOverride") as? [String: String] ?? [:] {
+        didSet {
+            UserDefaults.standard.set(chatBodyOverride, forKey: "chatBodyOverride")
+            reconcileFrameSubscription()
+        }
+    }
+    // The last event of each surface's conversation the user has seen while
+    // its card was focused; the resume header compares against this. Persisted
+    // so "you haven't looked since it finished" survives a relaunch.
+    private(set) var lastViewedEventID: [String: String] = UserDefaults.standard.dictionary(forKey: "lastViewedEventID") as? [String: String] ?? [:]
+    // When that event was last on screen (Unix seconds), for "New since you
+    // were here · 3h ago".
+    private(set) var lastViewedAt: [String: Double] = UserDefaults.standard.dictionary(forKey: "lastViewedAt") as? [String: Double] ?? [:]
     // Non-nil while the full-screen conversation-history viewer is presented.
-    @Published var presentedHistory: HistoryTarget?
+    @Published var presentedHistory: HistoryTarget? {
+        // The history viewer reads the plain text, kept only for heavy
+        // surfaces: make sure it exists for this one.
+        didSet {
+            if let id = presentedHistory?.id, transcriptEvents[id] != nil, claudeTranscript[id] == nil {
+                rebuildTranscriptText(id)
+            }
+        }
+    }
     // Short-lived confirmation or failure text for an image paste, shown over the
     // focused card. Images are the one action whose result isn't obvious from the
     // terminal alone — a path scrolls by, an error is silent.
@@ -203,7 +294,15 @@ final class AppState: ObservableObject {
     private var client: BridgeClient?
     private var discovery: BridgeDiscovery?
 
+    private var memoryWarningObserver: NSObjectProtocol?
+
     init() {
+        ChatPaging.legacyMountAll = Self.legacyBench
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleMemoryWarning() }
+        }
         // Screenshot fixture mode: `-UITestFixture frames` seeds a fully
         // in-memory session (no bridge, no keychain/pairing store touched) so
         // ios/scripts/screenshots.sh can capture the live-frame card without a
@@ -214,6 +313,20 @@ final class AppState: ObservableObject {
             Self.current = self
             return
         }
+        #if DEBUG
+        // Measuring against a live bridge from the simulator without the QR
+        // flow: `-UITestBridge host:port -UITestTokenFile <path>` (or
+        // `-UITestToken <token>`). An in-memory bridge: the keychain is never
+        // read or written, so a debug run can't disturb a real pairing.
+        if let target = Self.launchArgument("-UITestBridge"), let bridge = Self.debugBridge(target) {
+            isDebugBridge = true
+            bridges = [bridge]
+            selectedBridgeID = bridge.id
+            connectSelected()
+            Self.current = self
+            return
+        }
+        #endif
         let loaded = bridgeStore.loadAll()
         bridges = loaded.bridges
         selectedBridgeID = loaded.selectedID ?? loaded.bridges.first?.id
@@ -237,6 +350,83 @@ final class AppState: ObservableObject {
         guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
         return args[index + 1]
     }
+
+    #if DEBUG
+    private var debugDriverStarted = false
+
+    /// Measurement driver for a `-UITestBridge` run (no touch in the
+    /// simulator): `-UITestOpen <workspace>/<surface>` opens one surface;
+    /// `-UITestTour <seconds>` first visits every surface of every
+    /// workspace for that long each, `-UITestTours <n>` times, then opens
+    /// the `-UITestOpen` target. Logs "[Bench] …" lines.
+    private func startDebugDriverOnce() {
+        guard isDebugBridge, !debugDriverStarted else { return }
+        debugDriverStarted = true
+        let open = Self.launchArgument("-UITestOpen")?.split(separator: "/").map(String.init)
+        let dwell = Self.launchArgument("-UITestTour").flatMap(Double.init)
+        let tours = Self.launchArgument("-UITestTours").flatMap(Int.init) ?? 1
+        Task { @MainActor [weak self] in
+            func pause(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
+            await pause(2)
+            if let dwell {
+                for tour in 1...max(1, tours) {
+                    guard let self else { return }
+                    var visited = 0
+                    for ws in self.visibleWorkspaces {
+                        self.selectWorkspace(ws.id)
+                        await pause(2)
+                        for surface in self.surfaces where surface.workspaceID == nil || surface.workspaceID == ws.id {
+                            self.focusSurface(surface.id)
+                            visited += 1
+                            var peak = Self.footprintMB()
+                            for _ in 0..<Int(dwell * 4) {
+                                await pause(0.25)
+                                peak = max(peak, Self.footprintMB())
+                            }
+                            NSLog("[Bench] visit %@ peak=%d MB now=%d MB events=%d", surface.id, peak,
+                                  Self.footprintMB(), self.transcriptEvents[surface.id]?.count ?? -1)
+                        }
+                    }
+                    NSLog("[Bench] tour %d done, %d surfaces", tour, visited)
+                }
+            }
+            if let open, open.count == 2 {
+                self?.navigateToSurface(surfaceID: open[1], workspaceID: open[0])
+                var peak = Self.footprintMB()
+                for _ in 0..<40 {
+                    await pause(0.25)
+                    peak = max(peak, Self.footprintMB())
+                }
+                NSLog("[Bench] opened %@ peak=%d MB now=%d MB", open[1], peak, Self.footprintMB())
+            }
+        }
+    }
+
+    /// The process's phys_footprint (what Jetsam counts), in MB.
+    static func footprintMB() -> Int {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? Int(info.phys_footprint / 1_048_576) : -1
+    }
+
+    /// The bridge named by `-UITestBridge host:port`, with its token from
+    /// `-UITestTokenFile` (read, never logged) or `-UITestToken`.
+    private static func debugBridge(_ target: String) -> SavedBridge? {
+        let trimmed = target.replacingOccurrences(of: "ws://", with: "")
+        let parts = trimmed.split(separator: ":", maxSplits: 1)
+        guard parts.count == 2, let port = Int(parts[1].prefix(while: \.isNumber)) else { return nil }
+        let fromFile = launchArgument("-UITestTokenFile").flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+        guard let token = (fromFile ?? launchArgument("-UITestToken"))?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else { return nil }
+        let credentials = PairingCredentials(host: String(parts[0]), port: port, token: token)
+        return SavedBridge(name: "debug", credentials: credentials)
+    }
+    #endif
 
     /// Seeds a self-contained session for screenshot fixture mode: one shell
     /// surface and one claude surface, a fake conversation, and their live
@@ -270,22 +460,51 @@ final class AppState: ObservableObject {
             "id": shellID, "type": "terminal", "title": "~/interview-prep",
             "workspace_id": workspaceID, "is_focused": false
         ]
-        let claudeDict: [String: Any] = [
-            "id": claudeID, "type": "terminal", "title": "Herdr companion app integration",
-            "workspace_id": workspaceID, "is_focused": false,
-            "resume_binding": ["kind": "claude"] as [String: Any]
-        ]
-        // Two more plain shells so the card switcher has a grid to show.
-        let extra: [[String: Any]] = [
+        func agent(_ id: String, _ title: String, _ kind: String, _ status: String) -> [String: Any] {
+            ["id": id, "type": "terminal", "title": title, "workspace_id": workspaceID, "is_focused": false,
+             "resume_binding": ["kind": kind] as [String: Any], "agent_status": status]
+        }
+        // Agent sessions in each state the chat body draws (working, a
+        // question, an approval, a block it can't parse, finished), plus
+        // plain shells, so the strip and the switcher show both glance kinds.
+        let dicts: [[String: Any]] = [
+            agent(claudeID, "handoff", "claude", "working"),
+            agent("herdr:w1:p5", "folds", "opencode", "blocked"),
+            shellDict,
+            agent("herdr:w1:p8", "ssh fix", "claude", "blocked"),
+            agent("herdr:w1:p6", "infra", "claude", "blocked"),
+            agent("herdr:w1:p9", "trellis", "claude", "idle"),
+            agent("herdr:w1:p4", "deploy watch", "claude", "idle"),
             ["id": "herdr:w1:p3", "type": "terminal", "title": "~/wrinkles", "workspace_id": workspaceID, "is_focused": false],
-            ["id": "herdr:w1:p4", "type": "terminal", "title": "bridge logs", "workspace_id": workspaceID, "is_focused": false],
         ]
-        surfaces = ([shellDict, claudeDict] + extra).compactMap { Surface($0) }
-        surfaceContent["herdr:w1:p3"] = "$ node scripts/wiki_hybrid.mjs \"merry\"\n20 results\n$ "
-        surfaceContent["herdr:w1:p4"] = "ws: client connected\nsurface.list ok (4)\nsurface.read_text ok\n"
+        surfaces = dicts.compactMap { Surface($0) }
+        for s in surfaces { if let st = s.agentStatus { agentStatus[s.id] = st } }
+        workingSurfaces = [claudeID]
+        surfaceContent["herdr:w1:p3"] = "$ python3 output/build_hub.py\n{'skip': 3, 'already': 341}\nwrote output/index.html\n$ "
+        // The infra session is blocked on a prompt the bridge couldn't parse;
+        // the peek shows these bottom rows of its screen.
+        surfaceContent["herdr:w1:p6"] = Self.fixtureInfraScreen
 
-        claudeTranscript[claudeID] = Self.fixtureClaudeTranscript
-        recomposeClaudeCard(claudeID)
+        for (id, reply) in Self.fixtureTranscripts {
+            let json = (try? JSONSerialization.jsonObject(with: Data(reply.utf8))) as? [String: Any] ?? [:]
+            // Rebase the recorded timestamps so each session ended a moment
+            // ago (the finished trellis one, hours ago), and ages read as they
+            // would live.
+            var raw = json["events"] as? [[String: Any]] ?? []
+            let end = raw.compactMap { ($0["ts"] as? NSNumber)?.doubleValue }.max() ?? 0
+            let shift = Date().timeIntervalSince1970 - (id == "herdr:w1:p9" ? 10_800 : 90) - end
+            for i in raw.indices { if let ts = (raw[i]["ts"] as? NSNumber)?.doubleValue { raw[i]["ts"] = ts + shift } }
+            let events = TranscriptEvent.decodeList(raw)
+            transcriptEvents[id] = events
+            pendingStates[id] = PendingState(json["pending"])
+            claudeTranscript[id] = ChatGrouping.plainText(events)
+            recomposeClaudeCard(id)
+        }
+        // Forget any marker a previous fixture launch left behind.
+        lastViewedEventID = [:]
+        lastViewedAt = [:]
+        seedFixtureLongChat()
+        if Self.hasLaunchFlag("-UITestQueued") { seedFixtureQueue() }
         // The shell surface has no transcript fallback, so its SECONDARY
         // (non-focused) tile — which shows polled text, not the live frame
         // feed — would otherwise sit on the perpetual "Loading…" state.
@@ -297,30 +516,327 @@ final class AppState: ObservableObject {
 
         loadFixtureScreen(surfaceID: shellID, resourceName: "screen-shell")
         loadFixtureScreen(surfaceID: claudeID, resourceName: "screen-claude")
+        if let name = Self.launchArgument("-UITestDialog") { seedFixtureDialog(name, surfaceID: focusID) }
+        if Self.hasLaunchFlag("-UITestCommandOutput") { seedFixtureCommandOutput() }
+        if Self.hasLaunchFlag("-UITestEchoCycle") { runFixtureEchoCycle(focusID) }
     }
 
-    /// A short fake conversation for the fixture claude surface's card.
-    private static let fixtureClaudeTranscript = """
-    ▌ You
-    Can you wire the herdr companion app integration into the iOS layout?
+    /// `-UITestDialog <name>`: the focused session's live screen is a real
+    /// Claude Code dialog captured with tmux (`Fixtures/dialog-<name>.txt`,
+    /// copied from `scripts/fixtures/screens/`), nothing is pending, and the
+    /// `/model` the phone just sent waits as a chip.
+    private func seedFixtureDialog(_ name: String, surfaceID: String) {
+        guard let url = Bundle.main.url(forResource: "dialog-\(name)", withExtension: "txt", subdirectory: "Fixtures")
+            ?? Bundle.main.url(forResource: "dialog-\(name)", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        pendingStates.removeValue(forKey: surfaceID)
+        agentStatus[surfaceID] = "idle"
+        localEchoes[surfaceID] = [LocalEcho(id: "fixture-cmd", text: "/\(name)", sentAt: Date().timeIntervalSince1970 - 2)]
+        let model = Self.fixtureScreenModel(surfaceID: surfaceID, text: text)
+        screenModels[surfaceID] = model
+        updateScreenDialog(surfaceID, model: model)
+    }
 
-    ▌ Claude
-    Looked at WorkspaceLayoutView and PaneCardView — the focused-card path is
-    the one that needs the new live view; the strip can keep polling text.
+    /// A ScreenModel holding plain text rows, as a full `surface.screen`
+    /// update would deliver them.
+    private static func fixtureScreenModel(surfaceID: String, text: String) -> ScreenModel {
+        let rows = text.components(separatedBy: "\n")
+        let lines: [[String: Any]] = rows.enumerated().map { i, row in
+            ["i": i, "runs": row.isEmpty ? [] : [["t": row]]]
+        }
+        let json: [String: Any] = ["surface_id": surfaceID, "seq": 1, "full": true,
+                                   "cols": rows.map(\.count).max() ?? 0, "rows": rows.count, "lines": lines]
+        let model = ScreenModel()
+        if let data = try? JSONSerialization.data(withJSONObject: json),
+           let update = try? JSONDecoder().decode(ScreenUpdate.self, from: data) {
+            model.apply(update)
+        }
+        return model
+    }
 
-    ▌ You
-    Sounds right. Keep the fallback for surfaces without frame support.
+    /// `-UITestCommandOutput`: the deploy-watch session ends with two local
+    /// commands and what they printed, one from stderr.
+    private func seedFixtureCommandOutput() {
+        let id = "herdr:w1:p4"
+        let now = Date().timeIntervalSince1970
+        transcriptEvents[id, default: []].append(contentsOf: [
+            TranscriptEvent(id: "cmd1", kind: .user, ts: now - 30, command: "/model",
+                            commandOutput: "Set model to Opus 5 (1M context) (default) and saved as your default for new sessions"),
+            TranscriptEvent(id: "cmd2", kind: .user, ts: now - 10, text: "verbose", command: "/config",
+                            commandOutput: "Unknown setting `verbose`. Run `/config` with no arguments to list settings.",
+                            commandError: true),
+        ])
+        if let last = transcriptEvents[id]?.last { lastViewedEventID[id] = last.id }
+    }
 
-    ▌ Claude
-    Doing that now — an `unsupported` subscribe error just drops the surface
-    back to the plain text card, no visible error state.
+    /// `-UITestEchoCycle`: the jump-button check. With the chat at the
+    /// bottom: a command echo appears (2 s), a plain echo (4 s), a dialog
+    /// panel (6 s); the panel goes (9 s), then the echoes (11 s). The
+    /// chevron must never show; "[Jump]" lines log every change.
+    private func runFixtureEchoCycle(_ id: String) {
+        let now = { Date().timeIntervalSince1970 }
+        let steps: [(Double, () -> Void)] = [
+            (2, { [weak self] in self?.localEchoes[id] = [LocalEcho(id: "c", text: "/model", sentAt: now())] }),
+            (4, { [weak self] in self?.localEchoes[id, default: []].append(LocalEcho(id: "p", text: "and push when it's green", sentAt: now())) }),
+            (6, { [weak self] in
+                guard let self, let url = Bundle.main.url(forResource: "dialog-model", withExtension: "txt", subdirectory: "Fixtures")
+                    ?? Bundle.main.url(forResource: "dialog-model", withExtension: "txt"),
+                      let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+                let model = Self.fixtureScreenModel(surfaceID: id, text: text)
+                self.screenModels[id] = model
+                self.screenDialogs[id] = ScreenDialogDetector.detect(rows: model.textRows)
+            }),
+            (9, { [weak self] in self?.screenDialogs.removeValue(forKey: id) }),
+            (11, { [weak self] in self?.localEchoes.removeValue(forKey: id) }),
+        ]
+        for (t, step) in steps {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                print("[Jump] step at \(t) s")
+                step()
+            }
+        }
+    }
 
-    ▌ You
-    Good. Ping me once the screenshots look right.
+    /// Fixture `claude.transcript` replies in the wire format (events +
+    /// pending), keyed by surface. Illustrative sessions, after the mockups.
+    private static let fixtureTranscripts: [(String, String)] = [
+        ("herdr:w1:p1", #"""
+        {"events": [
+          {"id": "u0", "kind": "user", "ts": 1794000000, "text": "the handoff test is flaky on linux, can you look"},
+          {"id": "a0", "kind": "text", "ts": 1794000004, "text": "I'll look at the handoff test first."},
+          {"id": "t1", "kind": "tool", "ts": 1794000005, "tool": "Read", "arg": "bridge/internal/handoff/handoff_test.go", "status": "ok"},
+          {"id": "t2", "kind": "tool", "ts": 1794000009, "tool": "Read", "arg": "bridge/internal/handoff/tar.go", "status": "ok"},
+          {"id": "t3", "kind": "tool", "ts": 1794000015, "tool": "Bash", "arg": "go test ./internal/handoff/ -run TestPack -count=20", "status": "error", "output": "--- FAIL: TestPack (10.01s)\n    timeout: packer blocked\nFAIL"},
+          {"id": "t4", "kind": "tool", "ts": 1794000060, "tool": "Grep", "arg": "drain", "status": "ok"},
+          {"id": "t5", "kind": "tool", "ts": 1794000070, "tool": "Read", "arg": "bridge/internal/handoff/ssh.go", "status": "ok"},
+          {"id": "t6", "kind": "tool", "ts": 1794000080, "tool": "Edit", "arg": "bridge/internal/handoff/tar.go", "status": "ok", "added": 9, "removed": 2},
+          {"id": "t7", "kind": "tool", "ts": 1794000090, "tool": "Bash", "arg": "go test ./internal/handoff/ -count=50", "status": "ok"},
+          {"id": "a1", "kind": "text", "ts": 1794000125, "text": "Found it. The reader stops at tar's end marker, but GNU tar pads the stream to a 10 KiB record, so the packer blocks on a full pipe about **1 run in 15**.\n\nThe fix drains the reader after the last header:\n\n```go\ndefer r.Close()\nio.Copy(io.Discard, r)\n```"},
+          {"id": "t8", "kind": "tool", "ts": 1794000130, "tool": "Read", "arg": "bridge/internal/handoff/ssh.go", "status": "running"}
+        ], "pending": null}
+        """#),
+        ("herdr:w1:p5", #"""
+        {"events": [
+          {"id": "u1", "kind": "user", "ts": 1794000000, "text": "wire the share sheet into Planner"},
+          {"id": "s1", "kind": "tool", "ts": 1794000010, "tool": "read", "arg": "ios/Share/ShareViewController.swift", "status": "ok"},
+          {"id": "s2", "kind": "tool", "ts": 1794000100, "tool": "edit", "arg": "ios/Share/ShareViewController.swift", "status": "ok", "added": 40, "removed": 3},
+          {"id": "s3", "kind": "tool", "ts": 1794000200, "tool": "bash", "arg": "xcodebuild -scheme Folds build", "status": "ok"},
+          {"id": "a1", "kind": "text", "ts": 1794000360, "text": "The share extension works. One decision before I wire the Planner links."},
+          {"id": "q1", "kind": "question", "ts": 1794000361, "questions": [{"question": "Keep the old cmux-bridge:// scheme for Planner links, or drop it?", "header": "URL scheme", "multi": false, "options": [{"label": "Keep both", "description": "Old links keep working."}, {"label": "Drop it", "description": "Rewrite the 14 Planner links now."}]}], "answered": false}
+        ], "pending": {"kind": "question", "event_id": "q1"}}
+        """#),
+        ("herdr:w1:p8", #"""
+        {"events": [
+          {"id": "u1", "kind": "user", "ts": 1794000000, "text": "fix ssh.go the same way"},
+          {"id": "a1", "kind": "text", "ts": 1794000003, "text": "Fixed: drain the reader after the last header. 50 runs pass now."},
+          {"id": "a2", "kind": "text", "ts": 1794000004, "text": "`ssh.go` closes the same pipe early. I'd like to fix it there too."},
+          {"id": "e1", "kind": "tool", "ts": 1794000005, "tool": "Edit", "arg": "bridge/internal/handoff/ssh.go", "status": "running", "added": 1, "removed": 0}
+        ], "pending": {"kind": "approval", "event_id": "e1", "tool": "Edit", "arg": "bridge/internal/handoff/ssh.go"}}
+        """#),
+        ("herdr:w1:p6", #"""
+        {"events": [
+          {"id": "u1", "kind": "user", "ts": 1794000000, "text": "push infra and open the PR"},
+          {"id": "a1", "kind": "text", "ts": 1794000002, "text": "Pushing the branch and opening the PR."},
+          {"id": "b1", "kind": "tool", "ts": 1794000003, "tool": "Bash", "arg": "git push -u origin infra", "status": "ok"},
+          {"id": "b2", "kind": "tool", "ts": 1794000020, "tool": "Bash", "arg": "gh pr create --fill --base main", "status": "running"}
+        ], "pending": {"kind": "unknown"}}
+        """#),
+        ("herdr:w1:p9", #"""
+        {"events": [
+          {"id": "u0", "kind": "user", "ts": 1793980000, "text": "check the mini is on the trellis build"},
+          {"id": "a0", "kind": "text", "ts": 1793980100, "text": "It is. Every service reports the trellis build."},
+          {"id": "u1", "kind": "user", "ts": 1793989000, "text": "Rename fenn to trellis on the mini and redeploy"},
+          {"id": "r1", "kind": "tool", "ts": 1793989010, "tool": "Bash", "arg": "rg -l fenn", "status": "ok"},
+          {"id": "r2", "kind": "tool", "ts": 1793989100, "tool": "Edit", "arg": "server/config.ts", "status": "ok", "added": 60, "removed": 58},
+          {"id": "r3", "kind": "tool", "ts": 1793989200, "tool": "Edit", "arg": "server/jobs.ts", "status": "ok", "added": 88, "removed": 73},
+          {"id": "r4", "kind": "tool", "ts": 1793989500, "tool": "Bash", "arg": "bun test", "status": "ok"},
+          {"id": "a1", "kind": "text", "ts": 1793989800, "text": "All 340 tests pass. Jobs, config dir and MCP URL are renamed. The service is not restarted yet. Screenshots are at https://ms-mac-mini.tail901772.ts.net/wrinkles/shots/merry/\n\nWant me to restart `trellis-mcp` and run the smoke test?"}
+        ], "pending": null}
+        """#),
+        ("herdr:w1:p4", fixtureLoopTranscript),
+    ]
 
-    ▌ Claude
-    Working on it — building the fixture pane now.
+    /// A `/loop` session: the human's command (a chip) and two scheduled
+    /// runs (dividers) with the replies between them.
+    private static let fixtureLoopTranscript = #"""
+        {"events": [
+          {"id": "u7", "kind": "user", "ts": 1794000000, "command": "/loop", "text": "5m check the deploy", "skill_loaded": true},
+          {"id": "a7", "kind": "text", "ts": 1794000004, "text": "I'll check the deploy every 5 minutes and tell you when something changes."},
+          {"id": "l1", "kind": "tool", "ts": 1794000005, "tool": "Bash", "arg": "gh run list --workflow deploy --limit 1", "status": "ok"},
+          {"id": "a8", "kind": "text", "ts": 1794000012, "text": "Deploy #412 is rolling out: 2 of 6 pods are on the new build."},
+          {"id": "u9", "kind": "user", "ts": 1794000300, "command": "/loop", "text": "5m check the deploy", "skill_loaded": true, "scheduled": true, "run": 1},
+          {"id": "l2", "kind": "tool", "ts": 1794000301, "tool": "Bash", "arg": "gh run list --workflow deploy --limit 1", "status": "ok"},
+          {"id": "l3", "kind": "tool", "ts": 1794000306, "tool": "Bash", "arg": "kubectl rollout status deploy/api", "status": "ok"},
+          {"id": "a9", "kind": "text", "ts": 1794000320, "text": "5 of 6 pods are on the new build. Error rate is flat at 0.2%."},
+          {"id": "u10", "kind": "user", "ts": 1794000600, "command": "/loop", "text": "5m check the deploy", "skill_loaded": true, "scheduled": true, "run": 2},
+          {"id": "l4", "kind": "tool", "ts": 1794000601, "tool": "Bash", "arg": "kubectl rollout status deploy/api", "status": "ok"},
+          {"id": "a10", "kind": "text", "ts": 1794000615, "text": "Deploy #412 is done. All 6 pods are healthy.\n\n| Check | Result |\n|---|---|\n| Pods | 6 of 6 on the new build |\n| Error rate | `0.2%`, unchanged |\n\nPer region:\n\n| Region | Pods | p95 latency | Errors | Notes |\n|---|---|---|---|---|\n| us-east | 3 | 182 ms | 0.2% | Rolled first |\n| eu-west | 3 | 204 ms | 0.1% | **Slowest** start |"}
+        ], "pending": null}
+        """#
+
+    /// The bottom of the infra session's screen: a dialog the chat can't parse.
+    private static let fixtureInfraScreen = """
+    ⏺ Bash(gh pr create --fill --base main)
+
+    ╭──────────────────────────────────────────╮
+    │ Bash command                             │
+    │   gh pr create --fill --base main        │
+    │ Do you want to proceed?                  │
+    │ ❯ 1. Yes                                 │
+    │   2. Yes, don't ask again for gh pr      │
+    │   3. No, and tell Claude what to do      │
+    ╰──────────────────────────────────────────╯
     """
+
+    private static func hasLaunchFlag(_ flag: String) -> Bool {
+        ProcessInfo.processInfo.arguments.contains(flag)
+    }
+
+    // MARK: - Fixture: long conversation and paging
+
+    /// Older events the fixture's canned pages serve, oldest first.
+    private var fixtureOlder: [String: [TranscriptEvent]] = [:]
+
+    /// The trellis session (herdr:w1:p9) becomes a long conversation: its
+    /// recorded ending under many generated turns, with `has_more` and two
+    /// canned older pages behind it. Launch flags:
+    /// - `-UITestNoMarker`: everything was seen (opens at the bottom).
+    ///   Without it the last visit ended before the final turn, so it opens
+    ///   on "New since you were here".
+    /// - `-UITestPreloadPages`: the older pages are already in the list
+    ///   (`has_more` false), so the top shows "Start of conversation".
+    /// - `-UITestPerf <n>`: the list is n generated events instead, and a
+    ///   timer edits the last one every 2 s through the real tail merge.
+    private func seedFixtureLongChat() {
+        let id = "herdr:w1:p9"
+        guard let ending = transcriptEvents[id], let firstTS = ending.first?.ts else { return }
+        if let n = Self.launchArgument("-UITestPerf").flatMap(Int.init) {
+            let events = Self.fixtureHistory(count: n, endingBefore: firstTS, prefix: "perf")
+            transcriptEvents[id] = events
+            transcriptHasMore[id] = false
+            claudeTranscript[id] = ChatGrouping.plainText(events)
+            ChatPerf.enabled = true
+            startFixturePerfTicks(id)
+            return
+        }
+        let recent = Self.fixtureHistory(count: 240, endingBefore: firstTS, prefix: "h")
+        let older = Self.fixtureHistory(count: 300, endingBefore: recent.first?.ts ?? firstTS, prefix: "o")
+        var events = recent + ending
+        var hasMore = true
+        if Self.hasLaunchFlag("-UITestPreloadPages") {
+            events = older + events
+            hasMore = false
+        } else {
+            fixtureOlder[id] = older
+        }
+        transcriptEvents[id] = events
+        transcriptHasMore[id] = hasMore
+        claudeTranscript[id] = ChatGrouping.plainText(events)
+        recomposeClaudeCard(id)
+        if Self.hasLaunchFlag("-UITestNoMarker") {
+            if let last = events.last { lastViewedEventID[id] = last.id }
+        } else {
+            // Last here just before the final request, a few hours ago.
+            lastViewedEventID[id] = "a0"
+            lastViewedAt[id] = Date().timeIntervalSince1970 - 4 * 3600
+        }
+        // The /loop session was watched to the end: no marker.
+        if let last = transcriptEvents["herdr:w1:p4"]?.last { lastViewedEventID["herdr:w1:p4"] = last.id }
+    }
+
+    /// Serves a canned page the way the bridge would: up to 150 events
+    /// strictly older than `before`, after `-UITestPageDelay` seconds (0.8).
+    private func fixtureOlderPage(_ surfaceID: String, before: String, seq: Int) {
+        let delay = Self.launchArgument("-UITestPageDelay").flatMap(Double.init) ?? 0.8
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            let all = (self.fixtureOlder[surfaceID] ?? []) + (self.transcriptEvents[surfaceID] ?? [])
+            guard let index = all.firstIndex(where: { $0.id == before }) else {
+                self.applyOlderPage(surfaceID, before: before, seq: seq, page: [], hasMore: false)
+                return
+            }
+            let start = max(0, index - 150)
+            self.applyOlderPage(surfaceID, before: before, seq: seq,
+                                page: Array(all[start..<index]), hasMore: start > 0)
+        }
+    }
+
+    /// The perf fixture's stand-in for a tail poll that changes only the
+    /// last event: the last 300 events, the final one's text edited.
+    private func startFixturePerfTicks(_ surfaceID: String) {
+        var tick = 0
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self, var tail = self.transcriptEvents[surfaceID]?.suffix(300).map({ $0 }), !tail.isEmpty else {
+                    timer.invalidate(); return
+                }
+                tick += 1
+                if tick > 6 { timer.invalidate(); return }
+                tail[tail.count - 1].text = "Still going: tick \(tick). " + String(repeating: "More words here. ", count: tick)
+                let seq = (self.claudeTranscriptSeq[surfaceID] ?? 0) + 1
+                self.claudeTranscriptSeq[surfaceID] = seq
+                ChatPerf.mark("tail tick \(tick)")
+                self.applyTranscriptEvents(surfaceID, seq: seq, fingerprint: nil, tail: tail, hasMore: false, pending: nil)
+            }
+        }
+    }
+
+    /// A working session with a message queued behind its turn and one
+    /// just sent from the phone (`-UITestQueued`).
+    private func seedFixtureQueue() {
+        let id = "herdr:w1:p1"
+        let now = Date().timeIntervalSince1970
+        transcriptEvents[id, default: []].append(
+            TranscriptEvent(id: "q:1", kind: .user, ts: now - 40, text: "then run the linux job again to be sure", queued: true))
+        localEchoes[id] = [LocalEcho(id: "fixture", text: "and push when it's green", sentAt: now)]
+    }
+
+    /// Generated turns for the long fixture: n events ending before `end`,
+    /// ten minutes a turn, cycling through a few plausible exchanges.
+    private static func fixtureHistory(count: Int, endingBefore end: Double, prefix: String) -> [TranscriptEvent] {
+        let asks = [
+            "why does the mini keep dropping the tailnet route",
+            "make the jobs page load faster",
+            "rename the config dir and keep a symlink",
+            "check the smoke test on the staging box",
+            "add a retry to the uploader",
+            "tidy the logs, they're too noisy",
+        ]
+        let leads = [
+            "Looking at the config first.",
+            "Let me read how that path works today.",
+            "I'll check the logs from the last run.",
+        ]
+        let results = [
+            "Done. The route was being re-advertised on every restart; it now waits for the interface to come up. **Tests pass.**",
+            "Fixed. The page was fetching every job's full log; it now asks for the first 40 lines and loads the rest on tap.",
+            "That's in. The old path is a symlink to the new one, so nothing that reads it breaks.",
+            "The smoke test passes on staging. Two warnings about a deprecated flag, which I left alone.",
+        ]
+        let files = ["server/config.ts", "server/jobs.ts", "bridge/main.go", "scripts/deploy.sh", "web/jobs.tsx"]
+        var out: [TranscriptEvent] = []
+        var turn = 0
+        while out.count < count {
+            let base = Double(turn) * 600
+            let f = files[turn % files.count]
+            let turnEvents: [TranscriptEvent] = [
+                TranscriptEvent(id: "\(prefix)u\(turn)", kind: .user, ts: base, text: asks[turn % asks.count]),
+                TranscriptEvent(id: "\(prefix)a\(turn)", kind: .text, ts: base + 5, text: leads[turn % leads.count]),
+                TranscriptEvent(id: "\(prefix)r\(turn)", kind: .tool, ts: base + 8, tool: "Read", arg: f),
+                TranscriptEvent(id: "\(prefix)e\(turn)", kind: .tool, ts: base + 40, tool: "Edit", arg: f, added: 3 + turn % 9, removed: turn % 4),
+                TranscriptEvent(id: "\(prefix)b\(turn)", kind: .tool, ts: base + 70, tool: "Bash", arg: "bun test"),
+                TranscriptEvent(id: "\(prefix)d\(turn)", kind: .text, ts: base + 150, text: results[turn % results.count]),
+            ]
+            out.append(contentsOf: turnEvents)
+            turn += 1
+        }
+        out = Array(out.prefix(count))
+        let shift = end - 600 - (out.last?.ts ?? 0)
+        return out.map { e in
+            TranscriptEvent(id: e.id, kind: e.kind, ts: (e.ts ?? 0) + shift, text: e.text, tool: e.tool, arg: e.arg,
+                            status: e.status, added: e.added, removed: e.removed)
+        }
+    }
 
     /// Loads one bundled `Fixtures/<resourceName>.json` file — a recorded
     /// `surface.screen` full update — into a fresh ScreenModel for
@@ -542,6 +1058,23 @@ final class AppState: ObservableObject {
         pendingPairing = nil
     }
 
+    /// The web page open in the in-app browser sheet, if any.
+    @Published var linkSheet: LinkSheetTarget?
+
+    /// A link tapped in chat or terminal text: web pages open in a sheet
+    /// over the session, a merry-bridge surface link opens that surface,
+    /// anything else goes to the system.
+    func openLink(_ url: URL) {
+        Keyboard.dismiss()
+        if LinkRouter.isWeb(url) {
+            linkSheet = LinkSheetTarget(url: url)
+        } else if let scheme = url.scheme?.lowercased(), Self.urlSchemes.contains(scheme), url.host == "surface" {
+            handleSurfaceURL(url)
+        } else {
+            UIApplication.shared.open(url)
+        }
+    }
+
     /// Handles `merry-bridge://surface?bridge=<name>&workspace=<id>&surface=<id>`:
     /// another app (the Planner, for an agent it started) asking to show one
     /// pane. `bridge` is a paired bridge's tailnet name, LAN host or display
@@ -671,6 +1204,8 @@ final class AppState: ObservableObject {
     }
 
     private func persistBridges() {
+        // A `-UITestBridge` run is in memory only.
+        guard !isDebugBridge else { return }
         bridgeStore.persist(bridges: bridges, selectedID: selectedBridgeID)
     }
 
@@ -696,11 +1231,23 @@ final class AppState: ObservableObject {
         claudeCardText = [:]
         claudeTranscriptSession = [:]
         claudeTranscriptFingerprint = [:]
+        claudeTranscriptFingerprintDepth = [:]
+        heavySurfaces = []
         claudeTranscriptInFlight = []
         claudeTranscriptSeq = [:]
         claudeTranscriptAppliedSeq = [:]
         claudeTranscriptLoading = []
         claudeTranscriptMissing = []
+        transcriptEvents = [:]
+        transcriptHasMore = [:]
+        transcriptPageLoading = []
+        transcriptPageSeq = [:]
+        transcriptTextSeq = [:]
+        localEchoes = [:]
+        screenDialogs = [:]
+        dialogWatchUntil = [:]
+        dialogProbedFocus = nil
+        pendingStates = [:]
         presentedHistory = nil
         handoffInfo = nil
         imagePasteStatusClear?.cancel()
@@ -748,6 +1295,18 @@ final class AppState: ObservableObject {
     // MARK: - Commands
 
     func selectWorkspace(_ id: String, then completion: (() -> Void)? = nil) {
+        #if DEBUG
+        // A `-UITestBridge` run browses on the phone only: it never moves
+        // the Mac's own workspace or focus.
+        if isDebugBridge {
+            currentWorkspaceID = id
+            localFocusedSurfaceID = lastFocusedSurface[id]
+            refreshSurfaces()
+            refreshPanes()
+            completion?()
+            return
+        }
+        #endif
         send(method: "workspace.select", params: ["workspace_id": id]) { [weak self] _ in
             self?.currentWorkspaceID = id
             self?.localFocusedSurfaceID = self?.lastFocusedSurface[id]
@@ -774,6 +1333,9 @@ final class AppState: ObservableObject {
             loadClaudeTranscript(id)
         }
         updateFrameSubscription(focusedSurfaceID: id)
+        #if DEBUG
+        if isDebugBridge { return }
+        #endif
         send(method: "surface.focus", params: ["surface_id": id]) { [weak self] _ in
             self?.refreshSurfaces()
             self?.refreshPanes()
@@ -796,16 +1358,6 @@ final class AppState: ObservableObject {
         let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
         let nextIndex = (currentIndex + 1) % list.count
         focusSurface(list[nextIndex].id)
-    }
-
-    func cycleSurfaceBackward() {
-        let list = surfaces
-        guard !list.isEmpty else { return }
-        // Match cycleSurface's "nothing focused" fallback (-1) so forward and
-        // backward agree on where cycling starts from an unfocused state.
-        let currentIndex = list.firstIndex(where: { $0.id == focusedSurfaceID }) ?? -1
-        let prevIndex = (currentIndex - 1 + list.count) % list.count
-        focusSurface(list[prevIndex].id)
     }
 
     func cycleWorkspace() {
@@ -834,11 +1386,20 @@ final class AppState: ObservableObject {
     func sendText(_ text: String, to surfaceID: String) {
         send(method: "surface.send_text", params: ["surface_id": surfaceID, "text": text])
         scheduleActivityProbe(for: surfaceID)
+        watchAfterInput(surfaceID)
     }
 
     func sendKey(_ key: String, to surfaceID: String) {
         send(method: "surface.send_key", params: ["surface_id": surfaceID, "key": key])
         scheduleActivityProbe(for: surfaceID)
+        watchAfterInput(surfaceID)
+    }
+
+    /// Input from the phone can open (or answer) a dialog the transcript
+    /// won't show: watch a chat surface's screen for the next 10 s.
+    private func watchAfterInput(_ surfaceID: String) {
+        guard let surface = surfaces.first(where: { $0.id == surfaceID }), showsChat(surface) else { return }
+        holdDialogWatch(surfaceID, seconds: 10)
     }
 
     /// Sending input is the moment the user most wants to see whether work
@@ -864,6 +1425,11 @@ final class AppState: ObservableObject {
     /// Flip a surface's working flag, mutating the published set only on real
     /// transitions so idle polls don't fire objectWillChange.
     private func setWorking(_ working: Bool, for surfaceID: String) {
+        // The agent started on something: what the phone sent before now
+        // was received, even if no event matches it yet.
+        if working, let echoes = localEchoes[surfaceID], echoes.contains(where: { !$0.sawWorking }) {
+            localEchoes[surfaceID] = ChatOutbox.agentWorking(echoes, now: Date().timeIntervalSince1970)
+        }
         if working != workingSurfaces.contains(surfaceID) {
             if working {
                 workingSurfaces.insert(surfaceID)
@@ -946,7 +1512,19 @@ final class AppState: ObservableObject {
         updateFrameSubscription(focusedSurfaceID: focusedSurfaceID)
     }
 
-    private func updateFrameSubscription(focusedSurfaceID newFocus: String?) {
+    private func updateFrameSubscription(focusedSurfaceID focus: String?) {
+        noteFocus(focus)
+        // Focusing a chat surface looks once for a dialog that was already
+        // open (a few seconds of frames; the first is a full screen).
+        if focus != dialogProbedFocus {
+            dialogProbedFocus = focus
+            if let focus, let surface = surfaces.first(where: { $0.id == focus }), showsChat(surface) {
+                holdDialogWatch(focus, seconds: 3, reconcile: false)
+            }
+        }
+        // A chat card draws no terminal: it streams frames only while the
+        // live-screen peek is on screen.
+        let newFocus = focus.flatMap { wantsFrames($0) ? $0 : nil }
         guard frameFocusedSurfaceID != newFocus else { return }
         if let previous = frameFocusedSurfaceID {
             // A fit changes the pane on the Mac; it is only ever held for the
@@ -1114,6 +1692,8 @@ final class AppState: ObservableObject {
     private func unsubscribeFrames(_ surfaceID: String) {
         let wasActive = framesSubscribed.remove(surfaceID) != nil || screenModels[surfaceID] != nil
         screenModels.removeValue(forKey: surfaceID)
+        // What the last frame showed is no longer watched.
+        if screenDialogs[surfaceID] != nil { screenDialogs.removeValue(forKey: surfaceID) }
         guard wasActive else { return }
         sendRaw(method: "surface.screen.unsubscribe", params: ["surface_id": surfaceID]) { _ in }
     }
@@ -1129,6 +1709,7 @@ final class AppState: ObservableObject {
             return model
         }()
         model.apply(update)
+        updateScreenDialog(update.surfaceID, model: model)
     }
 
     /// A `surface.frames.ended` push landed: the bridge stopped streaming.
@@ -1149,6 +1730,7 @@ final class AppState: ObservableObject {
         guard push.reason != "unsubscribed" else { return }
         framesSubscribed.remove(push.surfaceID)
         screenModels.removeValue(forKey: push.surfaceID)
+        if screenDialogs[push.surfaceID] != nil { screenDialogs.removeValue(forKey: push.surfaceID) }
         guard push.surfaceID == frameFocusedSurfaceID else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self, self.frameFocusedSurfaceID == push.surfaceID else { return }
@@ -1168,6 +1750,8 @@ final class AppState: ObservableObject {
     ///   (history viewer, explicit refresh). Background polls pass false so they
     ///   don't animate a spinner over content that is already on screen.
     func loadClaudeTranscript(_ surfaceID: String, showsSpinner: Bool = false) {
+        // Echo expiry runs on the poll clock, reply or not.
+        resolveLocalEchoes(surfaceID)
         guard !claudeTranscriptInFlight.contains(surfaceID) else { return }
         claudeTranscriptInFlight.insert(surfaceID)
         let seq = (claudeTranscriptSeq[surfaceID] ?? 0) + 1
@@ -1175,11 +1759,16 @@ final class AppState: ObservableObject {
         if showsSpinner {
             claudeTranscriptLoading.insert(surfaceID)
         }
-        var params: [String: Any] = ["surface_id": surfaceID, "max_messages": 300]
+        // Ask for typed events (the chat body). A bridge that predates them
+        // ignores the param and answers in text, handled below.
+        // The open surface (and the history viewer) gets the conversation;
+        // every other agent surface only what its switcher tile shows.
+        let depth = isHeavy(surfaceID) ? ChatPaging.pageSize : Self.glanceMessages
+        var params: [String: Any] = ["surface_id": surfaceID, "max_messages": depth, "format": "events"]
         if let wsID = currentWorkspaceID {
             params["workspace_id"] = wsID
         }
-        if let known = claudeTranscriptFingerprint[surfaceID] {
+        if let known = claudeTranscriptFingerprint[surfaceID], claudeTranscriptFingerprintDepth[surfaceID] == depth {
             params["known_fingerprint"] = known
         }
         // Safety net: BridgeClient drops pending completions on disconnect
@@ -1224,7 +1813,21 @@ final class AppState: ObservableObject {
                 // response must not put its fingerprint on newer text.
                 if let fingerprint, seq >= (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) {
                     self.claudeTranscriptFingerprint[surfaceID] = fingerprint
+                    self.claudeTranscriptFingerprintDepth[surfaceID] = depth
                 }
+                return
+            }
+
+            // Typed events: the chat body draws these, and a plain-text
+            // rendering of them keeps the text consumers (Terminal toggle,
+            // find in surface, history fallback) working as before.
+            if result["events"] != nil {
+                let events = TranscriptEvent.decodeList(result["events"])
+                let pending = PendingState(result["pending"])
+                // An older bridge sends no has_more: no paging.
+                let hasMore = result["has_more"] as? Bool ?? false
+                self.applyTranscriptEvents(surfaceID, seq: seq, fingerprint: fingerprint, depth: depth,
+                                           tail: events, hasMore: hasMore, pending: pending)
                 return
             }
 
@@ -1246,18 +1849,333 @@ final class AppState: ObservableObject {
                     // rather than rolling the conversation back.
                     guard seq > (self.claudeTranscriptAppliedSeq[surfaceID] ?? 0) else { return }
                     self.claudeTranscriptAppliedSeq[surfaceID] = seq
+                    // A text-only reply means this bridge has no events: drop
+                    // any we held so the card falls back to the text card.
+                    if self.transcriptEvents[surfaceID] != nil {
+                        self.transcriptEvents.removeValue(forKey: surfaceID)
+                        self.pendingStates.removeValue(forKey: surfaceID)
+                    }
                     // The fingerprint is stamped with the text it describes. Set
                     // earlier, a dropped-out-of-order response would leave the
                     // newest fingerprint attached to older text, and every later
                     // poll would answer `unchanged` and keep it there.
-                    if let fingerprint { self.claudeTranscriptFingerprint[surfaceID] = fingerprint }
-                    else { self.claudeTranscriptFingerprint.removeValue(forKey: surfaceID) }
+                    if let fingerprint {
+                        self.claudeTranscriptFingerprint[surfaceID] = fingerprint
+                        self.claudeTranscriptFingerprintDepth[surfaceID] = depth
+                    } else { self.claudeTranscriptFingerprint.removeValue(forKey: surfaceID) }
                     guard self.claudeTranscript[surfaceID] != trimmed else { return }
                     self.claudeTranscript[surfaceID] = trimmed
                     self.recomposeClaudeCard(surfaceID)
                 }
             }
         }
+    }
+
+    /// Lands an events-format tail poll, under the same ordering and
+    /// fingerprint rules as the text path in `loadClaudeTranscript`: the
+    /// tail replaces the held list from its first id onward (ChatPaging).
+    private func applyTranscriptEvents(_ surfaceID: String, seq: Int, fingerprint: String?, depth: Int = ChatPaging.pageSize,
+                                       tail: [TranscriptEvent], hasMore: Bool, pending: PendingState?) {
+        guard seq > (claudeTranscriptAppliedSeq[surfaceID] ?? 0) else { return }
+        claudeTranscriptAppliedSeq[surfaceID] = seq
+        if let fingerprint {
+            claudeTranscriptFingerprint[surfaceID] = fingerprint
+            claudeTranscriptFingerprintDepth[surfaceID] = depth
+        } else { claudeTranscriptFingerprint.removeValue(forKey: surfaceID) }
+        // Diff before assigning: a no-op write still fires objectWillChange.
+        if pendingStates[surfaceID] != pending { pendingStates[surfaceID] = pending }
+        let merged = ChatPaging.mergeTail(existing: transcriptEvents[surfaceID] ?? [],
+                                          existingHasMore: transcriptHasMore[surfaceID] ?? false,
+                                          tail: tail, tailHasMore: hasMore,
+                                          limit: isHeavy(surfaceID) ? ChatPaging.maxKept : Self.glanceKept)
+        if transcriptHasMore[surfaceID] != merged.hasMore { transcriptHasMore[surfaceID] = merged.hasMore }
+        setTranscriptEvents(surfaceID, merged.events)
+    }
+
+    /// The one write path for a surface's event list: the rows, the echoes
+    /// they answer, and the plain text (Find, Terminal view) follow it.
+    private func setTranscriptEvents(_ surfaceID: String, _ events: [TranscriptEvent]) {
+        guard transcriptEvents[surfaceID] != events else { return }
+        transcriptEvents[surfaceID] = events
+        resolveLocalEchoes(surfaceID)
+        // The plain text (Find, Terminal view, history) is only read for the
+        // open surface; a glance tile never needs it.
+        if isHeavy(surfaceID) { rebuildTranscriptText(surfaceID) }
+    }
+
+    /// Re-renders a surface's conversation as plain text off the main actor
+    /// (a 3000-event list is a few hundred KB of text).
+    private func rebuildTranscriptText(_ surfaceID: String) {
+        let events = transcriptEvents[surfaceID] ?? []
+        let seq = (transcriptTextSeq[surfaceID] ?? 0) + 1
+        transcriptTextSeq[surfaceID] = seq
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let text = Self.trimTerminalText(ChatGrouping.plainText(events))
+            await self?.applyTranscriptText(surfaceID, seq: seq, text: text)
+        }
+    }
+
+    private func applyTranscriptText(_ surfaceID: String, seq: Int, text: String) {
+        guard transcriptTextSeq[surfaceID] == seq, claudeTranscript[surfaceID] != text else { return }
+        claudeTranscript[surfaceID] = text
+        recomposeClaudeCard(surfaceID)
+    }
+
+    /// The chat rows for a surface, grouped once per change.
+    func chatItems(for surfaceID: String) -> [ChatItem] {
+        if let cached = chatItemsCache[surfaceID] { return cached }
+        let items = ChatGrouping.items(from: transcriptEvents[surfaceID] ?? [], local: localEchoes[surfaceID] ?? [])
+        chatItemsCache[surfaceID] = items
+        return items
+    }
+
+    // MARK: - Heavy and glance surfaces
+
+    /// Events a background (glance) poll asks for: enough for the tile's
+    /// sentence, status and pending state.
+    static let glanceMessages = 20
+    /// Conversation events kept for a surface that is not heavy.
+    static let glanceKept = 40
+    /// Surfaces kept at full fidelity: the open one and the one before it.
+    static let heavyKept = 2
+
+    /// Debug-only A/B switch for measurements: `-UITestLegacy` restores the
+    /// earlier behaviour (every surface heavy, every screen read, frames
+    /// for chat cards, every chat row mounted) in the same build.
+    static let legacyBench: Bool = {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-UITestLegacy")
+        #else
+        return false
+        #endif
+    }()
+
+    /// Whether a surface's full conversation (and its plain text) is kept.
+    func isHeavy(_ surfaceID: String) -> Bool {
+        Self.legacyBench || isFixtureMode || heavySurfaces.contains(surfaceID) || presentedHistory?.id == surfaceID
+    }
+
+    /// Moves a newly focused surface to the front of the heavy list and
+    /// trims whatever falls off it.
+    private func noteFocus(_ focus: String?) {
+        guard !Self.legacyBench, let focus, heavySurfaces.first != focus else { return }
+        heavySurfaces.removeAll { $0 == focus }
+        heavySurfaces.insert(focus, at: 0)
+        while heavySurfaces.count > Self.heavyKept {
+            trimToGlance(heavySurfaces.removeLast())
+        }
+        // Its plain text was dropped while it was a glance; the full
+        // conversation comes with the deep poll focusing triggers.
+        if transcriptEvents[focus] != nil, claudeTranscript[focus] == nil { rebuildTranscriptText(focus) }
+        recomposeClaudeCard(focus)
+    }
+
+    /// Drops a surface back to what its switcher tile needs: the last few
+    /// events, no plain text or card text, a short screen read.
+    private func trimToGlance(_ surfaceID: String) {
+        guard presentedHistory?.id != surfaceID else { return }
+        if let events = transcriptEvents[surfaceID] {
+            let conversation = events.filter { !$0.queued }
+            if conversation.count > Self.glanceKept {
+                transcriptEvents[surfaceID] = Array(conversation.suffix(Self.glanceKept)) + events.filter(\.queued)
+                if transcriptHasMore[surfaceID] != true { transcriptHasMore[surfaceID] = true }
+            }
+        }
+        // Invalidate a plain-text build still in flight.
+        transcriptTextSeq[surfaceID] = (transcriptTextSeq[surfaceID] ?? 0) + 1
+        if claudeTranscript[surfaceID] != nil { claudeTranscript.removeValue(forKey: surfaceID) }
+        if claudeCardText[surfaceID] != nil { claudeCardText.removeValue(forKey: surfaceID) }
+        if let text = surfaceContent[surfaceID] {
+            let short = Self.lastLines(text, Self.backgroundReadLines)
+            if short != text {
+                surfaceContent[surfaceID] = short
+                // A different depth: the next read must not vote on working.
+                lastReadDepth[surfaceID] = nil
+            }
+        }
+    }
+
+    /// Rows a background surface's screen is read at.
+    static let backgroundReadLines = 50
+
+    nonisolated private static func lastLines(_ text: String, _ count: Int) -> String {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > count else { return text }
+        return lines.suffix(count).joined(separator: "\n")
+    }
+
+    /// Whether the focused surface needs its live frame stream: anything
+    /// drawn as a terminal does; a chat card only while the live-screen
+    /// peek is showing (a block the chat can't answer itself).
+    func wantsFrames(_ surfaceID: String) -> Bool {
+        guard !isFixtureMode, !Self.legacyBench, let surface = surfaces.first(where: { $0.id == surfaceID }),
+              showsChat(surface) else { return true }
+        switch pendingStates[surfaceID]?.kind {
+        case .unknown: return true
+        case .question:
+            let events = transcriptEvents[surfaceID] ?? []
+            let pending = pendingStates[surfaceID]
+            guard let q = events.last(where: { $0.id == pending?.eventID }) ?? events.last(where: { $0.kind == .question })
+            else { return true }
+            return !ChatGrouping.canAnswerByKey(q)
+        case .approval: return false
+        case nil: return watchesForDialog(surfaceID)
+        }
+    }
+
+    /// Whether a chat surface with nothing pending streams frames to find a
+    /// dialog on its screen: one is showing, a slash command is in flight,
+    /// the backend says the agent is blocked, or the phone just typed or
+    /// pressed a key there (or just focused it). Otherwise nothing streams:
+    /// idle costs nothing.
+    private func watchesForDialog(_ surfaceID: String) -> Bool {
+        if screenDialogs[surfaceID] != nil { return true }
+        if localEchoes[surfaceID]?.contains(where: \.isCommand) == true { return true }
+        if agentStatus[surfaceID] == "blocked" { return true }
+        if let until = dialogWatchUntil[surfaceID], until > Date().timeIntervalSince1970 { return true }
+        return false
+    }
+
+    /// Keeps a chat surface's frames on for `seconds` (see watchesForDialog).
+    private func holdDialogWatch(_ surfaceID: String, seconds: Double, reconcile: Bool = true) {
+        guard !isFixtureMode else { return }
+        let until = Date().timeIntervalSince1970 + seconds
+        if (dialogWatchUntil[surfaceID] ?? 0) < until { dialogWatchUntil[surfaceID] = until }
+        scheduleDialogWatchExpiry()
+        if reconcile { reconcileFrameSubscription() }
+    }
+
+    /// Re-checks the frame stream when the earliest hold runs out.
+    private func scheduleDialogWatchExpiry() {
+        dialogWatchTimer?.cancel()
+        let now = Date().timeIntervalSince1970
+        dialogWatchUntil = dialogWatchUntil.filter { $0.value > now }
+        guard let next = dialogWatchUntil.values.min() else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.scheduleDialogWatchExpiry()
+            self.reconcileFrameSubscription()
+        }
+        dialogWatchTimer = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.05, next - now + 0.05), execute: work)
+    }
+
+    /// Reads the dialog (if any) off a chat surface's latest frame, and lets
+    /// the echoes know: a command sent before a dialog opened is what opened
+    /// it, and is done when it closes (ChatOutbox.dialogOpened / dialogClosed).
+    private func updateScreenDialog(_ surfaceID: String, model: ScreenModel) {
+        guard let surface = surfaces.first(where: { $0.id == surfaceID }), showsChat(surface) else {
+            if screenDialogs[surfaceID] != nil { screenDialogs.removeValue(forKey: surfaceID) }
+            return
+        }
+        let found = ScreenDialogDetector.detect(rows: model.textRows)?.merging(screenDialogs[surfaceID])
+        let had = screenDialogs[surfaceID] != nil
+        guard found != screenDialogs[surfaceID] else { return }
+        if let echoes = localEchoes[surfaceID] {
+            let now = Date().timeIntervalSince1970
+            let next = found != nil ? ChatOutbox.dialogOpened(echoes, now: now)
+                : (had ? ChatOutbox.dialogClosed(echoes) : echoes)
+            if next != echoes {
+                if next.isEmpty { localEchoes.removeValue(forKey: surfaceID) } else { localEchoes[surfaceID] = next }
+            }
+        }
+        if let found { screenDialogs[surfaceID] = found } else { screenDialogs.removeValue(forKey: surfaceID) }
+    }
+
+    /// Whether the layout's poll should read this surface's screen, and at
+    /// what depth (nil: skip). An agent shown as chat whose backend reports
+    /// its status draws nothing from the screen unless the peek is up.
+    func screenReadLines(for surface: Surface, focused: Bool) -> Int? {
+        if Self.legacyBench { return focused ? Self.focusedHistoryLines : Self.backgroundReadLines }
+        if showsChat(surface) && agentStatus[surface.id] != nil && !(focused && wantsFrames(surface.id)) {
+            return nil
+        }
+        if showsChat(surface) { return Self.backgroundReadLines }
+        return focused ? Self.focusedHistoryLines : Self.backgroundReadLines
+    }
+
+    /// A memory warning: keep only the open surface at full fidelity and
+    /// drop caches that rebuild on demand.
+    func handleMemoryWarning() {
+        let keep = focusedSurfaceID
+        let ids = Set(heavySurfaces).union(transcriptEvents.keys).union(surfaceContent.keys)
+        heavySurfaces = keep.map { [$0] } ?? []
+        for id in ids where id != keep { trimToGlance(id) }
+        chatItemsCache.removeAll()
+        ChatMarkdownCache.removeAll()
+    }
+
+    // MARK: - Paging older events
+
+    /// Asks for the page of events before the oldest one held, when the
+    /// bridge says there are more and none is already on its way. Called by
+    /// the chat as its scroll position nears the top.
+    func requestOlderEvents(_ surfaceID: String) {
+        let events = transcriptEvents[surfaceID] ?? []
+        guard transcriptHasMore[surfaceID] == true, !transcriptPageLoading.contains(surfaceID),
+              ChatPaging.conversationCount(events) < ChatPaging.maxKept,
+              let before = ChatPaging.pageAnchor(events) else { return }
+        let seq = (transcriptPageSeq[surfaceID] ?? 0) + 1
+        transcriptPageSeq[surfaceID] = seq
+        transcriptPageLoading.insert(surfaceID)
+        // A dropped reply (BridgeClient drops completions on disconnect) must
+        // not wedge paging: the timeout frees the flag it set, if it still
+        // owns it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.transcriptPageSeq[surfaceID] == seq else { return }
+            self.transcriptPageLoading.remove(surfaceID)
+        }
+        if isFixtureMode {
+            fixtureOlderPage(surfaceID, before: before, seq: seq)
+            return
+        }
+        var params: [String: Any] = ["surface_id": surfaceID, "format": "events", "before": before,
+                                     "max_messages": ChatPaging.pageSize]
+        if let wsID = currentWorkspaceID { params["workspace_id"] = wsID }
+        send(method: "claude.transcript", params: params) { [weak self] result in
+            guard let self, result["supported"] != nil else { return }
+            self.applyOlderPage(surfaceID, before: before, seq: seq,
+                                page: TranscriptEvent.decodeList(result["events"]),
+                                hasMore: result["has_more"] as? Bool ?? false)
+        }
+    }
+
+    /// Lands a page in front of the list, if the list still starts where the
+    /// request was anchored (a tail that replaced the list makes it stale).
+    private func applyOlderPage(_ surfaceID: String, before: String, seq: Int, page: [TranscriptEvent], hasMore: Bool) {
+        guard transcriptPageSeq[surfaceID] == seq else { return }
+        transcriptPageLoading.remove(surfaceID)
+        let events = transcriptEvents[surfaceID] ?? []
+        guard ChatPaging.pageAnchor(events) == before else { return }
+        let merged = ChatPaging.prepend(existing: events, page: page, pageHasMore: hasMore)
+        if transcriptHasMore[surfaceID] != merged.hasMore { transcriptHasMore[surfaceID] = merged.hasMore }
+        setTranscriptEvents(surfaceID, merged.events)
+    }
+
+    // MARK: - Local echoes
+
+    /// Shows a message sent from a chat surface's composer at once.
+    private func addLocalEcho(_ text: String, to surfaceID: String) {
+        guard let surface = surfaces.first(where: { $0.id == surfaceID }), showsChat(surface) else { return }
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        localEchoes[surfaceID, default: []].append(
+            LocalEcho(id: UUID().uuidString, text: typed, sentAt: Date().timeIntervalSince1970))
+        // Poll soon so the echo resolves fast; once more in case the first
+        // poll landed before the harness wrote the line.
+        for delay in [0.8, 2.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.loadClaudeTranscript(surfaceID)
+            }
+        }
+    }
+
+    private func resolveLocalEchoes(_ surfaceID: String) {
+        guard let echoes = localEchoes[surfaceID], !echoes.isEmpty else { return }
+        let resolved = ChatOutbox.resolve(echoes, events: transcriptEvents[surfaceID] ?? [],
+                                          now: Date().timeIntervalSince1970)
+        guard resolved != echoes else { return }
+        if resolved.isEmpty { localEchoes.removeValue(forKey: surfaceID) } else { localEchoes[surfaceID] = resolved }
     }
 
     /// Divider between the conversation and the live terminal viewport on a
@@ -1269,7 +2187,10 @@ final class AppState: ObservableObject {
     /// terminal mirror. A no-op for surfaces with no transcript, whose cards
     /// render the mirror alone.
     private func recomposeClaudeCard(_ surfaceID: String) {
-        guard let transcript = claudeTranscript[surfaceID], !transcript.isEmpty else {
+        // Only a terminal-style card draws this string (tens of KB): the
+        // open surface shown as Terminal, or an old bridge's text card.
+        let drawn = isFixtureMode || Self.legacyBench || (isHeavy(surfaceID) && !(surfaces.first(where: { $0.id == surfaceID }).map(showsChat) ?? false))
+        guard drawn, let transcript = claudeTranscript[surfaceID], !transcript.isEmpty else {
             claudeCardText.removeValue(forKey: surfaceID)
             return
         }
@@ -1291,6 +2212,87 @@ final class AppState: ObservableObject {
     /// ever loaded: when claude exits, the surface goes back to being a plain
     /// shell, and a cached conversation would otherwise stay pinned above its
     /// output for the rest of the session.
+    // MARK: - Chat body
+
+    /// Whether a surface's card shows the chat body: an agent surface whose
+    /// bridge sent typed events, unless the card was flipped to Terminal.
+    /// Gated on the CURRENT kind, like `cardText`, so a session that exited
+    /// goes back to its terminal.
+    func showsChat(_ surface: Surface) -> Bool {
+        surface.hasTranscript && transcriptEvents[surface.id] != nil
+            && chatBodyOverride[surface.id] != "terminal"
+    }
+
+    /// Flips a card between chat and its terminal, remembered per surface.
+    func setChatBody(_ chat: Bool, for surfaceID: String) {
+        if chat { chatBodyOverride.removeValue(forKey: surfaceID) }
+        else { chatBodyOverride[surfaceID] = "terminal" }
+        recomposeClaudeCard(surfaceID)
+        // The terminal view wants the deep read the chat skipped.
+        if !chat { readSurfaceText(surfaceID, lines: Self.focusedHistoryLines) }
+    }
+
+    /// The small-card summary of an agent surface's session.
+    func glance(for surface: Surface) -> Glance {
+        ChatGrouping.glance(
+            events: transcriptEvents[surface.id] ?? [],
+            pending: pendingStates[surface.id],
+            agentStatus: agentStatus[surface.id] ?? surface.agentStatus,
+            isWorking: workingSurfaces.contains(surface.id)
+        )
+    }
+
+    /// Whether the surface's agent is working: the composer's Stop, the
+    /// header's status, the glance. The backend's agent status is the only
+    /// word when it reports one (herdr); without one (cmux) screen activity
+    /// stands in. See `ChatGrouping.agentIsWorking`.
+    func isAgentWorking(_ surface: Surface) -> Bool {
+        ChatGrouping.agentIsWorking(agentStatus: agentStatus[surface.id] ?? surface.agentStatus,
+                                    screenActive: workingSurfaces.contains(surface.id))
+    }
+
+    /// Surfaces waiting on the human: a pending approval or question, a
+    /// backend-reported block, or an unread notification. Drives the dot on
+    /// the switcher button and the switcher's "needs you" filter.
+    var needsYouSurfaces: Set<String> {
+        var ids = Set(pendingStates.keys)
+        for (id, status) in agentStatus where status == "blocked" { ids.insert(id) }
+        for n in notifications { if let sid = n.surfaceID { ids.insert(sid) } }
+        return ids
+    }
+
+    func lastViewedEvent(for surfaceID: String) -> String? { lastViewedEventID[surfaceID] }
+
+    /// Records the newest event the user has had on screen for a surface.
+    /// Not published: nothing re-renders off it, it only seeds the next visit.
+    func markViewed(_ surfaceID: String, eventID: String) {
+        lastViewedAt[surfaceID] = Date().timeIntervalSince1970
+        pruneViewedState()
+        UserDefaults.standard.set(lastViewedAt, forKey: "lastViewedAt")
+        guard lastViewedEventID[surfaceID] != eventID else { return }
+        lastViewedEventID[surfaceID] = eventID
+        UserDefaults.standard.set(lastViewedEventID, forKey: "lastViewedEventID")
+    }
+
+    func lastViewedTime(for surfaceID: String) -> Double? { lastViewedAt[surfaceID] }
+
+    /// Per-surface stores outlive their surfaces (ids are never reused), so
+    /// keep the most recently viewed `maxViewedKept` and drop the rest.
+    static let maxViewedKept = 200
+
+    private func pruneViewedState() {
+        guard lastViewedAt.count > Self.maxViewedKept + 20 else { return }
+        let keep = Set(lastViewedAt.sorted { $0.value > $1.value }.prefix(Self.maxViewedKept).map(\.key))
+        lastViewedAt = lastViewedAt.filter { keep.contains($0.key) }
+        lastViewedEventID = lastViewedEventID.filter { keep.contains($0.key) }
+        UserDefaults.standard.set(lastViewedEventID, forKey: "lastViewedEventID")
+        // A Terminal choice for a surface not viewed lately goes too; one
+        // that was never viewed in chat has no timestamp, so cap it as well.
+        let live = Set(surfaces.map(\.id))
+        let overrides = chatBodyOverride.filter { keep.contains($0.key) || live.contains($0.key) }
+        if overrides.count != chatBodyOverride.count { chatBodyOverride = overrides }
+    }
+
     func cardText(for surface: Surface) -> String {
         guard surface.hasTranscript, let text = claudeCardText[surface.id] else {
             return surfaceContent[surface.id] ?? ""
@@ -1451,6 +2453,7 @@ final class AppState: ObservableObject {
         guard let attachment else {
             guard !trimmedIsEmpty else { return }
             sendText(withEnter ? text + "\n" : text, to: surfaceID)
+            if withEnter { addLocalEcho(text, to: surfaceID) }
             return
         }
 
@@ -1603,6 +2606,12 @@ final class AppState: ObservableObject {
         claudeTranscriptSeq.removeValue(forKey: surfaceID)
         claudeTranscriptAppliedSeq.removeValue(forKey: surfaceID)
         claudeTranscriptMissing.remove(surfaceID)
+        transcriptEvents.removeValue(forKey: surfaceID)
+        transcriptHasMore.removeValue(forKey: surfaceID)
+        transcriptPageLoading.remove(surfaceID)
+        transcriptPageSeq.removeValue(forKey: surfaceID)
+        localEchoes.removeValue(forKey: surfaceID)
+        pendingStates.removeValue(forKey: surfaceID)
     }
 
     func clearNotifications() {
@@ -1721,8 +2730,13 @@ final class AppState: ObservableObject {
     // MARK: - Helpers
 
     var focusedSurfaceID: String? {
+        #if DEBUG
+        // A `-UITestBridge` run never moves the Mac's focus, so the phone's
+        // own choice is the only one that means anything.
+        if isDebugBridge, let local = localFocusedSurfaceID { return local }
+        #endif
         // Prefer pane-derived focus, then surface.is_focused, then local tracking
-        panes.first(where: { $0.isFocused })?.focusedSurfaceID
+        return panes.first(where: { $0.isFocused })?.focusedSurfaceID
             ?? surfaces.first(where: { $0.isFocused })?.id
             ?? localFocusedSurfaceID
     }
@@ -1813,6 +2827,9 @@ extension AppState: BridgeClientDelegate {
         refreshWorkspaces {
             self.refreshSurfaces()
             self.refreshPanes()
+            #if DEBUG
+            self.startDebugDriverOnce()
+            #endif
             // A notification tapped before the session was up (cold launch).
             if let tap = self.pendingNavigationTarget {
                 self.pendingNavigationTarget = nil

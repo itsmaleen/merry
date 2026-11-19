@@ -33,6 +33,25 @@ enum ScrollFollow {
         max(0, contentHeight - viewportHeight + bottomInset)
     }
 
+    /// Whether the chat's jump-to-latest button shows: more than a viewport
+    /// of content below what is on screen, and only while not following.
+    /// While following, the view is at the bottom or about to be pinned
+    /// there: a viewport that just shrank (the keyboard, a pending panel)
+    /// leaves content below for a moment, and that must never read as
+    /// "scrolled up".
+    static func showsJump(following: Bool, offsetY: CGFloat, contentHeight: CGFloat,
+                          viewportHeight: CGFloat, bottomInset: CGFloat = 0) -> Bool {
+        guard !following, viewportHeight > 0 else { return false }
+        let below = bottomOffset(contentHeight: contentHeight, viewportHeight: viewportHeight, bottomInset: bottomInset) - offsetY
+        return below > viewportHeight
+    }
+
+    /// Whether a viewport height change should re-pin the bottom: the view
+    /// was following, and the height really changed.
+    static func repinsOnResize(following: Bool, oldHeight: CGFloat, newHeight: CGFloat) -> Bool {
+        following && abs(oldHeight - newHeight) > 0.5
+    }
+
     /// Whether following should stay on after a scroll event.
     ///
     /// The `isProgrammatic` gate is the fix: UIScrollView reports self-inflicted

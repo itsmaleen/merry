@@ -54,7 +54,7 @@ struct TranscriptEditorView: View {
 
             Spacer()
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(Theme.c.background.ignoresSafeArea())
         .onAppear {
             isFocused = true
         }

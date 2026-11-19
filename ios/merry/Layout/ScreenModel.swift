@@ -39,6 +39,9 @@ final class ScreenModel: ObservableObject {
         return used
     }
 
+    /// Each row's text without styles, for ScreenDialogDetector.
+    var textRows: [String] { lines.map { $0.map(\.t).joined() } }
+
     func apply(_ update: ScreenUpdate) {
         if !update.full && lastSeq != 0 {
             if update.seq <= lastSeq {
@@ -88,8 +91,8 @@ final class ScreenModel: ObservableObject {
 /// Turns rendered rows into an attributed string. UIKit-only; the model
 /// above owns the cache.
 enum ScreenRenderer {
-    static let defaultForeground = UIColor.white.withAlphaComponent(0.85)
-    static let defaultBackground = UIColor.black
+    static var defaultForeground: UIColor { Theme.c.terminalForeground }
+    static var defaultBackground: UIColor { Theme.c.terminalBackground }
 
     static func render(lines: [[ScreenRun]], cursor: ScreenCursor?, fontSize: CGFloat) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()

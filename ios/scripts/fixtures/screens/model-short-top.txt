@@ -1,0 +1,16 @@
+
+  ⎿  Kept model as Fable 5.2
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Select model
+  Your pick is the default for new
+  sessions. For other models, use --model.
+
+  ❯ 1.  Default (recommen…  Opus 5.5
+    2.  Opus 5.5            For complex
+                            work and
+                            everyday tasks
+    ↓ 4 more
+
+
+
+  Best for everyday, complex tasks          ↓

@@ -87,6 +87,32 @@ check(ScrollFollow.anchor(autoScroll: false, oldText: "line1\nline2\nline3", new
 check(ScrollFollow.anchor(autoScroll: false, oldText: "foo   \nbar", newText: "foo\nbar") == .keepDistanceFromBottom,
       "a rewritten line (e.g. trailing whitespace trimmed) is neither prefix nor suffix, so it keeps distance from bottom")
 
+print("ScrollFollow.showsJump (the chat's jump-to-latest button)")
+// The owner's case: at the bottom of a 3000pt chat in a 700pt viewport, the
+// keyboard (336pt) and a pending panel (330pt) take the viewport to 34pt
+// without the offset moving. 666pt of content is now below a 34pt viewport.
+check(!ScrollFollow.showsJump(following: true, offsetY: 2300, contentHeight: 3000, viewportHeight: 34),
+      "following: a viewport that shrank under the reader never shows the button")
+check(ScrollFollow.showsJump(following: false, offsetY: 2300, contentHeight: 3000, viewportHeight: 34),
+      "the same geometry after the reader scrolled up does (the old rule showed it in both cases)")
+check(!ScrollFollow.showsJump(following: true, offsetY: 0, contentHeight: 3000, viewportHeight: 700),
+      "at launch, before the first pin, the button doesn't flash")
+check(!ScrollFollow.showsJump(following: false, offsetY: 1700, contentHeight: 3000, viewportHeight: 700),
+      "less than a screen up: no button")
+check(ScrollFollow.showsJump(following: false, offsetY: 1000, contentHeight: 3000, viewportHeight: 700),
+      "more than a screen up: the button")
+check(!ScrollFollow.showsJump(following: false, offsetY: 0, contentHeight: 300, viewportHeight: 700),
+      "content shorter than the viewport: never")
+check(!ScrollFollow.showsJump(following: false, offsetY: 1600, contentHeight: 3000, viewportHeight: 700, bottomInset: 0)
+      && ScrollFollow.showsJump(following: false, offsetY: 1500, contentHeight: 3000, viewportHeight: 700, bottomInset: 200),
+      "the bottom inset counts toward what is below")
+
+print("ScrollFollow.repinsOnResize")
+check(ScrollFollow.repinsOnResize(following: true, oldHeight: 700, newHeight: 370), "keyboard opening while following re-pins")
+check(ScrollFollow.repinsOnResize(following: true, oldHeight: 370, newHeight: 700), "keyboard closing while following re-pins")
+check(!ScrollFollow.repinsOnResize(following: false, oldHeight: 700, newHeight: 370), "scrolled up: the reader's place is kept")
+check(!ScrollFollow.repinsOnResize(following: true, oldHeight: 700, newHeight: 700.2), "sub-point jitter is not a resize")
+
 if failures > 0 {
     print("\n\(failures) failure(s)")
     exit(1)

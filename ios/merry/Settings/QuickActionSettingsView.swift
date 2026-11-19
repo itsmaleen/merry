@@ -204,7 +204,7 @@ struct QuickActionSettingsView: View {
         } label: {
             Image(systemName: store.isPinned(label) ? "pin.fill" : "pin")
                 .font(.system(size: 13))
-                .foregroundStyle(store.isPinned(label) ? Color.orange : Color.white.opacity(0.35))
+                .foregroundStyle(store.isPinned(label) ? Theme.c.attention : Color.white.opacity(0.35))
                 .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
