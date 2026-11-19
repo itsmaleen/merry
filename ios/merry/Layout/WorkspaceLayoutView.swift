@@ -698,7 +698,7 @@ struct WorkspaceLayoutView: View {
     }
 
     /// Pinned actions for the header's ••• menu (New Tab and Claude YOLO by
-    /// default), so the common ones skip the long-press menu.
+    /// default), so the common ones skip the All Actions sheet.
     private func pinnedActions(for sid: String) -> [QuickAction] {
         QuickActionBuilder.pinned(from: buildActions(for: sid, includeTop: false), store: quickActionStore)
             .map { qa in
@@ -854,7 +854,8 @@ struct WorkspaceLayoutView: View {
         }
     }
 
-    // The open surface with its quick-action long-press. Other surfaces are
+    // The open surface. It has no long-press of its own (that selects
+    // text); quick actions open from the header's ••• menu. Other surfaces are
     // reached through the grid (left-edge swipe, the header's grid button,
     // swipe up on the composer) or the volume buttons.
     private func focusedCard(for surface: Surface, contentScale: CGFloat) -> some View {
@@ -893,9 +894,6 @@ struct WorkspaceLayoutView: View {
             glanceBody: nil
         )
         .id(surface.id)
-        .onLongPressGesture(minimumDuration: 0.4) {
-            openQuickActions()
-        }
     }
 
     private func openHistory(fallback surface: Surface) {

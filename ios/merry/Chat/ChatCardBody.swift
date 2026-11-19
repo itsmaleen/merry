@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// The third body of `PaneCardView`, beside the terminal and browser ones.
 /// It adds one gesture, tap (a work row, a choice, a button, a link).
-/// Long-press stays the card's (quick actions).
+/// Long-press selects text.
 struct ChatCardBody: View {
     let events: [TranscriptEvent]
     /// `events` grouped into rows, once per change (AppState.chatItems).

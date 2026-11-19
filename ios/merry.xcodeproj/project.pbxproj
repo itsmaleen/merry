@@ -60,6 +60,7 @@
 		EE90802C03BA013DF8E7AD3E /* dialog-model.txt in Resources */ = {isa = PBXBuildFile; fileRef = CC5EE39C37A9E9B23497D788 /* dialog-model.txt */; };
 		EF9BE76F29D90E2220A184D8 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBF9718B2C8E60AF6A4D74C /* BridgeDiscovery.swift */; };
 		F13DED687A7AE6F16B7D08B1 /* ChatPaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F074F6095AB33A94D73EEA3 /* ChatPaging.swift */; };
+		F46365111227DE0D5C161ED5 /* SelectableProse.swift in Sources */ = {isa = PBXBuildFile; fileRef = D630888F1E39DB8F88152DCE /* SelectableProse.swift */; };
 		F4B9E9A55A21C7869FD8BCDE /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 367B2F9C9E52182B538C3295 /* NotificationsView.swift */; };
 		FA52B9364EEE0C0F959F340F /* WorkspaceListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA28BE0E6BEC6C813E69E1F /* WorkspaceListView.swift */; };
 /* End PBXBuildFile section */
@@ -111,6 +112,7 @@
 		CC5EE39C37A9E9B23497D788 /* dialog-model.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "dialog-model.txt"; sourceTree = "<group>"; };
 		CD69070E685E91BDC60DE6CE /* CommandDictionary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandDictionary.swift; sourceTree = "<group>"; };
 		D24B23A38F260528F26E43C0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D630888F1E39DB8F88152DCE /* SelectableProse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableProse.swift; sourceTree = "<group>"; };
 		D83CF3D5DAF3F01B8F866121 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D8C382A90F591927040FA7C5 /* QuickActionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionStore.swift; sourceTree = "<group>"; };
 		DB26D74C301412376CEEA9B6 /* TextSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextSearch.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 				3A1874B5577A2ED179C50063 /* GlanceBody.swift */,
 				5451C9215B8F191BBF1F1510 /* PendingViews.swift */,
 				293FD884A94E2A4AD36AFB28 /* ScreenDialog.swift */,
+				D630888F1E39DB8F88152DCE /* SelectableProse.swift */,
 				65F76C47E53B47B8A551AC4F /* SlashCommands.swift */,
 				C977161BEF87ACABBCE3BB06 /* TranscriptEvent.swift */,
 			);
@@ -400,6 +403,7 @@
 				516CDA8A9CDBB7B530E38B57 /* ScreenDialog.swift in Sources */,
 				CA73E3B223D2BD964078CFBC /* ScreenModel.swift in Sources */,
 				AFC0C0ADBDE455E07E87D252 /* ScrollFollow.swift in Sources */,
+				F46365111227DE0D5C161ED5 /* SelectableProse.swift in Sources */,
 				D69361B7EDEC396F94F60E64 /* SendTextView.swift in Sources */,
 				D50052DAA5A737B1AF1EEB8E /* SettingsView.swift in Sources */,
 				0755FFCA997F283F16C13077 /* SlashCommands.swift in Sources */,

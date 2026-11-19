@@ -438,8 +438,7 @@ struct TranscriptSheetView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let events = appState.transcriptEvents[target.id], !events.isEmpty {
-            // The conversation as chat, with text selection on: this is where
-            // copying lives, since the card leaves long-press to quick actions.
+            // The conversation as chat, with text selection on.
             // A plain ScrollView is safe here; the sheet has no card gestures.
             ScrollView {
                 ChatTranscriptView(

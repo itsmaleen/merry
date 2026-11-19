@@ -4,7 +4,7 @@ Design and mockups: `~/wrinkles/wiki/articles/merry_session_ui_nov2026.md`, mock
 
 Rule: a card's body follows what runs in the surface. Agent session (`agentKind` claude/opencode) = chat. Plain shell = terminal. Browser = unchanged.
 
-Gestures on the open session: long-press opens quick actions; a swipe in from the left screen edge (the iOS back gesture) opens the grid, as do the header's grid button and a swipe up on the composer; volume-down cycles surfaces. There is no sideways swipe between surfaces: with full-screen sessions you can't see where it lands. While dictating, the left-edge swipe opens the transcript editor instead. Anything that doesn't need the keyboard (grid, menus, quick actions, chat buttons, switching surface) lowers it first. Web links open in an in-app Safari sheet.
+Gestures on the open session: a long-press selects text (quick actions open from the header's ••• menu, "All Actions"); a swipe in from the left screen edge (the iOS back gesture) opens the grid, as do the header's grid button and a swipe up on the composer; volume-down cycles surfaces. There is no sideways swipe between surfaces: with full-screen sessions you can't see where it lands. While dictating, the left-edge swipe opens the transcript editor instead. Anything that doesn't need the keyboard (grid, menus, quick actions, chat buttons, switching surface) lowers it first. Web links open in an in-app Safari sheet.
 
 ## Wire contract (bridge <-> iOS)
 

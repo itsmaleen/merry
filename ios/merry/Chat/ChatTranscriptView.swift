@@ -21,8 +21,8 @@ enum ChatStyle {
 /// the focused surface and the full-screen history (terminal-mode agents).
 ///
 /// System type with Dynamic Type styles throughout; monospace only for code.
-/// Claims no gesture but tap (work rows, links), so the surface's long-press
-/// keeps its meaning.
+/// Text is selectable: a long-press starts a selection, so the surface
+/// claims no long-press of its own.
 ///
 /// Hosted in a UIScrollView, so not lazy: every row it is given is built.
 /// ChatCardBody hands it a bounded window of rows. Rows are Equatable and
@@ -47,8 +47,9 @@ struct ChatTranscriptView: View, Equatable {
     let items: [ChatItem]
     let expanded: Set<String>
     let onToggle: (String) -> Void
-    /// History allows copying; the surface leaves long-press to quick actions.
-    var selectable = false
+    /// Long-press copies a whole table cell, tool line or chip; prose, code
+    /// and bubbles select by range (SelectableProse).
+    var selectable = true
     /// A trailing "Working…" line when the session is busy but its last row
     /// doesn't already say so.
     var showsWorking = false
@@ -217,10 +218,10 @@ struct UserBubble: View {
             Spacer(minLength: 64)
             VStack(alignment: .leading, spacing: 6) {
                 if let preview, !isExpanded {
-                    Text(ChatMarkdown.inline(preview))
+                    SelectableProse(text: ChatMarkdown.inline(preview), hugsWidth: true)
                 } else {
                     ForEach(Array(LongText.chunks(text).enumerated()), id: \.offset) { _, piece in
-                        Text(ChatMarkdown.inline(piece))
+                        SelectableProse(text: ChatMarkdown.inline(piece), hugsWidth: true)
                     }
                 }
                 if preview != nil {
@@ -748,30 +749,20 @@ struct MarkdownBlocks: View {
                 case .prose(let p) where p.count > 1500:
                     // One layer per piece, not one unbounded layer.
                     ForEach(Array(LongText.chunks(p).enumerated()), id: \.offset) { _, piece in
-                        Text(ChatMarkdown.inline(piece))
-                            .font(.body)
-                            .lineSpacing(3)
-                            .foregroundStyle(.primary)
+                        SelectableProse(text: ChatMarkdown.inline(piece))
                     }
                 case .prose(let p):
-                    Text(parsed.inline[i] ?? AttributedString(p))
-                        .font(.body)
-                        .lineSpacing(3)
-                        .foregroundStyle(.primary)
+                    SelectableProse(text: parsed.inline[i] ?? AttributedString(p))
                 case .heading(let h):
-                    Text(parsed.inline[i] ?? AttributedString(h))
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                    SelectableProse(text: parsed.inline[i] ?? AttributedString(h), style: .heading)
                 case .code(let c):
                     // Wrapped, not scrolled: readable without a sideways
                     // drag on a phone. Long code is drawn in pieces.
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(LongText.chunks(c).enumerated()), id: \.offset) { _, piece in
-                            Text(piece)
+                            SelectableProse(text: AttributedString(piece), style: .code)
                         }
                     }
-                        .font(.footnote.monospaced())
-                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
