@@ -152,16 +152,21 @@ func DetectSocketPath() string {
 // detectSocketPath is the pure core of DetectSocketPath, parameterised on home
 // and uid so it can be tested against a temporary directory tree. It reads only
 // the filesystem (via os.ReadFile/os.Stat) and returns the resolved socket path.
+// tmpPointer is where newer cmux builds write the pointer; a variable so
+// tests can point it away from the machine's real one.
+var tmpPointer = "/tmp/cmux-last-socket-path"
+
 func detectSocketPath(home string, uid int) string {
 	appSupport := filepath.Join(home, "Library", "Application Support", "cmux")
 	xdgState := filepath.Join(home, ".local", "state", "cmux")
 
 	// Primary: the last-socket-path pointer cmux writes on each launch. It can
-	// live in either the XDG state dir or Application Support; prefer a pointer
+	// live in /tmp, the XDG state dir or Application Support; prefer a pointer
 	// whose socket actually exists, but remember the first non-empty one as a
 	// fallback in case none of the referenced sockets stat cleanly.
 	var firstPointer string
 	for _, pointer := range []string{
+		tmpPointer,
 		filepath.Join(xdgState, "last-socket-path"),
 		filepath.Join(appSupport, "last-socket-path"),
 	} {

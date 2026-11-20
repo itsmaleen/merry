@@ -183,12 +183,31 @@ func TestDetectSocketPath(t *testing.T) {
 	xdgDir := func(home string) string { return filepath.Join(home, ".local", "state", "cmux") }
 	appDir := func(home string) string { return filepath.Join(home, "Library", "Application Support", "cmux") }
 
+	// Keep the machine's real /tmp pointer out of every case.
+	realTmpPointer := tmpPointer
+	t.Cleanup(func() { tmpPointer = realTmpPointer })
+	tmpPointer = filepath.Join(t.TempDir(), "none")
+
 	tests := []struct {
 		name string
 		// setup populates the fake home tree and returns the path we expect
 		// detectSocketPath to resolve to.
 		setup func(t *testing.T, home string) string
 	}{
+		{
+			name: "tmp pointer to live socket wins over the xdg pointer",
+			setup: func(t *testing.T, home string) string {
+				sock := filepath.Join(xdgDir(home), "cmux-501.sock")
+				other := filepath.Join(xdgDir(home), "cmux.sock")
+				mkSocket(t, sock)
+				mkSocket(t, other)
+				tmpPointer = filepath.Join(home, "tmp-pointer")
+				t.Cleanup(func() { tmpPointer = filepath.Join(home, "none") })
+				writePointer(t, tmpPointer, sock)
+				writePointer(t, filepath.Join(xdgDir(home), "last-socket-path"), other)
+				return sock
+			},
+		},
 		{
 			name: "xdg pointer to live socket (the Mac mini case)",
 			setup: func(t *testing.T, home string) string {
