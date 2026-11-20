@@ -1,0 +1,40 @@
+
+
+❯ /model
+  ⎿  Set model to Opus 5.5 and saved as your
+     default for new sessions
+
+❯ /model
+  ⎿  Set model to Fable 5.2 and saved as your
+     default for new sessions
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Select model
+  Your pick is the default for new
+  sessions. For other models, use --model.
+
+  ❯ 1.  Default (recommen…  Opus 5.5
+    2.  Opus 5.5            For complex
+                            work and
+                            everyday tasks
+    3.  Fable 5.2 ✔         For your
+                            toughest
+                            challenges
+    4.  Sonnet 5.5          Most efficient
+                            for simpler
+                            tasks
+    5.  Haiku 5.5           Fastest for
+                            quick answers
+    ▸   More models
+
+  Best for everyday, complex tasks
+
+  ◐ Medium effort (default)
+
+  ←/→ to adjust · s to use this session
+  only · Enter to save · Esc to cancel

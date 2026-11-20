@@ -14,7 +14,10 @@ run_suite() {
   "$tmp/$name"
 }
 
-run_suite text-search scripts/test-text-search.swift cmux/Layout/TextSearch.swift
-run_suite scroll-follow scripts/test-scroll-follow.swift cmux/Layout/ScrollFollow.swift
-run_suite image-scaling scripts/test-image-scaling.swift cmux/Input/ImageScaling.swift
-run_suite frame-fit scripts/test-frame-fit.swift cmux/Layout/FrameFit.swift
+run_suite text-search scripts/test-text-search.swift merry/Layout/TextSearch.swift
+run_suite scroll-follow scripts/test-scroll-follow.swift merry/Layout/ScrollFollow.swift
+run_suite image-scaling scripts/test-image-scaling.swift merry/Input/ImageScaling.swift
+run_suite frame-fit scripts/test-frame-fit.swift merry/Layout/FrameFit.swift
+run_suite chat-grouping scripts/test-chat-grouping.swift merry/Chat/TranscriptEvent.swift merry/Chat/ChatGrouping.swift merry/Chat/ChatOutbox.swift merry/Chat/SlashCommands.swift merry/Chat/ChatTable.swift
+run_suite chat-paging scripts/test-chat-paging.swift merry/Chat/TranscriptEvent.swift merry/Chat/ChatGrouping.swift merry/Chat/ChatOutbox.swift merry/Chat/ChatPaging.swift
+run_suite screen-dialog scripts/test-screen-dialog.swift merry/Chat/ScreenDialog.swift

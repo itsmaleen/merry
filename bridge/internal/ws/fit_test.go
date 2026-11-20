@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // fitFakeHandle is a minimal backend.FitHandle driven by the test. released

@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/transcriptrender"
+	"github.com/itsmaleen/merry/bridge/internal/transcriptrender"
 )
 
 // sessionIDPattern matches an opencode session id (`ses_` + base62). Ids that

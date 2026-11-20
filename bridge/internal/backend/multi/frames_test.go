@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // frameFake is a fake backend that also implements backend.FrameSource, so

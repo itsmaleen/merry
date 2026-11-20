@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Fable 5.2 · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/dlgcwd
+
+
+❯ /model
+  ⎿  Kept model as Fable 5.2
+
+❯ /resume
+  ⎿  Resume cancelled
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Memory
+
+  ❯ Auto-memory  on
+
+  ❯ User instructions      Saved in ~/.claude/CLAUDE.md
+    Project instructions   Saved in ./CLAUDE.md
+    Open auto-memory folder
+
+  Learn more: https://code.claude.com/docs/en/memory
+
+  ↑/↓ to navigate · Enter to select · Esc to close

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // fitFakeHandle is a minimal backend.FitHandle for exercising multi's Fit

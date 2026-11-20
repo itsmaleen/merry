@@ -7,7 +7,7 @@ import (
 
 	"context"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
 )
 
 // screenFakeBackend is a minimal backend.Backend that also implements

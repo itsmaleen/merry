@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/itsmaleen/cmux-companion/bridge/internal/backend"
-	"github.com/itsmaleen/cmux-companion/bridge/internal/transcripts"
+	"github.com/itsmaleen/merry/bridge/internal/backend"
+	"github.com/itsmaleen/merry/bridge/internal/transcripts"
 )
 
 // Handle translates one phone command onto herdr's API. Method names and
@@ -517,6 +517,9 @@ func (b *Backend) transcript(params map[string]any) (json.RawMessage, error) {
 		Directory:        cwdOf(p),
 		MaxMessages:      transcripts.MaxMessages(params),
 		KnownFingerprint: transcripts.KnownFingerprint(params),
+		Events:           transcripts.WantsEvents(params),
+		Before:           transcripts.Before(params),
+		AgentStatus:      p.AgentStatus,
 	})
 	if err != nil {
 		return nil, backend.Errorf("transcript_error", err.Error())
