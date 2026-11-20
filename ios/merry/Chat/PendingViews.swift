@@ -315,7 +315,7 @@ struct ScreenDialogSheet: View {
 }
 
 /// A list row that lights up while pressed, like a system list.
-private struct DialogRowStyle: ButtonStyle {
+struct DialogRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(Color.white.opacity(configuration.isPressed ? 0.1 : 0))

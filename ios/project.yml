@@ -32,6 +32,13 @@ targets:
         NSLocalNetworkUsageDescription: "Used to discover and connect to the bridge running on your Mac over the local network."
         NSBonjourServices:
           - _merry-bridge._tcp
+        # The Planner API (Sunny's decisions) is plain HTTP on the tailnet;
+        # WireGuard already encrypts it.
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            tail901772.ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
         NSMicrophoneUsageDescription: "Used for voice input to send text to your terminal sessions."
         NSSpeechRecognitionUsageDescription: "Used to transcribe your voice and send it as text."
         UILaunchScreen: {}

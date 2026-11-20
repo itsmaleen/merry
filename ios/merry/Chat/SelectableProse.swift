@@ -12,6 +12,9 @@ struct SelectableProse: UIViewRepresentable {
     var style: Style = .body
     /// As wide as the text needs (a bubble) instead of the width offered.
     var hugsWidth = false
+    /// Takes link taps instead of LinkRouter, for text shown in a sheet or
+    /// cover: the router's browser opens over the session, underneath it.
+    var onLink: ((URL) -> Void)? = nil
 
     // Read so a theme or text-size change rebuilds the attributed text.
     @AppStorage(MerryTheme.storageKey) private var themeID = ""
@@ -35,6 +38,7 @@ struct SelectableProse: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.onLink = onLink
         let key = Key(text: text, style: style, theme: themeID, size: typeSize)
         guard context.coordinator.key != key else { return }
         context.coordinator.key = key
@@ -62,11 +66,12 @@ struct SelectableProse: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var key: Key?
+        var onLink: ((URL) -> Void)?
 
         func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange,
                       interaction: UITextItemInteraction) -> Bool {
             guard interaction == .invokeDefaultAction else { return true }
-            LinkRouter.open(URL)
+            if let onLink { onLink(URL) } else { LinkRouter.open(URL) }
             return false
         }
     }

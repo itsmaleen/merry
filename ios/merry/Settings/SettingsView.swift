@@ -5,6 +5,9 @@ struct SettingsView: View {
     @AppStorage("autoSubmitSpeech") private var autoSubmitSpeech = true
     @AppStorage("volumeButtonControls") private var volumeButtonControls = false
     @AppStorage(MerryTheme.storageKey) private var themeID = MerryTheme.midnight.rawValue
+    @AppStorage(SunnyStore.digestURLKey) private var sunnyDigestURL = ""
+    @AppStorage(SunnyStore.plannerURLKey) private var sunnyPlannerURL = ""
+    @EnvironmentObject var sunny: SunnyStore
     @State private var showUnpairConfirm = false
     @State private var renameTarget: SavedBridge?
     @State private var renameText = ""
@@ -68,6 +71,24 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(themeID == theme.rawValue ? .isSelected : [])
                     }
+                }
+
+                Section {
+                    TextField(SunnyStore.defaultDigestURL, text: $sunnyDigestURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.footnote.monospaced())
+                    TextField(SunnyStore.defaultPlannerURL, text: $sunnyPlannerURL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .font(.footnote.monospaced())
+                    Button("Reload the digest") { Task { await sunny.load() } }
+                } header: {
+                    Text("Sunny")
+                } footer: {
+                    Text("Where Sunny's morning digest is read from, and the Planner your decisions are written to. Leave empty for the mini. The Planner trusts this phone over Tailscale, so there is no key to enter.")
                 }
 
                 Section("Quick Actions") {

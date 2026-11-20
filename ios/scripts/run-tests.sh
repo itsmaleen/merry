@@ -21,3 +21,5 @@ run_suite frame-fit scripts/test-frame-fit.swift merry/Layout/FrameFit.swift
 run_suite chat-grouping scripts/test-chat-grouping.swift merry/Chat/TranscriptEvent.swift merry/Chat/ChatGrouping.swift merry/Chat/ChatOutbox.swift merry/Chat/SlashCommands.swift merry/Chat/ChatTable.swift
 run_suite chat-paging scripts/test-chat-paging.swift merry/Chat/TranscriptEvent.swift merry/Chat/ChatGrouping.swift merry/Chat/ChatOutbox.swift merry/Chat/ChatPaging.swift
 run_suite screen-dialog scripts/test-screen-dialog.swift merry/Chat/ScreenDialog.swift
+run_suite device-snapshot scripts/test-device-snapshot.swift merry/Connection/DeviceSnapshot.swift
+run_suite sunny-dates scripts/test-sunny-dates.swift merry/Sunny/SunnyDigest.swift
