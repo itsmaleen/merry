@@ -1044,6 +1044,18 @@ struct WorkspaceLayoutView: View {
                 }
                 Button("All Actions", systemImage: "square.grid.3x3") { openQuickActions() }
             }
+            // Hand this agent session to the other machine, where it resumes
+            // with the same conversation (herdr bridges with a saved handoff
+            // machine only). Disabled while another move runs.
+            if let info = appState.handoffInfo,
+               let kind = surface.agentKind, ["claude", "codex", "opencode"].contains(kind) {
+                Section {
+                    Button("Move to \(info.machine)", systemImage: "arrow.up.forward.app") {
+                        appState.startHandoff(direction: "out", surfaceID: surface.id)
+                    }
+                    .disabled(isHandoffRunning)
+                }
+            }
         } else {
             newTabButton
         }
@@ -1069,6 +1081,11 @@ struct WorkspaceLayoutView: View {
             }
             .disabled(true)
         }
+    }
+
+    private var isHandoffRunning: Bool {
+        if case .running = appState.handoffStatus { return true }
+        return false
     }
 
     private var newTabButton: some View {
