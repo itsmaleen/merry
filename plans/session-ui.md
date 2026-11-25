@@ -6,6 +6,15 @@ Rule: a card's body follows what runs in the surface. Agent session (`agentKind`
 
 Gestures on the open session: a long-press selects text (quick actions open from the header's ••• menu, "All Actions"); a swipe in from the left screen edge (the iOS back gesture) opens the grid, as do the header's grid button and a swipe up on the composer; volume-down cycles surfaces. There is no sideways swipe between surfaces: with full-screen sessions you can't see where it lands. While dictating, the left-edge swipe opens the transcript editor instead. Anything that doesn't need the keyboard (grid, menus, quick actions, chat buttons, switching surface) lowers it first. Web links open in an in-app Safari sheet.
 
+## Several devices
+
+With more than one paired bridge, the grid is where you move between them; Settings is only for pairing, renaming and removing.
+
+- A row of device chips sits above the workspace chips. The device on screen is filled; tapping another shows that device in the grid. Another device's chip carries its session count, an attention dot when one of its agents is blocked, or "offline".
+- Under the cards, each other device has a list of its sessions (needs you, then working, then other agents, then shells; four shown, "Show N more" for the rest). Tapping a row switches to that device and opens the session. The + on a device's heading opens a new tab or YOLO tab there.
+- The header's ••• menu names the device and can switch it.
+- The lists come from `DevicePeeker`: one extra connection per other device, open only while the grid is open, that calls `workspace.list` and `surface.list` every 10 s (at most 12 workspaces) and subscribes to nothing. No bridge change. Status is known only where the runtime reports it (herdr); a cmux session shows no status.
+
 ## Wire contract (bridge <-> iOS)
 
 `claude.transcript` / `agent.transcript` take a new optional param `format`.

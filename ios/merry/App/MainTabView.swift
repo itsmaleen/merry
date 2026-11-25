@@ -22,6 +22,8 @@ struct MainTabView: View {
                     SendTextView()
                 case .notifications:
                     NotificationsView()
+                case .sunny:
+                    SunnyView()
                 case .settings:
                     SettingsView()
                 }
@@ -71,6 +73,14 @@ struct MainTabView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showSidebar)
         .onChange(of: appState.sidebarRevealRequest) { _, _ in revealSidebar() }
+        .onAppear {
+            // Screenshots: `-UITestTab sunny` opens on that tab.
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-UITestTab"), i + 1 < args.count,
+               let tab = SidebarTab(rawValue: args[i + 1]) {
+                appState.selectedTab = tab
+            }
+        }
         .onDisappear {
             // Otherwise the auto-dismiss timer fires into a torn-down view.
             sidebarTimer?.invalidate()
@@ -118,9 +128,14 @@ struct MainTabView: View {
                     dismissSidebar()
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 13))
-                            .frame(width: 20)
+                        Group {
+                            if tab == .sunny {
+                                Image("SunnyGlyph").resizable().scaledToFit().frame(width: 17, height: 17)
+                            } else {
+                                Image(systemName: tab.icon).font(.system(size: 13))
+                            }
+                        }
+                        .frame(width: 20)
                         Text(tab.label)
                             .font(.system(size: 13, weight: .medium, design: .monospaced))
                         Spacer()
@@ -297,6 +312,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
     case surfaces
     case send
     case notifications
+    case sunny
     case settings
 
     var id: String { rawValue }
@@ -307,6 +323,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
         case .surfaces: return "Surfaces"
         case .send: return "Send"
         case .notifications: return "Alerts"
+        case .sunny: return "Sunny"
         case .settings: return "Settings"
         }
     }
@@ -317,6 +334,7 @@ enum SidebarTab: String, CaseIterable, Identifiable {
         case .surfaces: return "square.split.2x1"
         case .send: return "keyboard"
         case .notifications: return "bell"
+        case .sunny: return "sun.max"
         case .settings: return "gear"
         }
     }

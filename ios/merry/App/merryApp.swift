@@ -5,6 +5,7 @@ import UserNotifications
 struct merryApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var quickActionStore = QuickActionStore()
+    @StateObject private var sunnyStore = SunnyStore()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
@@ -21,6 +22,7 @@ struct merryApp: App {
             ContentView()
                 .environmentObject(appState)
                 .environmentObject(quickActionStore)
+                .environmentObject(sunnyStore)
                 .onOpenURL { url in
                     if url.host == "surface" {
                         appState.handleSurfaceURL(url)

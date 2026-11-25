@@ -367,6 +367,7 @@ struct WorkspaceLayoutView: View {
 
             if showSwitcher {
                 SurfaceSwitcherView(
+                    peeker: appState.devicePeeker,
                     isPresented: $showSwitcher,
                     workspaceLabel: { workspaceLabel(for: $0, at: $1) },
                     onSelect: { id in
@@ -388,7 +389,8 @@ struct WorkspaceLayoutView: View {
                     onRefresh: {
                         appState.refreshSurfaces()
                         fetchAllContent()
-                    }
+                    },
+                    yoloCommand: { QuickActionBuilder.yoloCommand(quickActionStore) }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .zIndex(2)
@@ -1042,8 +1044,35 @@ struct WorkspaceLayoutView: View {
                 }
                 Button("All Actions", systemImage: "square.grid.3x3") { openQuickActions() }
             }
+            // Hand this agent session to the other machine, where it resumes
+            // with the same conversation (herdr bridges with a saved handoff
+            // machine only). Disabled while another move runs.
+            if let info = appState.handoffInfo,
+               let kind = surface.agentKind, ["claude", "codex", "opencode"].contains(kind) {
+                Section {
+                    Button("Move to \(info.machine)", systemImage: "arrow.up.forward.app") {
+                        appState.startHandoff(direction: "out", surfaceID: surface.id)
+                    }
+                    .disabled(isHandoffRunning)
+                }
+            }
         } else {
             newTabButton
+        }
+        if appState.bridges.count > 1 {
+            // Which device this is, and a way to another without Settings.
+            Menu {
+                Picker("Device", selection: Binding(
+                    get: { appState.selectedBridge?.id },
+                    set: { id in if let id { appState.selectBridge(id) } }
+                )) {
+                    ForEach(appState.bridges) { bridge in
+                        Text(DeviceName.short(bridge.name)).tag(Optional(bridge.id))
+                    }
+                }
+            } label: {
+                Label("Device: " + DeviceName.short(appState.selectedBridge?.name ?? ""), systemImage: "desktopcomputer")
+            }
         }
         Section {
             Button("Menu", systemImage: "sidebar.left") { appState.sidebarRevealRequest += 1 }
@@ -1052,6 +1081,11 @@ struct WorkspaceLayoutView: View {
             }
             .disabled(true)
         }
+    }
+
+    private var isHandoffRunning: Bool {
+        if case .running = appState.handoffStatus { return true }
+        return false
     }
 
     private var newTabButton: some View {

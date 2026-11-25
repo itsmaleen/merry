@@ -135,6 +135,14 @@ final class AppState: ObservableObject {
     // arrived while the session was still coming up. Applied in clientDidConnect.
     private var pendingNavigationTarget: (surfaceID: String, workspaceID: String?)?
 
+    /// The other paired devices' sessions, for the grid. Connected only
+    /// while the grid is open (`setDevicePeeking`).
+    let devicePeeker = DevicePeeker()
+    private var isPeekingDevices = false
+    /// A new tab asked for on a device the phone was not showing: opened once
+    /// that device's surfaces have loaded. `command` is typed into it.
+    private var pendingStart: (bridgeID: UUID, command: String?)?
+
     private var lastFocusedSurface: [String: String] = [:]
     // Claude conversation transcripts, kept separate from surfaceContent (which
     // mirrors the live terminal). Keyed by surface ID.
@@ -449,6 +457,30 @@ final class AppState: ObservableObject {
         )
         bridges = [fixtureBridge]
         selectedBridgeID = fixtureBridge.id
+        // `-UITestDevices`: two more paired devices with sessions of their
+        // own, for the grid's device chips and "other devices" list.
+        if ProcessInfo.processInfo.arguments.contains("-UITestDevices") {
+            bridges[0].name = "MacBook"
+            let mini = SavedBridge(name: "merry-bridge-mini", credentials: PairingCredentials(host: "fixture-mini", port: 0, token: "fixture-mini"))
+            let desktop = SavedBridge(name: "desktop-bridge", credentials: PairingCredentials(host: "fixture-desktop", port: 0, token: "fixture-desktop"))
+            bridges += [mini, desktop]
+            func session(_ id: String, _ title: String, _ ws: String, _ kind: String?, _ status: String?) -> PeekSession? {
+                var dict: [String: Any] = ["id": id, "title": title, "workspace_id": ws]
+                if let kind { dict["resume_binding"] = ["kind": kind] as [String: Any] }
+                if let status { dict["agent_status"] = status }
+                return PeekSession(dict, workspaceTitle: ws)
+            }
+            devicePeeker.seed([
+                mini.id: DeviceSnapshot(reach: .online, sessions: DeviceSnapshot.ordered([
+                    session("m1", "wiki nightly lint", "wrinkles", "claude", "done"),
+                    session("m2", "planner dispatcher", "planner", "claude", "blocked"),
+                    session("m3", "~/merry", "merry", nil, nil),
+                ].compactMap { $0 })),
+                desktop.id: DeviceSnapshot(reach: .offline, sessions: DeviceSnapshot.ordered([
+                    session("d1", "bench sweep", "harness-bench", "opencode", "working"),
+                ].compactMap { $0 })),
+            ])
+        }
 
         connectionStatus = .connected
         backendKind = "herdr"
@@ -1160,9 +1192,51 @@ final class AppState: ObservableObject {
     func selectBridge(_ id: UUID) {
         guard id != selectedBridgeID, let bridge = bridges.first(where: { $0.id == id }) else { return }
         selectedBridgeID = id
+        pendingStart = nil
+        // A fixture has no bridge behind its devices; it only moves the chip.
+        guard !isFixtureMode else { return }
         persistBridges()
         resetSessionState()
         connect(to: bridge.credentials)
+        syncDevicePeeking()
+    }
+
+    /// The paired devices other than the one on screen.
+    var otherBridges: [SavedBridge] {
+        let current = selectedBridge?.id
+        return bridges.filter { $0.id != current }
+    }
+
+    /// Starts or stops watching the other devices. The grid turns it on while
+    /// it is open; nothing else keeps those connections alive.
+    func setDevicePeeking(_ on: Bool) {
+        isPeekingDevices = on
+        syncDevicePeeking()
+    }
+
+    private func syncDevicePeeking() {
+        guard !isFixtureMode, !isDebugBridge else { return }
+        if isPeekingDevices { devicePeeker.watch(otherBridges) } else { devicePeeker.pause() }
+    }
+
+    /// Opens a session listed under another device: switches to that device
+    /// and shows the pane once it has connected.
+    func openSession(on bridgeID: UUID, surfaceID: String, workspaceID: String?) {
+        selectBridge(bridgeID)
+        navigateToSurface(surfaceID: surfaceID, workspaceID: workspaceID)
+    }
+
+    /// Opens a new tab on a device, typing `command` into it when given (the
+    /// YOLO tab). On the device already on screen it happens now; on another
+    /// it waits for that device's surfaces to load.
+    func startSession(on bridgeID: UUID, command: String?) {
+        if bridgeID == selectedBridge?.id, connectionStatus.isConnected {
+            if let command { createSurfaceRunning(command) } else { createSurface() }
+            return
+        }
+        selectBridge(bridgeID)
+        selectedTab = .layout
+        pendingStart = (bridgeID, command)
     }
 
     /// Renames a paired bridge; an empty name falls back to the derived default.
@@ -2650,12 +2724,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    func refreshSurfaces(workspaceID: String? = nil) {
+    func refreshSurfaces(workspaceID: String? = nil, then completion: (() -> Void)? = nil) {
         var params: [String: Any] = [:]
         if let id = workspaceID ?? currentWorkspaceID {
             params["workspace_id"] = id
         }
         send(method: "surface.list", params: params) { [weak self] result in
+            defer { completion?() }
             if let list = result["surfaces"] as? [[String: Any]] {
                 self?.setIfChanged(\.surfaces, to: list.compactMap(Surface.init), by: Surface.sameContent)
                 self?.applyAgentStatuses()
@@ -2825,7 +2900,15 @@ extension AppState: BridgeClientDelegate {
         guard client === self.client else { return }
         connectionStatus = .connected
         refreshWorkspaces {
-            self.refreshSurfaces()
+            // A new tab asked for from another device's list: open it once
+            // this device's surfaces are known, so the new one can be told
+            // apart and focused.
+            let start = self.pendingStart
+            self.pendingStart = nil
+            self.refreshSurfaces {
+                guard let start, start.bridgeID == self.selectedBridge?.id else { return }
+                if let command = start.command { self.createSurfaceRunning(command) } else { self.createSurface() }
+            }
             self.refreshPanes()
             #if DEBUG
             self.startDebugDriverOnce()
