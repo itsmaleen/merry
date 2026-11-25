@@ -479,6 +479,7 @@ func (m *mover) moveOne(ctx context.Context, a agentPane) Result {
 
 	switch {
 	case synced:
+		m.log("checking %s is in sync on %s", repo, m.dst.Label)
 		n, err := m.checkSynced(ctx, repo)
 		if err != nil {
 			return rollback(err)
@@ -496,6 +497,7 @@ func (m *mover) moveOne(ctx context.Context, a agentPane) Result {
 		r.Repo = "skipped (not a git repo)"
 	}
 
+	m.log("copying the %s session to %s", a.Agent, m.dst.Label)
 	if err := m.copySession(ctx, a, dstCwd); err != nil {
 		return rollback(err)
 	}

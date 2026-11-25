@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -90,15 +91,37 @@ func handleHandoff(cmd commandRequest, be backend.Backend) commandResponse {
 	handoffMu.Unlock()
 
 	hub := be.Hub()
+	// Every progress line also goes to the bridge log, stamped with the time
+	// since the move started and since the previous line, so a slow move
+	// says which step took the time.
+	start := time.Now()
+	last := start
 	opts.Log = func(f string, a ...any) {
-		hub.Broadcast(backend.Event{Type: "handoff.progress", Data: map[string]any{"message": fmt.Sprintf(f, a...)}})
+		msg := fmt.Sprintf(f, a...)
+		now := time.Now()
+		log.Printf("handoff: [+%s, step %s] %s", secs(now.Sub(start)), secs(now.Sub(last)), msg)
+		last = now
+		hub.Broadcast(backend.Event{Type: "handoff.progress", Data: map[string]any{"message": msg}})
 	}
 	cfg := *handoffCfg
+	log.Printf("handoff: start %s %s -> %s (panes %v, workspace %q, force %v)", dir, opts.From, opts.To, opts.Panes, opts.Workspace, force)
 	go func() {
 		defer func() { handoffMu.Lock(); handoffBusy = false; handoffMu.Unlock() }()
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		defer cancel()
 		res, err := handoff.Run(ctx, opts)
+		for _, r := range res {
+			line := fmt.Sprintf("handoff: result %s %s %s", r.Pane, r.Agent, r.Status)
+			if r.Reason != "" {
+				line += ": " + r.Reason
+			}
+			log.Print(line)
+		}
+		if err != nil {
+			log.Printf("handoff: failed after %s: %v", secs(time.Since(start)), err)
+		} else {
+			log.Printf("handoff: done in %s (step %s)", secs(time.Since(start)), secs(time.Since(last)))
+		}
 		data := map[string]any{"direction": dir, "machine": cfg.Machine, "results": res}
 		if dir == "out" {
 			data["bridge"] = cfg.Bridge
@@ -117,6 +140,9 @@ func handleHandoff(cmd commandRequest, be backend.Backend) commandResponse {
 	}()
 	return commandResponse{ID: cmd.ID, OK: true, Result: mustJSON(map[string]any{"started": true, "direction": dir, "machine": cfg.Machine})}
 }
+
+// secs is a duration rounded to a tenth of a second, for the log.
+func secs(d time.Duration) string { return d.Round(100 * time.Millisecond).String() }
 
 // herdrID strips a composite bridge's runtime namespace.
 func herdrID(id string) (string, error) {
