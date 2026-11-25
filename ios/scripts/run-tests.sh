@@ -23,3 +23,4 @@ run_suite chat-paging scripts/test-chat-paging.swift merry/Chat/TranscriptEvent.
 run_suite screen-dialog scripts/test-screen-dialog.swift merry/Chat/ScreenDialog.swift
 run_suite device-snapshot scripts/test-device-snapshot.swift merry/Connection/DeviceSnapshot.swift
 run_suite sunny-dates scripts/test-sunny-dates.swift merry/Sunny/SunnyDigest.swift
+run_suite day-note scripts/test-day-note.swift merry/Sunny/DayNote.swift merry/Sunny/SunnyDigest.swift

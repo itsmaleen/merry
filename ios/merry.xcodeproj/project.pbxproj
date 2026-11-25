@@ -10,6 +10,7 @@
 		04D3D0B38DA48F415068B1A1 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83CF3D5DAF3F01B8F866121 /* Theme.swift */; };
 		0755FFCA997F283F16C13077 /* SlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F76C47E53B47B8A551AC4F /* SlashCommands.swift */; };
 		088A858905B34D2AB6C80B54 /* screen-claude.json in Resources */ = {isa = PBXBuildFile; fileRef = 85BE445E489169C5A60131C7 /* screen-claude.json */; };
+		08C5F1D58D242DB4CF348202 /* DayNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F83421140C5400DE33B78321 /* DayNoteSheet.swift */; };
 		0B8E8518F44F3322C3A70DCC /* DeviceSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BDB5ED0114855DCCFCA9B7F /* DeviceSnapshot.swift */; };
 		0D2E5F34B28684473BAB97F0 /* SunnyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D711DEB7AE6F1B09E9B57CAA /* SunnyView.swift */; };
 		0D457ABE05D4965498F7DBEC /* ConnectionStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5430CDD7776231E1D7D94085 /* ConnectionStatusBar.swift */; };
@@ -17,7 +18,9 @@
 		19BDE738FC80B94B3A0D7BB4 /* PaneCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CCF1B7B3A7BD7A3D3DF5AC /* PaneCardView.swift */; };
 		1AD3706582B9F283E02DA70A /* SunnyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18523DF7BE68647612C60EBC /* SunnyStore.swift */; };
 		1C55D5E5933388661B46B5AD /* ChatTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F86535D13E3379BD3F5905 /* ChatTranscriptView.swift */; };
+		1DBC8B495E77B87D836E57AC /* VoiceNoteRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DB9A5373007BA714FB7809 /* VoiceNoteRecorder.swift */; };
 		268D065E1964302E1D8E612E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 06B1D615F60F3A6A68632948 /* Assets.xcassets */; };
+		28FD4F4CD4C4A6AB7FA812B9 /* DayNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576A67F8F470F48CCF1D6F85 /* DayNote.swift */; };
 		28FFCFEBA720EDC31366C4F4 /* QuickActionEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D4C82480D82C31D2CC98B8 /* QuickActionEditView.swift */; };
 		2F126C904417B55B113BCFD2 /* FrameFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0320046C9E7D0287AAF72E76 /* FrameFit.swift */; };
 		336ECD514372A0B90CC2357A /* dialog-config.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8B0DCC8CD9EB0C1B08945D46 /* dialog-config.txt */; };
@@ -79,6 +82,7 @@
 		18523DF7BE68647612C60EBC /* SunnyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunnyStore.swift; sourceTree = "<group>"; };
 		1CD8FF981278110F427D2134 /* ControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlView.swift; sourceTree = "<group>"; };
 		20A15BF0563D12118B029C29 /* ScrollFollow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollFollow.swift; sourceTree = "<group>"; };
+		21DB9A5373007BA714FB7809 /* VoiceNoteRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteRecorder.swift; sourceTree = "<group>"; };
 		25BCECD70378D5DF7CEDD187 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		25CCF1B7B3A7BD7A3D3DF5AC /* PaneCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaneCardView.swift; sourceTree = "<group>"; };
 		273C518537632E13F146EBBE /* NotificationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationRow.swift; sourceTree = "<group>"; };
@@ -94,6 +98,7 @@
 		50F86535D13E3379BD3F5905 /* ChatTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptView.swift; sourceTree = "<group>"; };
 		5430CDD7776231E1D7D94085 /* ConnectionStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionStatusBar.swift; sourceTree = "<group>"; };
 		5451C9215B8F191BBF1F1510 /* PendingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingViews.swift; sourceTree = "<group>"; };
+		576A67F8F470F48CCF1D6F85 /* DayNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayNote.swift; sourceTree = "<group>"; };
 		5CC972DB14EB4B42E723FFEB /* QuickActionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionSettingsView.swift; sourceTree = "<group>"; };
 		5EBF9718B2C8E60AF6A4D74C /* BridgeDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscovery.swift; sourceTree = "<group>"; };
 		6104015FFCB75ED958B891F0 /* TerminalInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalInputBar.swift; sourceTree = "<group>"; };
@@ -132,6 +137,7 @@
 		F55836FAF33ACC3334E3D440 /* SpeechInputManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInputManager.swift; sourceTree = "<group>"; };
 		F6410645EA965151BF312D0A /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		F70A40172AE78DCCFBBEC87F /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		F83421140C5400DE33B78321 /* DayNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayNoteSheet.swift; sourceTree = "<group>"; };
 		F875B1320BB147A8F8908EAD /* screen-shell.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "screen-shell.json"; sourceTree = "<group>"; };
 		F9D4C82480D82C31D2CC98B8 /* QuickActionEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickActionEditView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -182,9 +188,12 @@
 		2E3E181F6EE576C0D7C863D8 /* Sunny */ = {
 			isa = PBXGroup;
 			children = (
+				576A67F8F470F48CCF1D6F85 /* DayNote.swift */,
+				F83421140C5400DE33B78321 /* DayNoteSheet.swift */,
 				8316F5EE586F9B5E96ED0CC5 /* SunnyDigest.swift */,
 				18523DF7BE68647612C60EBC /* SunnyStore.swift */,
 				D711DEB7AE6F1B09E9B57CAA /* SunnyView.swift */,
+				21DB9A5373007BA714FB7809 /* VoiceNoteRecorder.swift */,
 			);
 			path = Sunny;
 			sourceTree = "<group>";
@@ -407,6 +416,8 @@
 				0D457ABE05D4965498F7DBEC /* ConnectionStatusBar.swift in Sources */,
 				3A7E0D4506A280CA019F526B /* ContentView.swift in Sources */,
 				D1A415C7E9001B3E3424FB57 /* ControlView.swift in Sources */,
+				28FD4F4CD4C4A6AB7FA812B9 /* DayNote.swift in Sources */,
+				08C5F1D58D242DB4CF348202 /* DayNoteSheet.swift in Sources */,
 				508F1187BC51BFD0EC353F88 /* DevicePeeker.swift in Sources */,
 				0B8E8518F44F3322C3A70DCC /* DeviceSnapshot.swift in Sources */,
 				2F126C904417B55B113BCFD2 /* FrameFit.swift in Sources */,
@@ -445,6 +456,7 @@
 				04D3D0B38DA48F415068B1A1 /* Theme.swift in Sources */,
 				6E3DC57DC82797B70B11590F /* TranscriptEditorView.swift in Sources */,
 				B6D5F620694A36508989047A /* TranscriptEvent.swift in Sources */,
+				1DBC8B495E77B87D836E57AC /* VoiceNoteRecorder.swift in Sources */,
 				50549EC59DEED1AF067ED216 /* VolumeButtonHandler.swift in Sources */,
 				40349D0B2EA54A2CE29BD6E8 /* WorkspaceLayoutView.swift in Sources */,
 				FA52B9364EEE0C0F959F340F /* WorkspaceListView.swift in Sources */,

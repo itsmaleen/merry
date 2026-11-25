@@ -26,6 +26,10 @@ final class SunnyStore: ObservableObject {
     @Published private(set) var contexts: [String: SunnyTaskContext] = [:]
     @Published private(set) var contextErrors: [String: String] = [:]
 
+    /// Day notes from the last week, newest first.
+    @Published private(set) var dayNotes: [DayNote] = []
+    @Published private(set) var dayNotesLoaded = false
+
     private var token: String?
 
     var digestURL: String {
@@ -171,7 +175,7 @@ final class SunnyStore: ObservableObject {
                 "agentNeeds": [String](),
                 "agentActivity": "Answered from Merry",
             ])
-        case .approve, .kill:
+        case .approve, .complete, .kill:
             try await planner("PATCH", "tasks/\(try need(item.taskId))", ["completedAt": ISO8601DateFormatter().string(from: Date())])
         case .redo(let note):
             let id = try need(item.taskId)
@@ -301,13 +305,61 @@ final class SunnyStore: ObservableObject {
         return (task?["brief"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
+    // MARK: - Day notes
+
+    static let dayNoteDraftKey = "sunnyDayNoteDraft"
+
+    func loadDayNotes() async {
+        if let fixture = Self.fixtureNotes() { dayNotes = fixture; dayNotesLoaded = true; return }
+        let from = DayNote.date(for: Date().addingTimeInterval(-7 * 86_400))
+        do {
+            let data = try await planner("GET", "planning/notes", nil, query: ["from": from])
+            let rows = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["data"] as? [[String: Any]] ?? []
+            dayNotes = rows.compactMap(DayNote.init)
+            dayNotesLoaded = true
+        } catch {
+            self.error = "Couldn't load your day notes: \(error.localizedDescription)"
+        }
+    }
+
+    /// Saves a note for the day that is ending. Throws so the sheet can keep
+    /// the words on screen when the Planner can't be reached.
+    func saveDayNote(_ text: String) async throws {
+        if isFixture { return }
+        let data = try await planner("POST", "planning/notes", ["text": text, "date": DayNote.date(for: Date()), "source": "merry"])
+        if let row = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["data"] as? [String: Any], let note = DayNote(row) {
+            dayNotes.insert(note, at: 0)
+        }
+    }
+
+    func deleteDayNote(_ note: DayNote) async {
+        do {
+            if !isFixture { try await planner("DELETE", "planning/notes/\(note.id)", nil) }
+            dayNotes.removeAll { $0.id == note.id }
+        } catch {
+            self.error = "Couldn't delete the note: \(error.localizedDescription)"
+        }
+    }
+
+    /// `-SunnyNotesFixture <path>`: day notes from a file (the Planner's
+    /// `GET /planning/notes` reply), for the simulator and screenshots.
+    private static func fixtureNotes() -> [DayNote]? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-SunnyNotesFixture"), i + 1 < args.count,
+              let data = FileManager.default.contents(atPath: args[i + 1]),
+              let rows = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["data"] as? [[String: Any]] else { return nil }
+        return rows.compactMap(DayNote.init)
+    }
+
     // MARK: - Planner API
 
     @discardableResult
-    private func planner(_ method: String, _ path: String, _ body: [String: Any]?, retry: Bool = true) async throws -> Data {
+    private func planner(_ method: String, _ path: String, _ body: [String: Any]?, query: [String: String] = [:], retry: Bool = true) async throws -> Data {
         guard let base = URL(string: plannerURL) else { throw SunnyError("the Planner URL is not valid") }
         if token == nil { token = try await trustedSession(base) }
-        var req = URLRequest(url: base.appendingPathComponent(path), timeoutInterval: 20)
+        var url = base.appendingPathComponent(path)
+        if !query.isEmpty { url.append(queryItems: query.map { URLQueryItem(name: $0.key, value: $0.value) }) }
+        var req = URLRequest(url: url, timeoutInterval: 20)
         req.httpMethod = method
         req.setValue("Bearer \(token ?? "")", forHTTPHeaderField: "Authorization")
         if let body {
@@ -318,7 +370,7 @@ final class SunnyStore: ObservableObject {
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 && retry {
             token = nil
-            return try await planner(method, path, body, retry: false)
+            return try await planner(method, path, body, query: query, retry: false)
         }
         guard (200..<300).contains(status) else {
             let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -26,6 +26,7 @@ struct SunnyView: View {
     @State private var leaving: Set<String> = []
     @State private var showingDecided = false
     @State private var detail: SunnyItem?
+    @State private var showingDayNote = false
     @FocusState private var fieldFocused: Bool
 
     private var deck: [SunnyItem] { sunny.pending(filter).filter { !leaving.contains($0.id) } }
@@ -58,6 +59,9 @@ struct SunnyView: View {
             SunnyDetailSheet(item: item) { showingDecided = sunny.decided.count > 0 && showingDecided }
                 .environmentObject(sunny)
         }
+        .sheet(isPresented: $showingDayNote) {
+            DayNoteSheet().environmentObject(sunny)
+        }
         .task {
             if sunny.digest == nil { await sunny.load() }
             await runScreenshotHook()
@@ -80,6 +84,8 @@ struct SunnyView: View {
         guard args.contains("-SunnyFixture"), let i = args.firstIndex(of: "-UITestSunny"), i + 1 < args.count else { return }
         switch args[i + 1] {
         case "detail": detail = deck.first
+        case "daynote": showingDayNote = true
+        case "saiddone": filter = .done
         case "reply":
             filter = args.contains("-UITestSunnyFind") ? .find : .review
             // After the deck change has cleared the field's state.
@@ -132,6 +138,10 @@ struct SunnyView: View {
                 }
             }
             Spacer()
+            iconButton("mic", label: "Leave a day note") {
+                fieldFocused = false
+                showingDayNote = true
+            }
             if let page = sunny.pageURL {
                 iconButton("doc.richtext", label: "Open the full digest") { web = LinkSheetTarget(url: page) }
             }
@@ -270,6 +280,7 @@ struct SunnyView: View {
     private func rightLabel(_ item: SunnyItem) -> String {
         switch primary(item) {
         case .approve: return "Approve"
+        case .complete: return "Complete"
         case .kill: return "Kill"
         case .keep: return "Keep"
         case .file: return "File in wiki"
@@ -497,6 +508,18 @@ struct SunnyView: View {
             }
             if filter != nil {
                 Button("Show everything") { filter = nil }.buttonStyle(PressScale())
+            } else {
+                Button { showingDayNote = true } label: {
+                    Label("Leave a day note", systemImage: "mic")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16)
+                        .frame(height: 44)
+                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PressScale())
+                .foregroundStyle(.primary)
+                .padding(.top, 6)
             }
         }
         .padding(32)
@@ -507,6 +530,7 @@ struct SunnyView: View {
     private func primary(_ item: SunnyItem) -> SunnyAction? {
         switch item.kind {
         case .question: return nil
+        case .done: return .complete
         case .review: return .approve
         case .stale: return item.verdict == "kill" ? .kill : .keep
         case .proposal: return .keep
@@ -592,6 +616,10 @@ struct SunnyView: View {
                 switch item.kind {
                 case .question:
                     action("Later", icon: "clock", style: .quiet) { decide(.later, item) }
+                case .done:
+                    action("Later", icon: "clock", style: .quiet) { decide(.later, item) }
+                    action("Not yet", icon: "tray", style: .quiet) { decide(.keep, item) }
+                    action("Complete", icon: "checkmark", style: .primary) { decide(.complete, item) }
                 case .review:
                     action("Later", icon: "clock", style: .quiet) { decide(.later, item) }
                     action(redoing ? "Cancel" : "Reply", icon: redoing ? "xmark" : "arrowshape.turn.up.left", style: .quiet) {

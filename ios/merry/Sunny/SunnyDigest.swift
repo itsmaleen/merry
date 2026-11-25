@@ -17,6 +17,11 @@ struct SunnyDigest: Decodable, Equatable {
         let title: String; let why: String; let created: Bool; let skipped: String?; let taskId: String?
     }
 
+    /// One thing from a day note and what Sunny did with it.
+    struct NoteLine: Decodable, Equatable {
+        let noteId: String; let date: String; let kind: String; let text: String; let taskId: String?; let title: String?
+    }
+
     let date: String
     let generatedAt: String?
     let url: String?
@@ -27,6 +32,7 @@ struct SunnyDigest: Decodable, Equatable {
     let stale: [Stale]?
     let finds: [Find]?
     let proposed: [Proposed]?
+    let dayNotes: [NoteLine]?
     let costUsd: Double?
     let errors: [String]?
     let dry: Bool?
@@ -36,18 +42,25 @@ struct SunnyDigest: Decodable, Equatable {
         var parts: [String] = []
         if !questions.isEmpty { parts.append("\(questions.count) question\(questions.count > 1 ? "s" : "") for you") }
         if !review.isEmpty { parts.append("\(review.count) to review") }
+        let said = (dayNotes ?? []).filter { $0.kind == "finished" }.count
+        if said > 0 { parts.append("\(said) to confirm done") }
         if let u = unblocked, !u.isEmpty { parts.append("\(u.count) unblocked") }
         if let f = finds, !f.isEmpty { parts.append("\(f.count) research finds") }
         return parts.isEmpty ? "Nothing needs you this morning" : parts.joined(separator: ", ")
     }
 
     /// Everything that asks for a decision, in the order to make them:
-    /// questions first (they unblock agents), then the review pile worst
-    /// first, then Sunny's kill and merge suggestions, proposals and finds.
+    /// questions first (they unblock agents), then open tasks a day note
+    /// said are finished, then the review pile worst first, then Sunny's kill and merge suggestions, proposals and finds.
     /// Stale tasks Sunny would keep are left out: there is nothing to decide.
     var items: [SunnyItem] {
         var out: [SunnyItem] = []
         out += questions.map { SunnyItem(kind: .question, key: $0.taskId, title: $0.title, lines: $0.needs, taskId: $0.taskId) }
+        var saidDone: Set<String> = []
+        for n in dayNotes ?? [] where n.kind == "finished" {
+            guard let id = n.taskId, saidDone.insert(id).inserted else { continue }
+            out.append(SunnyItem(kind: .done, key: id, title: n.title ?? n.text, detail: n.text, taskId: id, caption: "From your day note, \(n.date)"))
+        }
         let order = ["redo": 0, "look": 1, "approve": 2]
         out += review.sorted { (order[$0.verdict] ?? 3) < (order[$1.verdict] ?? 3) }
             .map { SunnyItem(kind: .review, key: $0.taskId, title: $0.title, verdict: $0.verdict, detail: $0.line, taskId: $0.taskId) }
@@ -68,11 +81,12 @@ struct SunnyDigest: Decodable, Equatable {
 
 struct SunnyItem: Identifiable, Equatable {
     enum Kind: String, CaseIterable, Identifiable {
-        case question, review, stale, proposal, find
+        case question, done, review, stale, proposal, find
         var id: String { rawValue }
         var label: String {
             switch self {
             case .question: return "Questions"
+            case .done: return "Said done"
             case .review: return "Review"
             case .stale: return "Stale"
             case .proposal: return "Proposals"
@@ -82,6 +96,7 @@ struct SunnyItem: Identifiable, Equatable {
         var singular: String {
             switch self {
             case .question: return "Question"
+            case .done: return "You said it's done"
             case .review: return "Review"
             case .stale: return "Stale task"
             case .proposal: return "Proposed task"
@@ -91,6 +106,7 @@ struct SunnyItem: Identifiable, Equatable {
         var icon: String {
             switch self {
             case .question: return "questionmark.bubble"
+            case .done: return "mic"
             case .review: return "checkmark.seal"
             case .stale: return "hourglass"
             case .proposal: return "lightbulb"
@@ -123,6 +139,8 @@ enum SunnyAction: Equatable {
     case answer(String)
     /// Complete the task.
     case approve
+    /// Complete an open task a day note said was finished.
+    case complete
     /// Append the note to the brief and set the task back to ready.
     case redo(String)
     /// The work stands; ask for one more thing. Appends it to the brief and
@@ -155,6 +173,7 @@ enum SunnyAction: Equatable {
         switch self {
         case .answer: return "answered"
         case .approve: return "approved"
+        case .complete: return "completed"
         case .redo: return "sent back"
         case .followUp: return "follow-up sent"
         case .kill: return "killed"
